@@ -30,6 +30,9 @@ class VoiceActivity : AppCompatActivity() {
     private val clockTick = object : Runnable {
         override fun run() { renderClock(); if (DKState.live && ::clock.isInitialized) clock.postDelayed(this, 1000) }
     }
+    private fun stopClock() {
+        if (::clock.isInitialized) clock.removeCallbacks(clockTick)
+    }
     private fun renderClock() {
         if (!::clock.isInitialized) return
         val now = System.currentTimeMillis()
@@ -324,7 +327,7 @@ class VoiceActivity : AppCompatActivity() {
     }
 
     override fun onResume() { super.onResume(); DKState.listen(listener); LiveVision.listen(visionListener); render(); renderVision(); syncCamera() }
-    override fun onPause() { if (::clock.isInitialized) clock.removeCallbacks(clockTick); DKState.unlisten(listener); LiveVision.unlisten(visionListener); super.onPause() }
+    override fun onPause() { stopClock(); DKState.unlisten(listener); LiveVision.unlisten(visionListener); super.onPause() }
     override fun onStart() { super.onStart(); visible = true }
     override fun onStop() {
         visible = false

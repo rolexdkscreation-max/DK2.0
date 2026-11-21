@@ -59,7 +59,7 @@ object DKState {
         live = on; emit()
         if (ended != null) {
             DKLog.d(LiveClock.endLine(ended))
-            appCtx?.let { c -> main.post { try { android.widget.Toast.makeText(c, LiveClock.endLine(ended), android.widget.Toast.LENGTH_LONG).show() } catch (_: Exception) {} } }
+            appCtx?.let { c -> main.post { try { android.widget.Toast.makeText(c, LiveClock.endLine(ended), android.widget.Toast.LENGTH_LONG).show() } catch (e: Exception) { DKLog.d("लाइव समय का संदेश नहीं दिखा: ${e.message}") } } }
         }
     }
     /** होम स्क्रीन का म्यूट बटन: true = DK का माइक कुछ नहीं भेजता/सुनता (Live में खामोशी जाती है), दोबारा दबाने तक */

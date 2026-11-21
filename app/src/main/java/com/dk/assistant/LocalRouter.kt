@@ -108,13 +108,18 @@ object LocalRouter {
         if (inner.rest != null) return null
         val act = q.action
         when (act.optString("type")) {
-            "youtube_play" -> { if (ex.full) act.put("full", true); return Split(q, null) }
+            "youtube_play" -> {
+                if (ex.full) act.put("full", true)
+                return Split(q, null)
+            }
             "steps" -> {
                 val arr = act.optJSONArray("steps") ?: return null
                 var hit = false
                 for (i in 0 until arr.length()) {
                     val st = arr.optJSONObject(i) ?: continue
-                    if (st.optString("type") == "youtube_play") { if (ex.full) st.put("full", true); hit = true }
+                    if (st.optString("type") != "youtube_play") continue
+                    if (ex.full) st.put("full", true)
+                    hit = true
                 }
                 return if (hit) Split(q, null) else null
             }

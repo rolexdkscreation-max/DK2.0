@@ -17,7 +17,10 @@ object LiveClock {
 
     /** लाइव की हालत बदली: चालू = घड़ी शुरू; बंद = चली देर लौटाओ (नहीं चल रही थी = null) */
     @Synchronized fun onLive(on: Boolean, now: Long): Long? {
-        if (on) { if (startedAt == 0L) startedAt = now; return null }
+        if (on) {
+            if (startedAt == 0L) startedAt = now
+            return null
+        }
         if (startedAt == 0L) return null
         val ms = (now - startedAt).coerceAtLeast(0L)
         lastMs = ms; endedAt = now; startedAt = 0L
