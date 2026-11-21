@@ -76,6 +76,25 @@ object LiveRecover {
         return if (BargeGate.realWords(t)) t else if (sorryOk) SORRY_TEXT else null
     }
 
+    /**
+     * 21 नवंबर 2026 (मालिक: "अटके session पर SYSTEM NOTE मत भेजो, मेरी असली बात का transcript भेजो"): Whisper का सुना
+     * वाक्य (असली शब्द, DK की गूँज नहीं) वरना caption; दोनों में शब्द नहीं = null (तब कुछ नहीं भेजते, यूज़र को साफ़ बताते हैं).
+     */
+    fun stuckText(whisper: String?, caption: String, dkSaid: String = ""): String? {
+        val t = LiveWhisper.pick(whisper, caption.trim().trimEnd('…').trim(), dkSaid).trim()
+        return t.takeIf { BargeGate.realWords(it) }
+    }
+
+    /**
+     * 21 नवंबर 2026 (मालिक: "नई बातचीत शुरू होकर पुरानी बात खो जाती है"): पहले मिनट में दूसरी बार अटकते ही handle हटता था
+     * (नई बातचीत). अब handle तभी हटे जब वही handle दोबारा अटका (सत्र सच में खराब); वरना उसी से बातचीत वहीं से.
+     */
+    /** अटका + बदलने की सीमा पूरी + भेजने लायक बात नहीं = फ़ोन की आवाज़ में यही (SYSTEM NOTE नहीं) */
+    const val ASK_AGAIN_LINE = "माफ़ कीजिए, आपकी बात मुझ तक नहीं पहुँची। कृपया एक बार फिर से बोलिए।"
+
+    fun dropHandle(again: Boolean, handle: String?, lastStuckHandle: String?): Boolean =
+        again && handle != null && handle == lastStuckHandle
+
     /** [MAX_SWAPS] / [SWAP_WINDOW_MS] की सीमा - true = अभी बदल सकते हैं (और गिनती में जुड़ गया) */
     class SwapLimit(private val max: Int = MAX_SWAPS, private val windowMs: Long = SWAP_WINDOW_MS) {
         private val at = ArrayDeque<Long>()

@@ -38,15 +38,60 @@ object St3Load {
     @Volatile var heatStatus = -1
     @Volatile var headroom = Float.NaN
 
+    // ------------------------------------------------------------ 21 नवंबर 2026: पूरे session का फ़ैसला
+    /**
+     * मालिक (log: बनना बजने का 108%, फ़ोन गर्म): "बनने का समय बजने के 90% से ऊपर जाए या फ़ोन गर्म हो तो थ्रेड घटाओ. फिर भी
+     * धीमा रहे तो बाकी जवाब Gemini की आवाज़ से. यह बदलाव पूरे session के लिए, हर जवाब पर दोबारा मत आज़माओ."
+     * [SESSION_SLOW_RTF] से ऊपर लगातार [SLOW_RUN] टुकड़े (या गर्म) = [sessionThreadsCut] (अगले जवाब की शुरुआत में कम थ्रेड
+     * से मॉडल दोबारा खुलता है). उसके बाद (कम थ्रेड वाले जवाब में) फिर लगातार [SLOW_RUN] धीमे = [sessionGemini] - Live बंद
+     * होने ([newSession]) तक, [newAnswer] इसे नहीं हटाता.
+     */
+    const val SESSION_SLOW_RTF = 0.9
+    @Volatile var sessionThreadsCut = false
+        private set
+    @Volatile var sessionGemini = false
+        private set
+    private var slow90Run = 0
+    /** थ्रेड घटने के बाद नया जवाब शुरू हुआ (= कम थ्रेड लागू) */
+    private var cutApplied = false
+
+    /** नया Live session: फिर से पूरे थ्रेड + ऑफ़लाइन आवाज़ से शुरू */
+    @Synchronized fun newSession() { sessionThreadsCut = false; sessionGemini = false; slow90Run = 0; cutApplied = false }
+
+    /** pure: लगातार [run] टुकड़े [SESSION_SLOW_RTF] से धीमे - (थ्रेड घटाओ?, Gemini पर जाओ?) */
+    fun sessionStep(run: Int, heat: Int, cut: Boolean, applied: Boolean): Pair<Boolean, Boolean> =
+        (cut || run >= SLOW_RUN || heat >= HOT_STATUS) to (cut && applied && run >= SLOW_RUN)
+
+    private fun sessionOnRow(r: St3Stats.Row): String? {
+        slow90Run = if (r.rtf > SESSION_SLOW_RTF) slow90Run + 1 else 0
+        val (cutNow, gemini) = sessionStep(slow90Run, heatStatus, sessionThreadsCut, cutApplied)
+        if (gemini && !sessionGemini) {
+            sessionGemini = true
+            return "सुधार#2 ऑफ़लाइन आवाज़: थ्रेड घटाकर भी धीमी (${St3Stats.pct(r.rtf)}) - इस पूरे session में बाकी जवाब Gemini की आवाज़ से"
+        }
+        if (cutNow && !sessionThreadsCut) {
+            sessionThreadsCut = true; slow90Run = 0
+            return "सुधार#2 ऑफ़लाइन आवाज़: बनना बजने के ${(SESSION_SLOW_RTF * 100).toInt()}% से ऊपर / फ़ोन ${heatName(heatStatus)} " +
+                "(${St3Stats.pct(r.rtf)}) - इस session में थ्रेड घटाए ($HOT_THREADS), अगले जवाब से"
+        }
+        return null
+    }
+
+    /** session के फ़ैसले के साथ थ्रेड: घटे = [HOT_THREADS] तक. pure */
+    fun threadsFor(base: Int, heat: Int, sessionCut: Boolean): Int =
+        if (sessionCut) minOf(base, HOT_THREADS).coerceAtLeast(1) else threadsFor(base, heat)
+
     /** एक टुकड़ा बना. लौटाता है: तरीका बदला तो लॉग की लाइन, नहीं तो null */
     @Synchronized fun onRow(r: St3Stats.Row): String? {
         answerRows += r
         if (r.audioMs <= 300) return null                // बहुत छोटा टुकड़ा - नाप भरोसे लायक नहीं
+        val sess = sessionOnRow(r)
         if (r.slow) { slowRun++; goodRun = 0 } else { slowRun = 0; if (r.rtf < GOOD_RTF) goodRun++ else goodRun = 0 }
         val before = mode
         mode = next(mode, slowRun, goodRun, heatStatus, if (r.slow) r.rtf else 0.0)
         if (mode != before) { slowRun = 0; goodRun = 0 }
-        return if (mode == before) null else change(before, mode, r)
+        val line = if (mode == before) null else change(before, mode, r)
+        return listOfNotNull(line, sess).takeIf { it.isNotEmpty() }?.joinToString("\n")
     }
 
     /** तरीका कैसे बदले. pure */
@@ -76,7 +121,7 @@ object St3Load {
     val freshAnswer: Boolean get() = synchronized(this) { answerRows.isEmpty() }
 
     /** इस जवाब का बाकी Gemini की आवाज़ से? */
-    val toGemini: Boolean get() = mode == Mode.GEMINI
+    val toGemini: Boolean get() = mode == Mode.GEMINI || sessionGemini
 
     /**
      * नया जवाब: पिछले का सार (लॉग के लिए - पहले/बाद के आँकड़े) लौटाओ और गिनती साफ़. Gemini पर गए थे = अब हल्के से फिर आज़माओ.
@@ -84,6 +129,7 @@ object St3Load {
     @Synchronized fun newAnswer(firstMs: Long): String? {
         val s = summary(answerRows, firstMs, mode, heatStatus)
         answerRows.clear(); slowRun = 0; goodRun = 0
+        if (sessionThreadsCut) cutApplied = true
         if (mode == Mode.GEMINI) mode = Mode.LIGHT
         return s
     }
@@ -137,5 +183,5 @@ object St3Load {
     fun benchNow(modelOpen: Boolean, busy: Boolean): Boolean = !modelOpen && !busy
 
     /** (test के लिए) सब साफ़ */
-    @Synchronized fun reset() { mode = Mode.NORMAL; slowRun = 0; goodRun = 0; answerRows.clear(); heatStatus = -1; headroom = Float.NaN; busyUntil = 0L }
+    @Synchronized fun reset() { newSession(); mode = Mode.NORMAL; slowRun = 0; goodRun = 0; answerRows.clear(); heatStatus = -1; headroom = Float.NaN; busyUntil = 0L }
 }

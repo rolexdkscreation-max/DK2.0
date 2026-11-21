@@ -220,6 +220,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                         if (bargeDet.feed(rms, now, outLevel(now), prob)) {
                             // SHAK: tez awaaz. DK ki awaaz halki (rokna nahi), caption model ko suno - shabd hain?
                             bargeGate.suspect(now); barging = true; loudMs = 0L; overEchoMs = 0L; duplex.reset(); speakerBarge.reset()
+                            softBarge.reset()
                             // मालिक (नवंबर 2026): DK की आवाज़ अपने-आप धीमी-तेज़ नहीं - शक के समय भी पूरी (रोकना पक्के शब्दों पर ही)
                             if (VolumeRule.AUTO_CHANGE) track?.let { try { it.setVolume(SpeakerBoost.SUSPECT_VOLUME) } catch (e: Exception) { Quiet.note(e) } }
                             log("तेज़ आवाज़ (rms=${rms.toInt()}, गूँज=${bargeDet.echoLevel().toInt()}, शोर=${bargeDet.ambient.toInt()}) - यूज़र है? शब्द सुन रहा हूँ (DK की आवाज़ नहीं बदली)")
@@ -254,16 +255,42 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                         synchronized(bargeBuf) { bargeBuf.addLast(chunk); while (bargeBuf.size > 50) bargeBuf.removeFirst() }
                         capSend(chunk)
                         sendAudio(zeros, silent = true); gatedChunks++
-                        // नवंबर 2026 (Live जाँच #1): कॉल-mode स्पीकर (पक्का AEC) + VAD = इंसानी आवाज़ 0.2s = तुरंत रुको
+                        // नवंबर 2026 (Live जाँच #1): कॉल-mode स्पीकर (पक्का AEC) + VAD = इंसानी आवाज़ 0.2s
                         val duplexOn = CallSpeakerRule.duplexOk(CallSpeaker.active, aecOn, duplex.disabled) && !Prefs.bargeHold(svc)
-                        if (duplexOn && duplex.feed(prob, overEchoMs >= 120, CHUNK_MS.toLong())) {
-                            duplex.onConfirm(now); duplexStops++
-                            confirmBarge("इंसानी आवाज़ - VAD ${"%.2f".format(prob)}, कॉल-mode")
+                        // 21 नवंबर 2026 (मालिक, #3): तेज़ रास्ते अब सिर्फ़ duck ([SoftBarge]); पूरा रोकना 1s लगातार + मालिक का मिलान
+                        // (या पक्के शब्द - caption वाला रास्ता वैसा ही). AEC चालू रहता है; DK की गूँज का अंदाज़ा माइक की आवाज़ से घटाकर गिनती
+                        val echoNow = bargeDet.echoLevel()
+                        val voiced = (prob < 0f || prob >= BargeDetector.VAD_SURE) &&
+                            SoftBarge.residual(rms, echoNow) > maxOf(bargeDet.ambient * 2.5, 800.0)
+                        if (softBarge.ducked) {
+                            if (vgOn && softBarge.voicedMs >= BargeOwner.NEAR_MS && !bargeOwnerBusy && now - bargeOwnerTriedAt >= BargeOwner.RETRY_MS) {
+                                bargeOwnerBuf.clear()
+                                synchronized(bargeBuf) { bargeBuf.toList() }.takeLast(BargeOwner.MAX_CHUNKS).forEach { bargeOwnerBuf.addLast(it) }
+                                checkBargeOwner(now)
+                            }
+                            val heardMs = softBarge.voicedMs + CHUNK_MS
+                            when (softBarge.feed(voiced, !vgOn || BargeOwner.fresh(bargeOwnerAt, now), CHUNK_MS.toLong(), now)) {
+                                SoftBarge.Act.STOP -> {
+                                    log("सुधार#3 टोकना: ${heardMs} ms लगातार आवाज़ (गूँज=${echoNow.toInt()} घटाकर) + " +
+                                        (if (vgOn) "मालिक का मिलान" else "आवाज़ पहचान बंद") + " - अब DK रुका (${softBarge.why})")
+                                    if (softBarge.why == "कॉल-mode") { duplex.onConfirm(now); duplexStops++ } else if (softBarge.why == "speaker") { speakerBarge.onConfirm(now); speakerStops++ }
+                                    synchronized(sendLock) { bargeGate.confirm(); confirmBarge("इंसानी आवाज़ - VAD ${"%.2f".format(prob)}, 1s+ (${softBarge.why})") }
+                                }
+                                SoftBarge.Act.UNDUCK -> {
+                                    falseAlarms++
+                                    log("सुधार#3 टोकना: आवाज़ रुक गई / मालिक का मिलान नहीं - DK की आवाज़ फिर पूरी, रोका नहीं (#$falseAlarms)")
+                                    track?.let { try { it.setVolume(1f) } catch (e: Exception) { Quiet.note(e) } }
+                                    bargeDet.rearm(rms); barging = false; bargeGate.reset()
+                                    synchronized(bargeBuf) { bargeBuf.clear() }
+                                }
+                                SoftBarge.Act.NONE -> Unit
+                            }
+                        } else if (duplexOn && duplex.feed(prob, overEchoMs >= 120, CHUNK_MS.toLong())) {
+                            duckBarge("कॉल-mode", duplex.speechMs, now, prob)
                         } else if (!duplexOn && !CallSpeaker.active && !Prefs.bargeHold(svc) && Prefs.bool(svc, SpeakerBarge.PREF, true) &&
                             speakerBarge.feed(prob, rms, bargeDet.echoLevel(), bargeDet.ambient, CHUNK_MS.toLong())) {
-                            // 16 नवंबर 2026 (ऑडिट S2): speaker पर भी - पक्की इंसानी आवाज़ + DK की गूँज से बहुत तेज़ 0.32s = रुको
-                            speakerBarge.onConfirm(now); speakerStops++
-                            synchronized(sendLock) { bargeGate.confirm(); confirmBarge("इंसानी आवाज़ - VAD ${"%.2f".format(prob)}, speaker (जल्दी टोकना)") }
+                            // 16 नवंबर 2026 (ऑडिट S2): speaker पर भी - पक्की इंसानी आवाज़ + DK की गूँज से बहुत तेज़ 0.32s
+                            duckBarge("speaker", speakerBarge.speechMs, now, prob)
                         } else if (bargeGate.expired(now, captionOn(), loudMs, overEchoMs)) {
                             // shabd nahi aaye = shor/TV/log. DK ka jawab poori awaaz me chalta rahe
                             falseAlarms++
@@ -271,11 +298,17 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                             track?.let { try { it.setVolume(1f) } catch (e: Exception) { Quiet.note(e) } }
                             bargeDet.rearm(rms); barging = false
                             synchronized(bargeBuf) { bargeBuf.clear() }
-                        } else if (bargeGate.state == BargeGate.State.CONFIRMED) confirmBarge(
-                            if (!captionOn()) "लगातार आवाज़ (caption बंद)" else if (bargeGate.captionSlow) "लगातार आवाज़ (caption धीमा)" else "लगातार आवाज़ (caption चुप)")
+                        } else if (bargeGate.state == BargeGate.State.CONFIRMED) {
+                            // 21 नवंबर 2026: लंबाई (0.7-1s) से पक्का = पहले duck, रोकना 1s + मालिक पर ([SoftBarge])
+                            bargeGate.unconfirm()
+                            duckBarge(if (!captionOn()) "लगातार आवाज़ (caption बंद)" else if (bargeGate.captionSlow) "लगातार आवाज़ (caption धीमा)" else "लगातार आवाज़ (caption चुप)",
+                                maxOf(loudMs, overEchoMs), now, prob)
+                        }
                     }
                     BargeGate.State.CONFIRMED -> { sendAudio(chunk); capSend(chunk) }
                     BargeGate.State.HOLD -> {
+                        // 21 नवंबर 2026: शब्द आए पर रोकने वाले नहीं (HOLD) = duck हटाओ, जवाब पूरी आवाज़ में
+                        if (softBarge.ducked) { softBarge.reset(); track?.let { try { it.setVolume(1f) } catch (e: Exception) { Quiet.note(e) } } }
                         // सिर्फ़ caption सुने (Gemini को खामोशी - जवाब चलता रहे). "रुको" सुनते ही onCaption रोकेगा
                         synchronized(bargeBuf) { bargeBuf.addLast(chunk); while (bargeBuf.size > 50) bargeBuf.removeFirst() }
                         capSend(chunk)
@@ -294,6 +327,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                 // (Peeche ka lagatar shor bhejne par server "user abhi bol raha" maan kar jawab rokta tha.)
                 if (barging) bargeUntil = now + 1500
                 barging = false; bargeDet.reset(); bargeDet.ambient = 0.0; bargeNearMs = 0L; bargeNearLogged = false; bargeOwnerBuf.clear()
+                softBarge.reset()
                 if (bargeGate.state != BargeGate.State.IDLE) { bargeGate.reset(); track?.let { try { it.setVolume(1f) } catch (e: Exception) { Quiet.note(e) } } }
                 // v3.5+: जवाब पूरा, DK चुप -> बीच में पूछा सवाल अब (उसका भी जवाब)
                 if (!askQueue.isEmpty()) {
@@ -499,4 +533,12 @@ internal fun GeminiLive.heardNow(now: Long): HeardPick.Heard {
         heardFallback, liveHeard, liveHeardAt, speechStartAt, now)
     if (h.src == "live" && !heardLiveLogged) { heardLiveLogged = true; log("caption नहीं चल रहा - बात खत्म का फ़ैसला Live के अपने लिखे से") }
     return h
+}
+
+/** 21 नवंबर 2026 (मालिक, #3): DK बोलते समय तेज़ आवाज़ - रोकना नहीं, पहले DK की आवाज़ धीमी (duck) ([SoftBarge]) */
+internal fun GeminiLive.duckBarge(src: String, ms: Long, now: Long, prob: Float) {
+    if (!softBarge.trigger(src, ms, now)) return
+    track?.let { try { it.setVolume(SoftBarge.DUCK_VOLUME) } catch (e: Exception) { Quiet.note(e) } }
+    log("सुधार#3 टोकना: $src ~$ms ms आवाज़ (VAD ${"%.2f".format(prob)}) - DK रुका नहीं, आवाज़ धीमी (duck); " +
+        "पूरा तभी रुकेगा जब ${SoftBarge.STOP_MS / 1000}s लगातार + मालिक का मिलान, या पक्के शब्द")
 }

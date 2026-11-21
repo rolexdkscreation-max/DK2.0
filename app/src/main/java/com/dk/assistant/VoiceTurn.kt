@@ -405,6 +405,9 @@ class BargeGate(
 
     fun confirmedByLength(): Boolean = state == State.CONFIRMED
 
+    /** 21 नवंबर 2026 ([SoftBarge]): लंबाई से CONFIRMED हुआ पर अभी सिर्फ़ duck - फिर से शक (TENTATIVE), शब्द/मिलान का इंतज़ार */
+    fun unconfirm() { if (state == State.CONFIRMED) state = State.TENTATIVE }
+
     /** Asli shabd aaye par rokne wale nahi: jawab chalne do, baat sunte raho (TENTATIVE -> HOLD) */
     fun hold(now: Long) { if (state == State.TENTATIVE || state == State.CONFIRMED) { state = State.HOLD; since = now } }
 

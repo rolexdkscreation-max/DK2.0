@@ -23,14 +23,28 @@ package com.dk.assistant
  * Pure logic - Android import नहीं -> JVM test ([LiveSpareTest]).
  */
 object LiveSpare {
-    /** इतना चलने पर goAway से पहले ही दूसरा connection तैयार (Gemini Live का connection ~10 मिनट) */
-    const val PREPARE_AT_MS = 8 * 60_000L
+    /**
+     * इतना चलने पर goAway से पहले ही दूसरा connection तैयार. पहले 8 मिनट (connection ~10 मिनट मानकर) - 21 नवंबर 2026
+     * (मालिक का log: goAway ~366s पर ही आया) = तैयारी बहुत देर से. अब 5 मिनट (300s), ताकि goAway से पहले ही शांत पल में बदल जाए.
+     */
+    const val PREPARE_AT_MS = 5 * 60_000L
     /** एक तैयारी (दौड़) को इतना समय - न बना तो फिर कोशिश */
     const val SPARE_RACE_MS = 10_000L
     /** goAway में समय न लिखा हो तो मानो इतना बाकी */
     const val GOAWAY_DEFAULT_LEFT_MS = 5_000L
     /** goAway: कटने से इतना पहले तक नया न बना = पुराना छोड़कर सामान्य तरीके से जोड़ो (server के काटने से पहले) */
     const val GOAWAY_MARGIN_MS = 700L
+
+    /**
+     * 21 नवंबर 2026 (मालिक: "goAway के वक़्त बोलूँ तो 4 सेकंड तक कुछ नहीं, फिर नई बातचीत"): goAway आ चुका, आपकी बात खत्म
+     * (endpoint) हुई और [GOAWAY_TURN_WAIT_MS] तक server से कुछ नहीं (न लिखावट, न VAD) = पुराना connection जा रहा है, उस पर
+     * 4s ([LiveRecover.ZOMBIE_MS]) रुकना बेकार. तुरंत नए connection पर (उसी handle से, बातचीत वहीं से) + वही आवाज़ दोबारा.
+     * यह "अटका session" नहीं गिना जाता (handle नहीं हटता, बदलने की गिनती में नहीं).
+     */
+    const val GOAWAY_TURN_WAIT_MS = 1_500L
+    fun goAwayTurnSwap(goAway: Boolean, now: Long, endpointAt: Long, goAwayAt: Long, eventAt: Long, busy: Boolean, speechMs: Int): Boolean =
+        goAway && !busy && endpointAt > 0L && eventAt == 0L && speechMs >= LiveRecover.MIN_SPEECH_MS &&
+            now - maxOf(endpointAt, goAwayAt) >= GOAWAY_TURN_WAIT_MS
 
     /** goAway का timeLeft (ms, -1 = पता नहीं) -> कितना मानें */
     fun goAwayLeft(leftMs: Long): Long = if (leftMs > 0) leftMs else GOAWAY_DEFAULT_LEFT_MS
@@ -63,7 +77,7 @@ object LiveSpare {
      * थामना सिर्फ़ इतना चलने के बाद (या goAway पर). 8-9 मिनट: पुराना तरीका (शांत पल में ताज़ा standby, बिना थामे - आपकी बात
      * कभी नहीं रुकती; offline नाप में ~98% बार यही काफ़ी). 9 मिनट तक न हुआ (लगातार बात) = थामो, server के काटने से पहले पक्का.
      */
-    const val FREEZE_AT_MS = 9 * 60_000L
+    const val FREEZE_AT_MS = 5 * 60_000L + 30_000L     // 21 नवंबर 2026: 9 मिनट -> 5.5 मिनट (goAway ~366s पर आता है)
     fun freezeDue(goAway: Boolean, ageMs: Long): Boolean = goAway || ageMs >= FREEZE_AT_MS
 
     /** थामने के बाद नया connection इतने में न बने = पुराने पर लौटो (जमा आवाज़ वहीं) */
