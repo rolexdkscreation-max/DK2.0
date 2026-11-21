@@ -44,6 +44,7 @@ object DKState {
     fun setLink(s: String) { if (linkStatus != s) { linkStatus = s; emit() } }
     /** 21 नवंबर 2026: Live में लिखावट (caption) बंद हो तो स्क्रीन की छोटी चेतावनी ("" = नहीं) - [CaptionWarn] */
     @Volatile var captionWarn = ""
+        private set
     fun setCaptionWarn(s: String) { if (captionWarn != s) { captionWarn = s; emit() } }
 
     /**
