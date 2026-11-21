@@ -48,7 +48,7 @@ class SttRouter {
 
     companion object {
         const val MAX_STRIKES = 2
-        const val NAME = "Sherpa-ONNX"
+        const val NAME = "IndicConformer"
         /** पहचान कितनी देर तक: आवाज़ का 1.5 गुना, कम से कम 6 s, ज़्यादा से ज़्यादा 15 s */
         fun timeoutMs(audioMs: Long): Long = (audioMs * 3 / 2).coerceIn(6_000L, 15_000L)
         /** जवाब आया पर आवाज़ से बहुत ज़्यादा समय लगा = "धीमा" (अगली बार से Android की ओर गिनती) */

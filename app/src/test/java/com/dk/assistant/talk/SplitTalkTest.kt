@@ -100,7 +100,7 @@ class SplitTalkTest {
     @Test fun router_none_hasHindiReason() {
         val p = SttRouter().pick(prefSherpa = false, sherpaReady = false, whyNot = "", androidOk = false)
         assertEquals(SttRouter.Engine.NONE, p.engine)
-        assertTrue(p.notice.contains("Sherpa-ONNX"))
+        assertTrue(p.notice.contains(SttRouter.NAME))
     }
 
     @Test fun router_timeouts() {
@@ -110,19 +110,22 @@ class SplitTalkTest {
         assertFalse(SttRouter.slow(3_000, 2_500))
     }
 
-    @Test fun sherpaModel_pinnedHuggingFace_under100MB() {
+    @Test fun sttModel_pinnedHuggingFace_indicConformer() {
+        // 21 नवंबर 2026: betterflow (Sherpa-ONNX) की जगह AI4Bharat IndicConformer हिंदी int8 - ~134 MB, सिर्फ़ Wi-Fi
         val e = ModelCatalog.STT_ENCODER; val t = ModelCatalog.STT_TOKENS
         assertTrue(e in ModelCatalog.ALL && t in ModelCatalog.ALL)
         assertEquals(listOf(e, t), ModelCatalog.STT_SHERPA)
         for (a in ModelCatalog.STT_SHERPA) { assertEquals(ModelCatalog.Kind.STT, a.kind); assertTrue(ModelCatalog.wifiOnly(a)) }
-        val base = "https://huggingface.co/mobilebytesensei/betterflow-hindi-streaming-ctc/resolve/2c8ad90337fa5228dd182ab0525db1c71f18eb72/"
-        assertEquals(listOf(base + "encoder.int8.onnx"), e.urls)
-        assertEquals("e5758a0c0549063edf02fafc8af1be19d42715eb816d1b8f4d45e8de0fa6d039", e.sha256)
-        assertEquals(68_954_634L, e.bytes)
+        val base = "https://huggingface.co/ngiftsun/indicconformer-hi-int8-sherpa/resolve/7c3806fe01eb9b50784f09fe22cfeabf642c218e/"
+        assertEquals(listOf(base + "model.int8.onnx"), e.urls)
+        assertEquals("fc0c7db7c0e0c11d4ed540dc2cddca03a42fcba3568a0e0607c3631d87fa9f8a", e.sha256)
+        assertEquals(140_451_556L, e.bytes)
         assertEquals(listOf(base + "tokens.txt"), t.urls)
-        assertEquals("800fa1703a555fe52fbd8271f1b3764c5911a94cd16e3b618333118aadd75771", t.sha256)
-        assertEquals(659L, t.bytes)
-        assertTrue(ModelCatalog.STT_SHERPA.sumOf { it.bytes } < 100L * 1024 * 1024)
+        assertEquals("ee60967630213f31951817ac8b402b92ec18cce80718a24a49b388e56672dfb2", t.sha256)
+        assertEquals(67_605L, t.bytes)
+        assertTrue(ModelCatalog.STT_SHERPA.sumOf { it.bytes } < 150L * 1024 * 1024)
+        // पुराने मॉडल की फ़ाइलें फ़ोन से मिटें
+        assertTrue(ModelCatalog.REMOVED_FILES.containsAll(ModelCatalog.OLD_STT_FILES))
         assertEquals(emptyList<String>(), ModelCatalog.problems())
     }
 

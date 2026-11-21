@@ -205,7 +205,9 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     }
 
     @Volatile internal var ws: WebSocket? = null
+    /** 21 नवंबर 2026 (मालिक: "Live जुड़ने के बाद भी CONNECTING ही लिखा रहता है"): जुड़ते / टूटते ही स्क्रीन को ख़बर (बैज LISTENING) */
     @Volatile internal var ready = false
+        set(v) { if (field != v) { field = v; DKState.linkChanged() } }
     /** नवंबर 2026: इस connection के जुड़ने का समय (0 = नहीं जुड़ा) - Inspector सिर्फ़ टिके connection में बोले */
     @Volatile internal var upSince = 0L
     fun stableFor(ms: Long): Boolean = ready && upSince > 0 && System.currentTimeMillis() - upSince >= ms
@@ -1153,10 +1155,10 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         val capKey = Prefs.captionKey(svc)
         captionAt = System.currentTimeMillis()
         caption = if (com.dk.assistant.stt.SherpaStt.ready(svc)) {
-            log("लिखने वाला: फ़ोन पर Sherpa-ONNX (कोई key नहीं)")
+            log("लिखने वाला: फ़ोन पर IndicConformer (कोई key नहीं)")
             SherpaCaption(svc, onText = { t, fin -> onCaption(t, fin) }, onLate = { t -> onLateCaption(t) }, isNewSpeech = newSpeech).also { it.start() }
         } else if (capKey.isNotBlank()) {
-            log("लिखने वाला: Sherpa-ONNX नहीं (${com.dk.assistant.stt.SherpaStt.whyNot(svc)}) - बैकअप " +
+            log("लिखने वाला: IndicConformer नहीं (${com.dk.assistant.stt.SherpaStt.whyNot(svc)}) - बैकअप " +
                 if (Prefs.captionOwnKey(svc).isNotBlank()) "अपनी अलग key से" else "DK लाइव वाली key से (अलग key नहीं डाली)")
             LiveCaption(LiveKeys.order(listOf(capKey) + Prefs.liveGeminiKeys(svc)), onText = { t, fin -> onCaption(t, fin) }, onLate = { t -> onLateCaption(t) },
                 isNewSpeech = newSpeech).also { it.start() }

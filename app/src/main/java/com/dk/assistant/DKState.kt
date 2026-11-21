@@ -226,6 +226,9 @@ object DKState {
         emit()
     }
 
+    /** 21 नवंबर 2026: Live जुड़ा / टूटा, या अलग तरीका शुरू / बंद - बैज (CONNECTING / LISTENING) फिर से बने */
+    fun linkChanged() = emit()
+
     fun listen(l: () -> Unit) { synchronized(listeners) { listeners.add(l) } }
     fun unlisten(l: () -> Unit) { synchronized(listeners) { listeners.remove(l) } }
 

@@ -68,7 +68,7 @@ class TalkLoop(private val c: Context, private val agent: AgentRunner, private v
             return@coroutineScope "पहचान नहीं: ${first.notice}"
         }
         if (first.notice.isNotBlank()) notice(first.notice)
-        if (first.engine == SttRouter.Engine.SHERPA) launch { if (!SherpaStt.warm(c)) DKLog.d("Sherpa-ONNX: पहले से नहीं खुला - पहली बात पर फिर कोशिश") }
+        if (first.engine == SttRouter.Engine.SHERPA) launch { if (!SherpaStt.warm(c)) DKLog.d("IndicConformer: पहले से नहीं खुला - पहली बात पर फिर कोशिश") }
         withContext(Dispatchers.Default) { if (!vadTried) { vadTried = true; vad = SileroVad.open(c) } }
         DKLog.d("अलग तरीका शुरू: पहचान=${first.engine}, चुप्पी=${TalkPrefs.silenceMs(c)} ms, VAD=${if (vad != null) "Silero" else "RMS"}")
         DKState.workNow = { true }
@@ -265,7 +265,7 @@ class TalkLoop(private val c: Context, private val agent: AgentRunner, private v
                     }
                     is SherpaStt.Res.Slow -> { if (router.sherpaResult(ok = false, slow = true)) switched() }
                     is SherpaStt.Res.Fail -> {
-                        DKLog.d("Sherpa-ONNX नाकाम: ${r.why}")
+                        DKLog.d("IndicConformer नाकाम: ${r.why}")
                         if (router.sherpaResult(ok = false, slow = false)) switched()
                     }
                 }
@@ -283,7 +283,7 @@ class TalkLoop(private val c: Context, private val agent: AgentRunner, private v
         return t
     }
 
-    private fun switched() = notice("Sherpa-ONNX ${router.offWhy} - इस बातचीत में अब Android की पहचान से सुनूँगा", speak = false)
+    private fun switched() = notice("IndicConformer ${router.offWhy} - इस बातचीत में अब Android की पहचान से सुनूँगा", speak = false)
 
     private fun pick(): SttRouter.Pick = router.pick(
         prefSherpa = TalkPrefs.stt(c) == TalkPrefs.STT_SHERPA,
@@ -293,7 +293,7 @@ class TalkLoop(private val c: Context, private val agent: AgentRunner, private v
     )
 
     private fun link(e: SttRouter.Engine, what: String) {
-        val name = when (e) { SttRouter.Engine.SHERPA -> "Sherpa-ONNX (फ़ोन पर)"; SttRouter.Engine.ANDROID -> "Android पहचान"; else -> "-" }
+        val name = when (e) { SttRouter.Engine.SHERPA -> "IndicConformer (फ़ोन पर)"; SttRouter.Engine.ANDROID -> "Android पहचान"; else -> "-" }
         DKState.setLink("अलग तरीका • $name • $what")
     }
 

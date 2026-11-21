@@ -11,7 +11,7 @@ package com.dk.assistant.plus.models
  */
 object ModelCatalog {
 
-    enum class Kind(val title: String) { VOICE("आवाज़-पहचान"), FACE("चेहरा-पहचान"), SOCIAL("सोशल पोस्ट (गैलरी पहचान)"), WAKE("वेक वर्ड"), STT("बोली से लिखना (Sherpa-ONNX)"),
+    enum class Kind(val title: String) { VOICE("आवाज़-पहचान"), FACE("चेहरा-पहचान"), SOCIAL("सोशल पोस्ट (गैलरी पहचान)"), WAKE("वेक वर्ड"), STT("बोली से लिखना (IndicConformer)"),
         /** 19 नवंबर 2026: Supertonic 3 - फ़ोन पर बनने वाली आवाज़ ([com.dk.assistant.voice.st3.St3Config]) */
         TTS("बोलने वाली आवाज़ (Supertonic 3)") }
 
@@ -134,23 +134,25 @@ object ModelCatalog {
     val WAKE: List<Asset> = listOf(WAKE_MEL, WAKE_EMB, WAKE_HEY, WAKE_HELLO)
 
     /**
-     * 21 नवंबर 2026 (मालिक: "Whisper हटाकर Sherpa-ONNX, streaming, हिंदी + English, 100 MB से कम"):
-     * Sherpa-ONNX की आधिकारिक सूची में छोटा हिंदी streaming मॉडल नहीं (बहुभाषी streaming ~470 MB). इसलिए
-     * Hugging Face `mobilebytesensei/betterflow-hindi-streaming-ctc` (Apache-2.0) - streaming zipformer2 CTC,
-     * हिंदी + Hinglish, int8, 320 ms के टुकड़े (बोलते-बोलते शब्द). Sherpa-ONNX का `OnlineZipformer2CtcModelConfig`.
-     * Commit-pinned URL (बदल न सके), साइज़ + SHA-256 Hugging Face से जाँचे; server Range देता है = रुका डाउनलोड आगे से.
+     * 21 नवंबर 2026 (मालिक: "Sherpa-ONNX वाला मॉडल सही नहीं सुनता - हिंदी + English एकदम सही लिखे, मॉडल इंटरनेट से उतरे"):
+     * पहले `mobilebytesensei/betterflow-hindi-streaming-ctc` था (FLEURS हिंदी पर ~29% शब्द ग़लत). अब AI4Bharat का
+     * IndicConformer हिंदी (120M, CTC) - int8 रूप `ngiftsun/indicconformer-hi-int8-sherpa` (CC-BY-4.0, मूल AI4Bharat MIT).
+     * हमारी जाँच: FLEURS हिंदी 4.4% शब्द ग़लत, Hinglish आदेश लगभग पूरे सही, चुप्पी पर कुछ नहीं. ~140 MB, सिर्फ़ Wi-Fi पर.
+     * Commit-pinned URL (बदल न सके), साइज़ + SHA-256 Hugging Face से जाँचे. चलाता है ऐप का अपना onnxruntime (अलग .so नहीं).
      */
-    private const val STT_REPO = "https://huggingface.co/mobilebytesensei/betterflow-hindi-streaming-ctc/resolve/2c8ad90337fa5228dd182ab0525db1c71f18eb72/"
+    private const val STT_REPO = "https://huggingface.co/ngiftsun/indicconformer-hi-int8-sherpa/resolve/7c3806fe01eb9b50784f09fe22cfeabf642c218e/"
     val STT_ENCODER = Asset(
-        "stt_hi_en_stream_ctc", Kind.STT, "Sherpa-ONNX हिंदी + English (streaming)", "फ़ोन पर ही बोली -> लिखावट, बोलते-बोलते (इंटरनेट / key नहीं)",
-        "hi_en_stream_ctc_encoder_int8.onnx", listOf(STT_REPO + "encoder.int8.onnx"),
-        "e5758a0c0549063edf02fafc8af1be19d42715eb816d1b8f4d45e8de0fa6d039", 68_954_634L, "Apache-2.0",
+        "stt_indic_hi_ctc", Kind.STT, "IndicConformer हिंदी + English", "फ़ोन पर ही बोली -> लिखावट (इंटरनेट / key नहीं)",
+        "indic_hi_ctc_int8.onnx", listOf(STT_REPO + "model.int8.onnx"),
+        "fc0c7db7c0e0c11d4ed540dc2cddca03a42fcba3568a0e0607c3631d87fa9f8a", 140_451_556L, "CC-BY-4.0",
     )
     val STT_TOKENS = Asset(
-        "stt_hi_en_stream_tokens", Kind.STT, "Sherpa-ONNX शब्द-टुकड़े", "मॉडल के अक्षर / शब्द-टुकड़े",
-        "hi_en_stream_ctc_tokens.txt", listOf(STT_REPO + "tokens.txt"),
-        "800fa1703a555fe52fbd8271f1b3764c5911a94cd16e3b618333118aadd75771", 659L, "Apache-2.0",
+        "stt_indic_hi_tokens", Kind.STT, "IndicConformer शब्द-टुकड़े", "मॉडल के अक्षर / शब्द-टुकड़े",
+        "indic_hi_ctc_tokens.txt", listOf(STT_REPO + "tokens.txt"),
+        "ee60967630213f31951817ac8b402b92ec18cce80718a24a49b388e56672dfb2", 67_605L, "CC-BY-4.0",
     )
+    /** हटे Sherpa-ONNX (betterflow) मॉडल की फ़ाइलें - पुराने फ़ोन से [ModelManager.cleanupRemoved] मिटाता है (~66 MB खाली) */
+    val OLD_STT_FILES = listOf("hi_en_stream_ctc_encoder_int8.onnx", "hi_en_stream_ctc_tokens.txt")
     val STT_SHERPA: List<Asset> = listOf(STT_ENCODER, STT_TOKENS)
 
     /** हटा हुआ Whisper small (q5_1) - पुराने फ़ोन में पड़ी फ़ाइल; Settings का बटन इसे मिटाता है (जगह खाली) */
@@ -166,7 +168,7 @@ object ModelCatalog {
      * 15 नवंबर 2026 (मालिक: "3D कैरेक्टर पूरी तरह हटा दो, अच्छा नहीं है"): कैरेक्टर (.glb) और GLTFLoader सूची से हटे.
      * जिन फ़ोन में पहले डाउनलोड हो चुके थे, वहाँ से ये फ़ाइलें [ModelManager.cleanupRemoved] चुपचाप मिटाता है (जगह खाली हो).
      */
-    val REMOVED_FILES = listOf("robot_expressive.glb", "cesium_man.glb", "brainstem.glb", "fox.glb", "three_gltf_loader.js", "three_bg_utils.js")
+    val REMOVED_FILES = listOf("robot_expressive.glb", "cesium_man.glb", "brainstem.glb", "fox.glb", "three_gltf_loader.js", "three_bg_utils.js") + OLD_STT_FILES
 
     val ALL: List<Asset> = listOf(REDIMNET_HEAVY, REDIMNET_LIGHT, REDIMNET_PRO, FACE_EMBED, FACE_DETECT) + SOCIAL_CLIP + WAKE + STT_SHERPA +
         com.dk.assistant.voice.st3.St3Config.ALL + com.dk.assistant.voice.st3.St3Config.FAST +

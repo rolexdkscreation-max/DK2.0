@@ -155,7 +155,7 @@ internal suspend fun DKAccessibilityService.checkMic(): Boolean {
 internal suspend fun DKAccessibilityService.hearGoogle(): String? {
     ear.release()
     if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) {
-        warn("norec", "फ़ोन में Google का सुनने वाला ऐप नहीं मिला। Settings में Sherpa-ONNX मॉडल डाउनलोड कीजिए, तो मैं फ़ोन पर ही खुद सुनूँगा।")
+        warn("norec", "फ़ोन में Google का सुनने वाला ऐप नहीं मिला। Settings में IndicConformer मॉडल डाउनलोड कीजिए, तो मैं फ़ोन पर ही खुद सुनूँगा।")
         delay(3000); return null
     }
     listener.lastSpokeAt = speaker.lastSpokeAt
