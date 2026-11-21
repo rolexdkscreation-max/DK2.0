@@ -162,7 +162,7 @@ object KeySetup {
             putString(ApiScopes.pref(ApiScopes.LIVE, "key", id), key)
             putString("listen_engine", "auto")
         }
-        val what = if (id == "groq") "सुनना Groq Whisper से (सबसे तेज़)" else "Gemini Live, Gemini आवाज़ और सुनना इसी key से"
+        val what = if (id == "groq") "Groq DK लाइव की गहरी सोच में (सुनना अब फ़ोन पर Sherpa-ONNX)" else "Gemini Live और Gemini आवाज़ इसी key से"
         Result(true, id, "", 0, "✓ DK लाइव में ${p.name} key जुड़ गई • $what")
     }
 }

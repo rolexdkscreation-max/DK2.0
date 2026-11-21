@@ -87,9 +87,11 @@ class DkMindTest {
         for (f in listOf("SettingsActivity.kt", "SettingsBrain.kt", "SettingsSearch.kt")) assertFalse(f, src(f).contains("DkMind"))
     }
 
-    @Test fun liveWaitsForWhisperOnlyWhenCaptionFoundNothing() {
+    // 21 नवंबर 2026: Groq Whisper हटा - caption का text ही, बिना दूसरे इंतज़ार के, तुरंत router में
+    @Test fun liveNeverWaitsForSecondListen() {
         val t = src("GeminiLiveTurnEnd.kt")
-        assertTrue(t.contains("if (q == null && !ringing && LiveWhisper.on(svc))"))
-        assertTrue(t.indexOf("var q = LiveFast.pick(b") < t.indexOf("LiveWhisper.on(svc)"))
+        assertFalse(t.contains("LiveWhisper"))
+        assertFalse(t.contains("whisperUtt"))
+        assertTrue(t.indexOf("val q = LiveFast.pick(b") in 0 until t.indexOf("if (q == null) { log(\"रूटर:"))
     }
 }

@@ -11,7 +11,7 @@ package com.dk.assistant.plus.models
  */
 object ModelCatalog {
 
-    enum class Kind(val title: String) { VOICE("आवाज़-पहचान"), FACE("चेहरा-पहचान"), SOCIAL("सोशल पोस्ट (गैलरी पहचान)"), WAKE("वेक वर्ड"), STT("बोली से लिखना (Whisper)"),
+    enum class Kind(val title: String) { VOICE("आवाज़-पहचान"), FACE("चेहरा-पहचान"), SOCIAL("सोशल पोस्ट (गैलरी पहचान)"), WAKE("वेक वर्ड"), STT("बोली से लिखना (Sherpa-ONNX)"),
         /** 19 नवंबर 2026: Supertonic 3 - फ़ोन पर बनने वाली आवाज़ ([com.dk.assistant.voice.st3.St3Config]) */
         TTS("बोलने वाली आवाज़ (Supertonic 3)") }
 
@@ -134,17 +134,31 @@ object ModelCatalog {
     val WAKE: List<Asset> = listOf(WAKE_MEL, WAKE_EMB, WAKE_HEY, WAKE_HELLO)
 
     /**
-     * 18 नवंबर 2026 (मालिक: "सुनना अलग, सोचना-बोलना अलग - Whisper फ़ोन पर, ऐप के साथ मत बाँधो, स्रोत भरोसेमंद"):
-     * whisper.cpp का आधिकारिक ggml मॉडल (Hugging Face `ggerganov/whisper.cpp`), small, q5_1.
-     * साइज़ और SHA-256 Hugging Face API (`/api/models/ggerganov/whisper.cpp/tree/main` -> lfs.oid) से जाँचे गए;
-     * server Range देता है (accept-ranges: bytes) = रुका डाउनलोड वहीं से आगे. License MIT (OpenAI Whisper weights).
+     * 21 नवंबर 2026 (मालिक: "Whisper हटाकर Sherpa-ONNX, streaming, हिंदी + English, 100 MB से कम"):
+     * Sherpa-ONNX की आधिकारिक सूची में छोटा हिंदी streaming मॉडल नहीं (बहुभाषी streaming ~470 MB). इसलिए
+     * Hugging Face `mobilebytesensei/betterflow-hindi-streaming-ctc` (Apache-2.0) - streaming zipformer2 CTC,
+     * हिंदी + Hinglish, int8, 320 ms के टुकड़े (बोलते-बोलते शब्द). Sherpa-ONNX का `OnlineZipformer2CtcModelConfig`.
+     * Commit-pinned URL (बदल न सके), साइज़ + SHA-256 Hugging Face से जाँचे; server Range देता है = रुका डाउनलोड आगे से.
      */
-    val WHISPER_SMALL = Asset(
-        "whisper_small_q5_1", Kind.STT, "Whisper small (q5_1)", "फ़ोन पर ही हिंदी बोली -> लिखावट (इंटरनेट नहीं चाहिए)",
-        "ggml_small_q5_1.bin",
-        listOf("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin"),
-        "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb", 190_085_487L, "MIT",
+    private const val STT_REPO = "https://huggingface.co/mobilebytesensei/betterflow-hindi-streaming-ctc/resolve/2c8ad90337fa5228dd182ab0525db1c71f18eb72/"
+    val STT_ENCODER = Asset(
+        "stt_hi_en_stream_ctc", Kind.STT, "Sherpa-ONNX हिंदी + English (streaming)", "फ़ोन पर ही बोली -> लिखावट, बोलते-बोलते (इंटरनेट / key नहीं)",
+        "hi_en_stream_ctc_encoder_int8.onnx", listOf(STT_REPO + "encoder.int8.onnx"),
+        "e5758a0c0549063edf02fafc8af1be19d42715eb816d1b8f4d45e8de0fa6d039", 68_954_634L, "Apache-2.0",
     )
+    val STT_TOKENS = Asset(
+        "stt_hi_en_stream_tokens", Kind.STT, "Sherpa-ONNX शब्द-टुकड़े", "मॉडल के अक्षर / शब्द-टुकड़े",
+        "hi_en_stream_ctc_tokens.txt", listOf(STT_REPO + "tokens.txt"),
+        "800fa1703a555fe52fbd8271f1b3764c5911a94cd16e3b618333118aadd75771", 659L, "Apache-2.0",
+    )
+    val STT_SHERPA: List<Asset> = listOf(STT_ENCODER, STT_TOKENS)
+
+    /** हटा हुआ Whisper small (q5_1) - पुराने फ़ोन में पड़ी फ़ाइल; Settings का बटन इसे मिटाता है (जगह खाली) */
+    const val OLD_WHISPER_FILE = "ggml_small_q5_1.bin"
+    const val OLD_WHISPER_BYTES = 190_085_487L
+
+    /** यह मॉडल सिर्फ़ Wi-Fi (बिना-गिनती वाले नेट) पर उतरे? - बोली वाला मॉडल हाँ (मालिक: "Wi-Fi पर अलग से Download") */
+    fun wifiOnly(a: Asset): Boolean = a.kind == Kind.STT
 
     val SOCIAL_CLIP: List<Asset> = listOf(CLIP_VISION, CLIP_TEXT, CLIP_WORDS, CLIP_BPE)
 
@@ -154,7 +168,7 @@ object ModelCatalog {
      */
     val REMOVED_FILES = listOf("robot_expressive.glb", "cesium_man.glb", "brainstem.glb", "fox.glb", "three_gltf_loader.js", "three_bg_utils.js")
 
-    val ALL: List<Asset> = listOf(REDIMNET_HEAVY, REDIMNET_LIGHT, REDIMNET_PRO, FACE_EMBED, FACE_DETECT) + SOCIAL_CLIP + WAKE + WHISPER_SMALL +
+    val ALL: List<Asset> = listOf(REDIMNET_HEAVY, REDIMNET_LIGHT, REDIMNET_PRO, FACE_EMBED, FACE_DETECT) + SOCIAL_CLIP + WAKE + STT_SHERPA +
         com.dk.assistant.voice.st3.St3Config.ALL + com.dk.assistant.voice.st3.St3Config.FAST +
         com.dk.assistant.voice.st3.St3Config.MALE.map { it.asset }
 

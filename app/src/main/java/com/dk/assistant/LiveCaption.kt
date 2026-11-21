@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit
  * inputTranscription        = us hisse ka pakka text (committed me jodo, interim saaf)
  *
  * Yeh na chale (key/limit/model nahi) to chup-chaap band - tab purana tareeka (Live model ka text) chalta hai.
+ * 21 नवंबर 2026: अब यह सिर्फ़ बैकअप - पहले फ़ोन पर [SherpaCaption]; वह न चले और caption key हो तभी यह.
  */
 class LiveCaption(
     /** v4.2: लिखने वाले की key + DK लाइव की बैकअप keys (एक की limit खत्म = अगली; पहले एक ही key थी) */
@@ -33,7 +34,7 @@ class LiveCaption(
     private val onLate: (String) -> Unit,
     /** DK bolte samay user sach me bol raha hai? (tab naya text = nayi baat, pichhli ka der se aaya nahi) */
     private val isNewSpeech: () -> Boolean = { false },
-) {
+) : CaptionSource {
     companion object {
         val MODELS = listOf("gemini-3.5-transcribe-live", "gemini-3.5-transcribe-live-preview")
         private const val LATE_MS = 2000L
@@ -47,7 +48,7 @@ class LiveCaption(
         .build()
 
     @Volatile private var ws: WebSocket? = null
-    @Volatile var ready = false
+    @Volatile override var ready = false
         private set
     @Volatile private var stopped = true
     @Volatile private var mi = 0
@@ -67,10 +68,10 @@ class LiveCaption(
     private var interim = ""
     @Volatile private var fresh = true           // agla shabd = nayi baat (purana text hatao)
     /** Kam se kam ek baar sach me text aaya = caption is key par chal raha hai */
-    @Volatile var working = false
+    @Volatile override var working = false
         private set
     /** v3.152: आख़िरी बार नया text कब आया (धीमा caption = पुराना अधूरा text, उस पर "बात अधूरी" मत मानो) */
-    @Volatile var textAt = 0L
+    @Volatile override var textAt = 0L
         private set
 
     // band hui baat: model uska pakka text thoda der se bhejta hai (DK bolna shuru kar chuka hota hai)
@@ -82,28 +83,28 @@ class LiveCaption(
     private val pending = ArrayDeque<String>()
 
     /** Abhi tak ki baat (pakka + andaza) */
-    fun text(): String = synchronized(lock) { if (fresh) "" else join(committed.toString(), interim) }
+    override fun text(): String = synchronized(lock) { if (fresh) "" else join(committed.toString(), interim) }
 
     private fun join(a: String, b: String) = (a.trim() + " " + b.trim()).trim()
 
     /** v3.53: यह key पर चल सकता है (बंद/ख़राब नहीं) - फ़ोन की अपनी आवाज़ की जाँच इसी से */
-    val usable: Boolean get() = !dead && !stopped
+    override val usable: Boolean get() = !dead && !stopped
 
     /** v3.53: अभी का text फेंको (फ़ोन की अपनी आवाज़ थी) - न पिछली बात में जुड़े, न नई बात बने */
-    fun discard() = synchronized(lock) {
+    override fun discard() { synchronized(lock) {
         committed.setLength(0); interim = ""; fresh = true; closedAt = 0L
-    }
+    } }
 
     private fun log(m: String) = DKLog.d("Caption: $m")
 
-    fun start() {
+    override fun start() {
         if (keys.isEmpty()) dead = true
         if (dead) return
         stopped = false
         connect()
     }
 
-    fun stop() {
+    override fun stop() {
         stopped = true
         ready = false
         try { ws?.close(1000, "bye") } catch (e: Exception) { Quiet.note(e) }
@@ -115,7 +116,7 @@ class LiveCaption(
      * DK ne jawab dena shuru kiya: abhi ki baat band karo aur use lauta do.
      * Agli baar user bole to naya text. Do baar bulao to doosri baar "" (pehli baat dobara band nahi hoti).
      */
-    fun closeUtterance(): String = synchronized(lock) {
+    override fun closeUtterance(): String = synchronized(lock) {
         if (fresh) return@synchronized ""
         val t = join(committed.toString(), interim)
         closedCommitted = committed.toString().trim(); closedInterim = interim.trim()
@@ -125,7 +126,7 @@ class LiveCaption(
     }
 
     /** Mic ka 16 kHz PCM16 tukda */
-    fun send(pcm: ByteArray, real: Boolean = true) {
+    override fun send(pcm: ByteArray, real: Boolean) {
         if (dead || stopped) return
         if (real) lastRealAt = System.currentTimeMillis()
         val msg = "{\"realtimeInput\":{\"audio\":{\"mimeType\":\"audio/pcm;rate=${GeminiLive.IN_RATE}\",\"data\":\"" +
@@ -140,7 +141,7 @@ class LiveCaption(
     }
 
     /** Phone ne pakda ki user chup ho gaya (v3.8) -> caption model turant pakka text bheje (chup-intezaar nahi) */
-    fun endOfSpeech() {
+    override fun endOfSpeech() {
         val w = ws ?: return
         if (!ready || dead || stopped) return
         try { w.send("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (e: Exception) { Quiet.note(e) }

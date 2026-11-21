@@ -9,14 +9,14 @@ import com.dk.assistant.Prefs
  */
 object TalkPrefs {
     const val MODE = "talk_mode"                 // "live" (Gemini Live, पहले जैसा) / "split" (अलग-अलग)
-    const val STT = "stt_engine"                 // "whisper" / "android"
+    const val STT = "stt_engine"                 // "sherpa" / "android" (पुराना "whisper" = sherpa)
     const val SILENCE = "talk_silence_ms"        // रुकने के बाद कितनी चुप्पी = बात पूरी
-    const val FULL = "whisper_full_accuracy"     // Whisper पूरी 30 s खिड़की (धीमा, थोड़ा ज़्यादा सटीक)
     const val BARGE = "talk_barge"               // DK बोलते समय बीच में बोलें = DK रुके
 
     const val MODE_LIVE = "live"
     const val MODE_SPLIT = "split"
-    const val STT_WHISPER = "whisper"
+    /** 21 नवंबर 2026: Whisper हटा - फ़ोन पर Sherpa-ONNX ([com.dk.assistant.stt.SherpaStt]) */
+    const val STT_SHERPA = "sherpa"
     const val STT_ANDROID = "android"
 
     const val SILENCE_DEF = 750L
@@ -30,16 +30,17 @@ object TalkPrefs {
      * या चिप में ऐसा मॉडल चुना जो खुद आवाज़ में नहीं बोलता (supportsVoice = false) - तब वही मॉडल जवाब लिखे और मौजूदा TTS बोले.
      */
     fun wanted(c: Context): Boolean = split(c) || com.dk.assistant.dkai.SelectedModel.textVoice(c)
-    fun stt(c: Context): String = Prefs.str(c, STT, STT_WHISPER).let { if (it == STT_ANDROID) STT_ANDROID else STT_WHISPER }
+    fun stt(c: Context): String = norm(Prefs.str(c, STT, STT_SHERPA))
     fun silenceMs(c: Context): Long = clampSilence(Prefs.long(c, SILENCE, SILENCE_DEF))
-    fun fullAccuracy(c: Context): Boolean = Prefs.bool(c, FULL, false)
     fun barge(c: Context): Boolean = Prefs.bool(c, BARGE, true)
 
     fun setMode(c: Context, split: Boolean) = Prefs.edit(c) { putString(MODE, if (split) MODE_SPLIT else MODE_LIVE) }
-    fun setStt(c: Context, id: String) = Prefs.edit(c) { putString(STT, if (id == STT_ANDROID) STT_ANDROID else STT_WHISPER) }
+    fun setStt(c: Context, id: String) = Prefs.edit(c) { putString(STT, norm(id)) }
     fun setSilence(c: Context, ms: Long) = Prefs.edit(c) { putLong(SILENCE, clampSilence(ms)) }
-    fun setFull(c: Context, on: Boolean) = Prefs.edit(c) { putBoolean(FULL, on) }
     fun setBarge(c: Context, on: Boolean) = Prefs.edit(c) { putBoolean(BARGE, on) }
+
+    /** pure (JUnit): सिर्फ़ दो इंजन - Android, बाकी सब (पुराना "whisper" भी) = Sherpa-ONNX */
+    fun norm(id: String): String = if (id == STT_ANDROID) STT_ANDROID else STT_SHERPA
 
     /** pure (JUnit) - 50 ms के कदम */
     fun clampSilence(ms: Long): Long = (ms.coerceIn(SILENCE_MIN, SILENCE_MAX) / 50) * 50

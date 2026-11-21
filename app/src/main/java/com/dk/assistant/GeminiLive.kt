@@ -258,9 +258,6 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     /** 21 नवंबर 2026: goAway कब आया ([LiveSpare.goAwayTurnSwap]); पिछली बार जो handle अटका ([LiveRecover.dropHandle]) */
     @Volatile internal var goAwayAt = 0L
     @Volatile internal var stuckHandle: String? = null
-    /** 21 नवंबर 2026: Whisper का आखिरी सुना वाक्य और कब (अटके session पर यही भेजते हैं, SYSTEM NOTE नहीं) */
-    @Volatile internal var lastWhisper: String? = null
-    @Volatile internal var lastWhisperAt = 0L
     @Volatile internal var askAgainAt = 0L
     @Volatile internal var spareTriedAt = 0L
     @Volatile internal var spareWanted = false
@@ -309,8 +306,10 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     internal val turnLock = Any()
 
     // ---- turant text (v3.0)
-    /** Alag tez caption stream - "आप:" me bolte-bolte shabd */
-    @Volatile internal var caption: LiveCaption? = null
+    /** Alag tez caption stream - "आप:" me bolte-bolte shabd (21 नवंबर 2026: पहले फ़ोन पर [SherpaCaption], बैकअप [LiveCaption]) */
+    @Volatile internal var caption: CaptionSource? = null
+    /** caption कब शुरू हुआ ([CaptionWarn] - खुलने का थोड़ा समय दो) */
+    @Volatile internal var captionAt = 0L
     /** DK ne jawab shuru kiya us waqt tak user ne jo bola (caption se) */
     @Volatile internal var turnUser = ""
     /** Is baari ki user line chat me pakki ho chuki (der se aaya text ab us line ko theek karega) */
@@ -399,8 +398,6 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var lastAnyServerAt = 0L
     /** नवंबर 2026: अभी की बात की आवाज़ (session अटके तो नए connection पर यही दोबारा - text नहीं) */
     internal val utt = LiveRecover.Utterance(CHUNK_MS)
-    /** 14 नवंबर 2026: अभी की बात की आवाज़ - बात खत्म होते ही Groq Whisper (large-v3) से सही text ([LiveWhisper]) */
-    internal val whisperUtt = LiveRecover.Utterance(CHUNK_MS)
     /** 21 नवंबर 2026 (सुधार#6): line भरी = असली आवाज़ फ़ोन में थोड़ी देर ([LiveUplink]) */
     internal val upHold = LiveUplink.Hold()
     internal val upSlow = LiveUplink.Slow()
@@ -1122,7 +1119,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         var softQuota = 0                                 // 14 नवंबर 2026: एक key पर छोटी रोक (प्रति मिनट / एक साथ सत्र) कितनी बार
         /** एक key पर छोटी रोक: मॉडल बंद नहीं - लिखने वाला (उसी key पर दूसरा सत्र) बंद करके जगह, थोड़ा रुककर उसी से फिर ([LiveOneKey]) */
         suspend fun softWait(where: String) {
-            if (LiveOneKey.dropCaption(keys.size, Prefs.captionOwnKey(svc).isNotBlank()) && caption != null) {
+            // Sherpa-ONNX (फ़ोन पर) कोई key नहीं लेता - उसे बंद करने की ज़रूरत नहीं; सिर्फ़ key वाला बैकअप
+            if (LiveOneKey.dropCaption(keys.size, Prefs.captionOwnKey(svc).isNotBlank()) && caption is LiveCaption) {
                 caption?.stop(); caption = null
                 log("एक key: लिखने वाला (caption) बंद किया - उसी key पर Live की जगह खाली")
             }
@@ -1149,11 +1147,20 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         val callSpk = CallSpeaker.apply(svc, btOn)
         log("आवाज़ का रास्ता: " + if (btOn) "Bluetooth headset (कॉल वाला तरीका)" else if (callSpk) "फ़ोन का माइक + speaker (कॉल-mode, पक्का echo-cancel)" else "फ़ोन का माइक + speaker")
         startPlayer()
-        // v3.41: "aap:" likhne wala apni alag key se (Settings -> AI dimaag -> DK live) - bolne wale ki free limit bachi rahe
+        // 21 नवंबर 2026 (मालिक): "आप:" लिखने वाला फ़ोन पर Sherpa-ONNX (कोई key नहीं, वही मॉडल जो माइक बटन चलाता है).
+        // वह न हो / न चले = बैकअप: v3.41 वाला caption key मॉडल (key हो तो). दोनों नहीं = स्क्रीन पर चेतावनी ([CaptionWarn])
+        val newSpeech = { barging || System.currentTimeMillis() < bargeUntil }
         val capKey = Prefs.captionKey(svc)
-        log("लिखने वाला: " + if (Prefs.captionOwnKey(svc).isNotBlank()) "अपनी अलग key से" else "DK लाइव वाली key से (अलग key नहीं डाली)")
-        caption = LiveCaption(LiveKeys.order(listOf(capKey) + Prefs.liveGeminiKeys(svc)), onText = { t, fin -> onCaption(t, fin) }, onLate = { t -> onLateCaption(t) },
-            isNewSpeech = { barging || System.currentTimeMillis() < bargeUntil }).also { it.start() }
+        captionAt = System.currentTimeMillis()
+        caption = if (com.dk.assistant.stt.SherpaStt.ready(svc)) {
+            log("लिखने वाला: फ़ोन पर Sherpa-ONNX (कोई key नहीं)")
+            SherpaCaption(svc, onText = { t, fin -> onCaption(t, fin) }, onLate = { t -> onLateCaption(t) }, isNewSpeech = newSpeech).also { it.start() }
+        } else if (capKey.isNotBlank()) {
+            log("लिखने वाला: Sherpa-ONNX नहीं (${com.dk.assistant.stt.SherpaStt.whyNot(svc)}) - बैकअप " +
+                if (Prefs.captionOwnKey(svc).isNotBlank()) "अपनी अलग key से" else "DK लाइव वाली key से (अलग key नहीं डाली)")
+            LiveCaption(LiveKeys.order(listOf(capKey) + Prefs.liveGeminiKeys(svc)), onText = { t, fin -> onCaption(t, fin) }, onLate = { t -> onLateCaption(t) },
+                isNewSpeech = newSpeech).also { it.start() }
+        } else { log("लिखने वाला: बंद - ${com.dk.assistant.stt.SherpaStt.whyNot(svc)}, और caption key भी नहीं"); null }
         turnDet.reset(); bargeDet.reset(); bargeGate.reset(); synchronized(bargeBuf) { bargeBuf.clear() }
         askQueue.clear(); holdCap = ""; holdCapAt = 0L; holdLoudAt = 0L; holdFinal = false
         guardHeld = false; guardOk = false; guardPass = false; guardEndAt = 0L; guardBuf.clear(); guardOn = false
@@ -1167,6 +1174,11 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             val mic = launch(Dispatchers.IO) { micLoop() }
             // DK ka text awaaz ke saath-saath (har 80ms)
             val reveal = launch(Dispatchers.IO) { while (isActive && !stopped) { revealTick(); delay(80) } }
+            // 21 नवंबर 2026 (मालिक): लिखावट (caption) न चले तो चुपचाप नहीं - स्क्रीन पर छोटी चेतावनी (हर सेकंड जाँच, सिर्फ़ बदलने पर)
+            val capWarn = launch(Dispatchers.Default) {
+                try { while (isActive && !stopped) { DKState.setCaptionWarn(captionWarnNow()); delay(1000) } }
+                finally { DKState.setCaptionWarn("") }
+            }
             // 18 नवंबर 2026 (मालिक): मुफ़्त वाला अपनी key से = रोज़ 10 मिनट (सर्वर गिनता है). हर हिस्से की मियाद से पहले अगला;
             // समय पूरा / नेट नहीं = तय शब्द और Live बंद ([com.dk.assistant.backend.VoiceGate])
             val meter = if (com.dk.assistant.backend.VoiceGate.metered(svc)) launch(Dispatchers.IO) { voiceMeter() } else null
@@ -1644,6 +1656,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             } finally {
                 stopped = true
                 reveal.cancel()
+                capWarn.cancel()
                 meter?.cancel()
                 care.cancel()
                 // pehle mic band (woh aakhri audioStreamEnd bhejta hai) - phir socket. NonCancellable: beech me na ruke
@@ -1797,6 +1810,13 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     /** Caption is key par chal raha hai -> "आप:" sirf usi se (Live model ka der se aaya text screen par nahi, warna text aage-peeche hota) */
     // 16 नवंबर 2026 (ऑडिट S3): + लगातार लंबी बातों पर एक भी शब्द न लिखा हो (capHealth) = चुप caption पर इंतज़ार नहीं
     internal fun captionOn() = caption?.let { it.ready && it.working && !capHealth.stale(it.textAt) } == true
+
+    /** 21 नवंबर 2026: स्क्रीन पर लिखावट-बंद की चेतावनी ("" = सब ठीक) - नियम [CaptionWarn] */
+    internal fun captionWarnNow(): String {
+        val c = caption
+        return CaptionWarn.line(ready && !stopped, c != null, c?.usable == true, c?.ready == true,
+            c != null && capHealth.stale(c.textAt), System.currentTimeMillis() - captionAt)
+    }
 
     @Volatile internal var micOffSent = false
 

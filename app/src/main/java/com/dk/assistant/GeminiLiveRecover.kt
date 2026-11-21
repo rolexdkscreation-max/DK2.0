@@ -83,14 +83,11 @@ internal fun GeminiLive.swapForStuck(now: Long, why: String): Boolean {
 internal fun GeminiLive.stuckNoSwap() {
     val now = System.currentTimeMillis()
     val cap = caption?.text().orEmpty().trim().ifBlank { synchronized(turnLock) { userText.toString().trim() } }
-    val chunks = utt.snapshot(now); val ms = utt.speechMs(); val heardAt = utt.lastRealAt()
     svc.scope.launch {
-        val cached = lastWhisper?.takeIf { lastWhisperAt >= heardAt && heardAt > 0L }
-        val w = cached ?: if (LiveWhisper.on(svc)) LiveWhisper.hear(svc, chunks, ms) else null
         if (stopped) return@launch
-        val t = LiveRecover.stuckText(w, cap, dkHeardNow())
+        val t = LiveRecover.stuckText(null, cap, dkHeardNow())
         if (t != null && lastChance("connection बदलने की सीमा पूरी", sorryOk = false, text = t)) {
-            log("सुधार#1 अटका: SYSTEM NOTE नहीं - आपकी असली बात भेजी (${if (w != null && t == w.trim().trim('"', '.', ' ')) "Whisper" else "caption"})")
+            log("सुधार#1 अटका: SYSTEM NOTE नहीं - आपकी असली बात भेजी (caption)")
             return@launch
         }
         askAgain()

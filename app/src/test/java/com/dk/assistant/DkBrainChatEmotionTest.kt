@@ -36,15 +36,15 @@ class DkBrainChatEmotionTest {
         assertTrue(b.contains("सेटिंग्स → AI दिमाग → DK चैट में दूसरा मॉडल चुनें"))
     }
 
-    @Test fun whisperPicksAccurateWordsButNeverDkEcho() {
-        assertEquals("caption", LiveWhisper.pick(null, "caption"))
-        assertEquals("caption", LiveWhisper.pick("  ", "caption"))
-        assertEquals("मेरा अलार्म सुबह छह बजे लगा दो", LiveWhisper.pick("मेरा अलार्म सुबह छह बजे लगा दो.", "मेरा अलार्म सुबह बजे"))
-        assertEquals("cap", LiveWhisper.pick("आज मौसम बहुत अच्छा है सर", "cap", dkSaid = "आज मौसम बहुत अच्छा है सर"))
-        assertEquals("whisper-large-v3", LiveWhisper.MODEL)
+    // 21 नवंबर 2026 (मालिक: Whisper पूरी तरह हटा): वही नियम अब LiveRecover.stuckText में - सुना वाक्य, वरना caption, DK की गूँज कभी नहीं
+    @Test fun heardPicksAccurateWordsButNeverDkEcho() {
+        assertEquals("मेरा अलार्म लगा दो", LiveRecover.stuckText(null, "मेरा अलार्म लगा दो"))
+        assertEquals("मेरा अलार्म लगा दो", LiveRecover.stuckText("  ", "मेरा अलार्म लगा दो"))
+        assertEquals("मेरा अलार्म सुबह छह बजे लगा दो", LiveRecover.stuckText("मेरा अलार्म सुबह छह बजे लगा दो.", "मेरा अलार्म सुबह बजे"))
+        assertEquals("मेरा अलार्म लगा दो", LiveRecover.stuckText("आज मौसम बहुत अच्छा है सर", "मेरा अलार्म लगा दो", dkSaid = "आज मौसम बहुत अच्छा है सर"))
         val t = src("GeminiLiveTurnEnd.kt")
-        assertTrue(t.contains("b = LiveWhisper.pick(w, cap, dkHeardNow())"))
-        assertTrue(t.indexOf("runLockNow(PhoneLockVoice.quick(act), b, \"बोलना खत्म\")") < t.indexOf("LiveWhisper.on(svc)"))
+        assertFalse(t.contains("LiveWhisper"))
+        assertTrue(t.indexOf("runLockNow(PhoneLockVoice.quick(act), b, \"बोलना खत्म\")") < t.indexOf("val q = LiveFast.pick(b"))
     }
 
     @Test fun dkHasAHeart() {

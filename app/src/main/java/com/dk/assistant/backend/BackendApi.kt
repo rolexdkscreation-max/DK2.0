@@ -81,12 +81,6 @@ object BackendApi {
         return o.optString("text")
     }
 
-    /** आवाज़ -> लिखा (Workers AI Whisper). wav = 16 kHz mono PCM WAV */
-    fun stt(c: Context, wav: ByteArray, lang: String = "hi"): BackendWire.Stt {
-        val b = send(c, "/stt?lang=$lang", "POST", wav.toRequestBody("audio/wav".toMediaType()))
-        return BackendWire.stt(b).also { s -> s.quota?.let { lastQuota = it } }
-    }
-
     /** DK लाइव का टिकट (अपनी Gemini key नहीं) - [com.dk.assistant.LiveDkServer] ही बुलाता है */
     fun liveToken(c: Context): BackendWire.LiveTicket =
         BackendWire.liveTicket(postJson(c, "/live/token", JSONObject())).also { t -> t.quota?.let { lastQuota = it } }

@@ -68,6 +68,17 @@ object ModelManager {
             .forEach { WorkManager.getInstance(c).cancelUniqueWork(it) } } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
     }
 
+    /** 21 नवंबर 2026: हटे Whisper की पुरानी मॉडल फ़ाइल (और आधी .part) - कितने bytes पड़े हैं (0 = कुछ नहीं) */
+    fun oldWhisperBytes(c: Context): Long = File(dir(c), ModelCatalog.OLD_WHISPER_FILE).length() + File(dir(c), ModelCatalog.OLD_WHISPER_FILE + ".part").length()
+
+    /** Settings के बटन से: पुरानी Whisper फ़ाइल मिटाओ, कितनी जगह खाली हुई (bytes) */
+    fun deleteOldWhisper(c: Context): Long {
+        val had = oldWhisperBytes(c)
+        try { WorkManager.getInstance(c).cancelUniqueWork("dk_model_whisper_small_q5_1") } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
+        File(dir(c), ModelCatalog.OLD_WHISPER_FILE).delete(); File(dir(c), ModelCatalog.OLD_WHISPER_FILE + ".part").delete()
+        return had - oldWhisperBytes(c)
+    }
+
     fun usedBytes(c: Context): Long = dir(c).listFiles()?.sumOf { it.length() } ?: 0L
 
     fun delete(c: Context, a: ModelCatalog.Asset) {
@@ -94,7 +105,8 @@ object ModelManager {
         put(a.id, St.Running(part(c, a).length(), a.bytes))
         val req = OneTimeWorkRequestBuilder<Worker>()
             .setInputData(workDataOf("id" to a.id))
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(
+                if (ModelCatalog.wifiOnly(a)) NetworkType.UNMETERED else NetworkType.CONNECTED).build())
             .build()
         WorkManager.getInstance(c).enqueueUniqueWork(work(a), ExistingWorkPolicy.KEEP, req)
     }

@@ -167,7 +167,7 @@ internal fun GeminiLive.scheduleFast() {
         // v3.41: 300+350 ms -> ghanti me 150 ms; baaki 200 ms (+250 sirf jab caption ne text pakka nahi kiya)
         val ringing = svc.callRinging()
         delay(if (ringing) 150 else 200); val a = cur()
-        var b = if (ringing || (a.isNotBlank() && a == capFinal)) a else { delay(250); cur() }
+        val b = if (ringing || (a.isNotBlank() && a == capFinal)) a else { delay(250); cur() }
         if (b.isBlank() || a != b || turnDet.inSpeech || isPlaying() || stopped) return@launch
         // v3.40: घंटी बज रही है -> "हाँ / उठाओ / स्पीकर पर / काट दो" फ़ोन तुरंत करे (Gemini के tool का इंतज़ार नहीं)
         if (svc.callRinging()) {
@@ -182,24 +182,9 @@ internal fun GeminiLive.scheduleFast() {
         // v3.46: वही बात दोबारा router में नहीं (हर ठहराव/शोर पर वही caption दोबारा जाता था)
         if (!routeDedupe.fresh(b, System.currentTimeMillis())) return@launch
         val tc = System.nanoTime()
-        var q = LiveFast.pick(b, Prefs.wakeWords(svc), svc.currentPackage(), fast = true)
+        val q = LiveFast.pick(b, Prefs.wakeWords(svc), svc.currentPackage(), fast = true)
         val classMs = (System.nanoTime() - tc) / 1_000_000
-        // 14 नवंबर 2026 (मालिक): Groq key हो तो वही आवाज़ Whisper large-v3 से भी - सही शब्दों पर काम.
-        // Review (14 नवंबर): पहले हर बार Whisper का इंतज़ार (1.4s तक) होता था - टॉर्च / ऐप खोलो जैसे सीधे काम भी देर से.
-        // अब caption से काम पहचान में आ गया = तुरंत; caption से कुछ न समझ आए तभी Whisper का सही text लेकर फिर से देखो.
-        // लॉक / अनलॉक / घंटी ऊपर caption से तुरंत (उनमें देर नहीं)
-        val cap = b
-        if (q == null && !ringing && LiveWhisper.on(svc)) {
-            val chunks = whisperUtt.snapshot(System.currentTimeMillis()); val ms = whisperUtt.speechMs(); whisperUtt.clear()
-            val w = LiveWhisper.hear(svc, chunks, ms)
-            if (!w.isNullOrBlank()) { lastWhisper = w; lastWhisperAt = System.currentTimeMillis() }
-            if (turnDet.inSpeech || isPlaying() || stopped) return@launch
-            b = LiveWhisper.pick(w, cap, dkHeardNow())
-            if (b != cap) {
-                log("Whisper ने सही सुना: \"${b.take(50)}\" (caption: \"${cap.take(30)}\")")
-                q = LiveFast.pick(b, Prefs.wakeWords(svc), svc.currentPackage(), fast = true)
-            }
-        } else whisperUtt.clear()
+        // 21 नवंबर 2026 (मालिक): Groq Whisper (दूसरी बार सुनना) हटा - caption (फ़ोन पर Sherpa-ONNX) का text ही काम के लिए
         // "स्क्रीन शेयर करो / बंद करो" Live में = असली स्क्रीन शेयर (Gemini देखे), पुराना screenshot switch नहीं
         if (q != null && q.action.optString("type") == "screen_view") {
             val r = LiveVision.setScreen(svc, q.action.optBoolean("on", true))
@@ -211,7 +196,7 @@ internal fun GeminiLive.scheduleFast() {
         val settle = LiveFast.settleMs(q.action.optString("type"))
         if (settle > 0) {
             delay(settle)
-            if (cur() != cap || turnDet.inSpeech || stopped) {
+            if (cur() != b || turnDet.inSpeech || stopped) {
                 log("तुरंत काम रुका (${q.action.optString("type")}) - आप आगे बोल रहे थे, पूरी बात पर फिर से"); routeDedupe.reset(); return@launch
             }
         }

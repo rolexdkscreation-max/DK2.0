@@ -155,7 +155,7 @@ internal suspend fun DKAccessibilityService.checkMic(): Boolean {
 internal suspend fun DKAccessibilityService.hearGoogle(): String? {
     ear.release()
     if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) {
-        warn("norec", "फ़ोन में Google का सुनने वाला ऐप नहीं मिला। Groq की फ्री key डालिए, तो मैं खुद सुनूँगा।")
+        warn("norec", "फ़ोन में Google का सुनने वाला ऐप नहीं मिला। Settings में Sherpa-ONNX मॉडल डाउनलोड कीजिए, तो मैं फ़ोन पर ही खुद सुनूँगा।")
         delay(3000); return null
     }
     listener.lastSpokeAt = speaker.lastSpokeAt
@@ -164,9 +164,13 @@ internal suspend fun DKAccessibilityService.hearGoogle(): String? {
 }
 
 internal fun DKAccessibilityService.earCaptionOn() {
-    val key = Prefs.captionKey(this)   // v3.41: likhne ki apni key (ho to)
-    if (key.isBlank()) { ear.onFrame = null; return }
-    val c = earCaption ?: LiveCaption(LiveKeys.order(listOf(key) + Prefs.liveGeminiKeys(this)), onText = { t, _ -> if (earShowing && t.isNotBlank()) DKState.user("$t…") }, onLate = { })
+    // 21 नवंबर 2026: पहले फ़ोन पर Sherpa-ONNX (कोई key नहीं); वह न हो तो v3.41 वाली likhne ki apni key (ho to) - बैकअप
+    val key = Prefs.captionKey(this)
+    val sherpa = com.dk.assistant.stt.SherpaStt.ready(this)
+    if (!sherpa && key.isBlank()) { ear.onFrame = null; return }
+    val show: (String, Boolean) -> Unit = { t, _ -> if (earShowing && t.isNotBlank()) DKState.user("$t…") }
+    val c = earCaption ?: (if (sherpa) SherpaCaption(this, onText = show, onLate = { })
+        else LiveCaption(LiveKeys.order(listOf(key) + Prefs.liveGeminiKeys(this)), onText = show, onLate = { }))
         .also { it.start(); earCaption = it }
     ear.onFrame = { b, n ->
         val out = ByteArray(n * 2)

@@ -487,8 +487,8 @@ class DKComposer(
         if (micActive) return
         removeCallbacks(hideNote); note.visibility = GONE
         before = edt.text.toString().trim()
-        // पहले DK सर्वर (/stt), न चले तो फ़ोन की पहचान
-        val d = BackendDictation.pick(act,
+        // 21 नवंबर 2026: पहले फ़ोन पर Sherpa-ONNX (बोलते-बोलते, बिना नेट / key), न हो / न चले तो Android/Google की पहचान
+        val d = SherpaDictation.pick(act,
             onText = { t -> setLive(DictationRules.join(before, t)) },
             onLevel = { wave.push(it) },
             onEnd = { msg -> dict = null; setMicMode(false); if (msg != null) showNote(msg) },

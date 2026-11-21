@@ -18,7 +18,7 @@ import com.dk.assistant.Quiet
 import com.dk.assistant.Speaker
 import com.dk.assistant.UiLang
 import com.dk.assistant.stt.SttRouter
-import com.dk.assistant.stt.WhisperStt
+import com.dk.assistant.stt.SherpaStt
 import com.dk.assistant.voice.SileroVad
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -37,7 +37,7 @@ import java.io.ByteArrayOutputStream
  *
  *   माइक (VOICE_COMMUNICATION + गूँज-रोक, 16 kHz 16-bit mono)
  *     -> [Endpointer] (Silero / RMS, रुकने के बाद [TalkPrefs.silenceMs] चुप्पी = बात पूरी)
- *     -> Whisper (फ़ोन पर, हिंदी) या Android की पहचान ([SttRouter] - Whisper न चले/धीमा = अपने-आप Android)
+ *     -> Sherpa-ONNX (फ़ोन पर, हिंदी + English) या Android की पहचान ([SttRouter] - Sherpa-ONNX न चले/धीमा = अपने-आप Android)
  *     -> स्क्रीन पर आपकी बात + वही text दिमाग़ को ([AgentRunner.run] - वही Gemini key / settings, जवाब text में)
  *     -> जवाब [Speaker] से (Gemini की आवाज़, न चले तो फ़ोन की आवाज़ - पहले से लगी व्यवस्था)
  *     -> DK बोलते समय आप बोले = तुरंत चुप ([Speaker.pause]), आपकी बात पहचानी: असली बात = नया जवाब, गूँज = वहीं से आगे
@@ -68,7 +68,7 @@ class TalkLoop(private val c: Context, private val agent: AgentRunner, private v
             return@coroutineScope "पहचान नहीं: ${first.notice}"
         }
         if (first.notice.isNotBlank()) notice(first.notice)
-        if (first.engine == SttRouter.Engine.WHISPER) launch { if (!WhisperStt.warm(c)) DKLog.d("Whisper: पहले से नहीं खुला - पहली बात पर फिर कोशिश") }
+        if (first.engine == SttRouter.Engine.SHERPA) launch { if (!SherpaStt.warm(c)) DKLog.d("Sherpa-ONNX: पहले से नहीं खुला - पहली बात पर फिर कोशिश") }
         withContext(Dispatchers.Default) { if (!vadTried) { vadTried = true; vad = SileroVad.open(c) } }
         DKLog.d("अलग तरीका शुरू: पहचान=${first.engine}, चुप्पी=${TalkPrefs.silenceMs(c)} ms, VAD=${if (vad != null) "Silero" else "RMS"}")
         DKState.workNow = { true }
@@ -83,7 +83,6 @@ class TalkLoop(private val c: Context, private val agent: AgentRunner, private v
             mic.cancel()
             ch.close()
             withContext(NonCancellable) {
-                try { WhisperStt.release() } catch (e: Exception) { Quiet.note(e) }
                 vad?.reset()
                 DKState.setLink("")
                 if (DKState.mode == Mode.LISTENING) DKState.set(Mode.IDLE)
@@ -255,19 +254,19 @@ class TalkLoop(private val c: Context, private val agent: AgentRunner, private v
         when (p.engine) {
             SttRouter.Engine.NONE -> { notice(p.notice, speak = true); return null to p.engine }
             SttRouter.Engine.ANDROID -> { link(p.engine, "लिख रहा है"); return android(pcm) to p.engine }
-            SttRouter.Engine.WHISPER -> {
+            SttRouter.Engine.SHERPA -> {
                 link(p.engine, "लिख रहा है")
-                val r = WhisperStt.transcribe(c, pcm, SttRouter.timeoutMs(audioMs), TalkPrefs.fullAccuracy(c))
+                val r = SherpaStt.transcribe(c, pcm, SttRouter.timeoutMs(audioMs))
                 when (r) {
-                    is WhisperStt.Res.Text -> {
-                        if (router.whisperResult(ok = true, slow = SttRouter.slow(audioMs, r.ms))) switched()
+                    is SherpaStt.Res.Text -> {
+                        if (router.sherpaResult(ok = true, slow = SttRouter.slow(audioMs, r.ms))) switched()
                         link(p.engine, "सुन रहा है")
                         return r.text to p.engine
                     }
-                    is WhisperStt.Res.Slow -> { if (router.whisperResult(ok = false, slow = true)) switched() }
-                    is WhisperStt.Res.Fail -> {
-                        DKLog.d("Whisper नाकाम: ${r.why}")
-                        if (router.whisperResult(ok = false, slow = false)) switched()
+                    is SherpaStt.Res.Slow -> { if (router.sherpaResult(ok = false, slow = true)) switched() }
+                    is SherpaStt.Res.Fail -> {
+                        DKLog.d("Sherpa-ONNX नाकाम: ${r.why}")
+                        if (router.sherpaResult(ok = false, slow = false)) switched()
                     }
                 }
                 // यही बात अभी Android की पहचान से (बात खोई नहीं)
@@ -284,17 +283,17 @@ class TalkLoop(private val c: Context, private val agent: AgentRunner, private v
         return t
     }
 
-    private fun switched() = notice("Whisper ${router.offWhy} - इस बातचीत में अब Android की पहचान से सुनूँगा", speak = false)
+    private fun switched() = notice("Sherpa-ONNX ${router.offWhy} - इस बातचीत में अब Android की पहचान से सुनूँगा", speak = false)
 
     private fun pick(): SttRouter.Pick = router.pick(
-        prefWhisper = TalkPrefs.stt(c) == TalkPrefs.STT_WHISPER,
-        whisperReady = WhisperStt.ready(c),
-        whyNot = WhisperStt.whyNot(c),
+        prefSherpa = TalkPrefs.stt(c) == TalkPrefs.STT_SHERPA,
+        sherpaReady = SherpaStt.ready(c),
+        whyNot = SherpaStt.whyNot(c),
         androidOk = OfflineStt.available(c),
     )
 
     private fun link(e: SttRouter.Engine, what: String) {
-        val name = when (e) { SttRouter.Engine.WHISPER -> "Whisper (फ़ोन पर)"; SttRouter.Engine.ANDROID -> "Android पहचान"; else -> "-" }
+        val name = when (e) { SttRouter.Engine.SHERPA -> "Sherpa-ONNX (फ़ोन पर)"; SttRouter.Engine.ANDROID -> "Android पहचान"; else -> "-" }
         DKState.setLink("अलग तरीका • $name • $what")
     }
 
