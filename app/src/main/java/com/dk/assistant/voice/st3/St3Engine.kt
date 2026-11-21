@@ -84,7 +84,7 @@ object St3Engine {
         if (synth != null && openFast != St3Store.fastOn(c)) releaseNow()
         return try {
             // 20 नवंबर 2026 (मालिक: गर्म फ़ोन पर आवाज़ बनने में बजने से ज़्यादा समय): गर्म = कम थ्रेड; सिर्फ़ नए जवाब की शुरुआत में दोबारा खोलो
-            val want = St3Load.threadsFor(threads(c), St3Load.heatStatus, St3Load.sessionThreadsCut)   // 21 नवंबर 2026: session में धीमा = कम थ्रेड
+            val want = St3Load.threadsFor(threads(c), St3Load.heatStatus).let { if (St3Load.sessionThreadsCut) minOf(it, St3Load.HOT_THREADS) else it }   // 21 नवंबर 2026: session में धीमा = कम थ्रेड
             if (synth != null && openThreads != want && St3Load.freshAnswer) {
                 com.dk.assistant.DKLog.d("ऑफ़लाइन आवाज़: फ़ोन ${St3Load.heatName(St3Load.heatStatus)} - थ्रेड $openThreads -> $want" +
                     if (St3Load.sessionThreadsCut) " (सुधार#2: session में धीमा)" else "")
