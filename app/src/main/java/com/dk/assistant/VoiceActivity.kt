@@ -25,6 +25,22 @@ class VoiceActivity : AppCompatActivity() {
     private lateinit var orb: OrbView
     private lateinit var state: TextView
     private lateinit var link: TextView
+    private lateinit var clock: TextView
+    /** हर सेकंड लाइव की घड़ी (सिर्फ़ स्क्रीन दिखते समय) */
+    private val clockTick = object : Runnable {
+        override fun run() { renderClock(); if (DKState.live && ::clock.isInitialized) clock.postDelayed(this, 1000) }
+    }
+    private fun stopClock() {
+        if (::clock.isInitialized) clock.removeCallbacks(clockTick)
+    }
+    private fun renderClock() {
+        if (!::clock.isInitialized) return
+        val now = System.currentTimeMillis()
+        val t = if (LiveClock.running()) LiveClock.runningLine(now) else LiveClock.lastLine(now)
+        clock.visibility = if (t.isBlank()) android.view.View.GONE else android.view.View.VISIBLE
+        if (clock.text.toString() != t) clock.text = t
+        if (DKState.live) { clock.removeCallbacks(clockTick); clock.postDelayed(clockTick, 1000) }
+    }
     private lateinit var voiceNow: TextView
     private lateinit var permBtn: TextView
     private lateinit var you: TextView
@@ -149,6 +165,13 @@ class VoiceActivity : AppCompatActivity() {
             visibility = android.view.View.GONE
         }
         col.addView(link, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL })
+        // 21 नवंबर 2026 (मालिक): लाइव कितनी देर से चल रही ("लाइव • 03:12"); ख़त्म होने पर "DK लाइव ख़त्म • 5 मिनट चली"
+        clock = TextView(this).apply {
+            setTextColor(0xE6FFFFFF.toInt()); textSize = 13f; gravity = Gravity.CENTER
+            val h = (12 * dp).toInt(); val v = (2 * dp).toInt(); setPadding(h, v, h, v)
+            visibility = android.view.View.GONE
+        }
+        col.addView(clock, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL })
         // नवंबर 2026 (मालिक): अभी आवाज़ किससे आ रही - Gemini TTS / Gemini Live (सीधी) + वजह
         voiceNow = TextView(this).apply {
             setTextColor(0xB3FFFFFF.toInt()); textSize = 11f; gravity = Gravity.CENTER
@@ -304,7 +327,7 @@ class VoiceActivity : AppCompatActivity() {
     }
 
     override fun onResume() { super.onResume(); DKState.listen(listener); LiveVision.listen(visionListener); render(); renderVision(); syncCamera() }
-    override fun onPause() { DKState.unlisten(listener); LiveVision.unlisten(visionListener); super.onPause() }
+    override fun onPause() { stopClock(); DKState.unlisten(listener); LiveVision.unlisten(visionListener); super.onPause() }
     override fun onStart() { super.onStart(); visible = true }
     override fun onStop() {
         visible = false
@@ -430,6 +453,7 @@ class VoiceActivity : AppCompatActivity() {
             link.visibility = if (ls.isBlank()) android.view.View.GONE else android.view.View.VISIBLE
             if (ls.isNotBlank()) link.text = ls        // मॉडल का नाम/नंबर - अनुवाद नहीं
         }
+        renderClock()
         if (::voiceNow.isInitialized) {
             val vn = com.dk.assistant.voice.engine.VoiceNow.shown()
             voiceNow.visibility = if (vn.isBlank()) android.view.View.GONE else android.view.View.VISIBLE

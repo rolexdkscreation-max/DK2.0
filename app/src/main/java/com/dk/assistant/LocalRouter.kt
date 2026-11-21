@@ -94,6 +94,39 @@ object LocalRouter {
     }
     fun negated(t: String) = NEG.any { padded(t).contains(it) }
 
+    /** YouTube वाली बात में फुल स्क्रीन / ऐड स्किप का हिस्सा: null = यह रास्ता नहीं (बाकी नियम वैसे ही) */
+    private fun ytExtras(raw: String, wakeWords: List<String>, fg: String): Split? {
+        val ex = YtAssist.extras(raw) ?: return null
+        val rest = normalize(ex.text, wakeWords).trim()
+        // सिर्फ़ "फुल स्क्रीन कर दो" / "ऐड स्किप करो" - YouTube सामने हो तभी
+        if (rest.length < 2 || Filler.isFiller(rest)) {
+            if (fg != YT_PKG) return null
+            return Split(QuickCommands.Quick(a(if (ex.full) "yt_full" else "yt_skip_ad"), ""), null)
+        }
+        val inner = split(ex.text, wakeWords, fg)
+        val q = inner.local ?: return null
+        if (inner.rest != null) return null
+        val act = q.action
+        when (act.optString("type")) {
+            "youtube_play" -> {
+                if (ex.full) act.put("full", true)
+                return Split(q, null)
+            }
+            "steps" -> {
+                val arr = act.optJSONArray("steps") ?: return null
+                var hit = false
+                for (i in 0 until arr.length()) {
+                    val st = arr.optJSONObject(i) ?: continue
+                    if (st.optString("type") != "youtube_play") continue
+                    if (ex.full) st.put("full", true)
+                    hit = true
+                }
+                return if (hit) Split(q, null) else null
+            }
+        }
+        return null
+    }
+
     /** पूरा रास्ता: फ़ोन पर कितना हो सकता है + AI को क्या बचा */
     fun split(raw: String, wakeWords: List<String>, fg: String = ""): Split {
         // v4.1: "SMS भेजूँ?" का हाँ/ना (ना = "मत भेजो" - इसलिए negated से पहले)
@@ -122,6 +155,11 @@ object LocalRouter {
         // नवंबर 2026: "DK किधर हो" / "कहाँ हो तुम" - फ़ोन 60 s पूरी आवाज़ में बजे (बजते समय "मिल गया" = बंद)
         if (FindPhone.active && com.dk.assistant.voice.VoiceCmdMatch.foundText(raw)) return Split(QuickCommands.Quick(JSONObject().put("type", "find_phone_stop"), ""), null)
         if (raw.trim().length <= 32 && com.dk.assistant.voice.VoiceCmdMatch.findText(raw)) return Split(QuickCommands.Quick(JSONObject().put("type", "find_phone"), ""), null)
+        // 21 नवंबर 2026 (मालिक): "YouTube पे X चलाओ और फुल स्क्रीन कर देना, ऐड आए तो स्किप करना" - ये हिस्से अलग काम बनकर
+        // पूरी बात धीमे AI रास्ते पर भेजते थे. अब: बाकी बात सीधे चलाओ + youtube_play पर "full" झंडा (ऐड हर बार देखा जाता है)
+        ytExtras(raw, wakeWords, fg)?.let { return it }
+        // 21 नवंबर 2026 (मालिक): "DK स्कैन खोलो" = DK लेंस (बिना बोले पीछे वाला, "सामने करके" = आगे वाला) - तुरंत, बिना AI
+        LensCmd.parse(raw)?.let { c -> return Split(QuickCommands.Quick(a(LensCmd.TYPE, "on" to c.on, "front" to c.front), LensCmd.say(c)), null) }
         // नवंबर 2026: "do not disturb" = एक नाम (dnd) - इसका "do not" मना करना नहीं
         val t0 = NativeCommands.dndWord(normalize(raw, wakeWords))
         // v4.1: SMS - मैसेज में "और" / "मत" हो सकता है, इसलिए टुकड़े / मना-जाँच से पहले (अपनी मना-जाँच ख़ुद)

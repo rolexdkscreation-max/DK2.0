@@ -61,7 +61,9 @@ object LiveNotify {
             .setSmallIcon(if (muted) R.drawable.ic_mic_off else R.drawable.ic_mic)
             .setContentTitle(UiLang.s("$name से लाइव बात चल रही है"))
             .setContentText(UiLang.s(LiveNotifyRules.text(muted, mode)))
-            .setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true).setShowWhen(false)
+            .setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
+            // 21 नवंबर 2026 (मालिक): लाइव चालू होने से कितना समय हुआ - नोटिफ़िकेशन में चलती घड़ी
+            .setShowWhen(LiveClock.running()).setUsesChronometer(LiveClock.running()).setWhen(if (LiveClock.running()) LiveClock.startedAt else System.currentTimeMillis())
             .setCategory(Notification.CATEGORY_CALL)
             .setColor(0xFFE5393B.toInt())
             .addAction(Notification.Action.Builder(Icon.createWithResource(c, if (muted) R.drawable.ic_mic else R.drawable.ic_mic_off),
