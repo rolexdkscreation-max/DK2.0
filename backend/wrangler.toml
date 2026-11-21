@@ -16,6 +16,16 @@ database_id = "__D1_DATABASE_ID__"
 
 [vars]
 FIREBASE_PROJECT_ID = "__FIREBASE_PROJECT_ID__"
+# 21 नवंबर 2026 (मालिक): ऐप में कोई key न हो तो भी DK सर्वर से जवाब (मुफ़्त वाले की रोज़ की सीमा वही). बंद = "0"
+FREE_SERVER_AI = "1"
+# AI का क्रम: "fast" = सबसे तेज़ पहले (डिफ़ॉल्ट), "fixed" = config.js वाला क्रम
+AI_ORDER = "fast"
+# बंद कंपनियाँ, कॉमा से (जैसे "groq,cohere"). खाली = सब चालू
+AI_OFF = ""
+
+# रोज़ भारत सुबह 6:00 (00:30 UTC): 7 दिन से पुराना हिसाब D1 से मिटे (src/index.js cleanup)
+[triggers]
+crons = ["30 0 * * *"]
 
 [observability]
 enabled = true

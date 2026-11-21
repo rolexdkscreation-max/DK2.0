@@ -32,6 +32,35 @@ object LiveDkServer {
 
     fun clearStop() { stopUntil = 0L }
 
+    // ---- 21 नवंबर 2026 (मालिक: "ऐप की key फेल / WebSocket न खुले = सीधे backend की key, user को खाली नहीं लौटाना")
+    /** अपनी key पक्की फेल होने के बाद इतनी देर Live सर्वर के टिकट से, फिर अपनी key दोबारा */
+    const val SPARE_MS = 10 * 60_000L
+    @Volatile private var spareUntil = 0L
+    /** पिछली Live बातचीत सर्वर के टिकट से थी (वहाँ भी फेल = फिर सर्वर नहीं, पहले जैसा रुकना) */
+    @Volatile var lastRunServer = false
+
+    /** कौन सी गलती अपनी key की है (सर्वर का टिकट मदद करेगा). नेट / माइक / setup = नहीं */
+    fun spareKind(kind: LiveFailWhy.Kind?): Boolean =
+        kind == LiveFailWhy.Kind.KEY || kind == LiveFailWhy.Kind.QUOTA || kind == LiveFailWhy.Kind.MODEL || kind == LiveFailWhy.Kind.SERVER
+
+    /** अपनी key से Live रुका: सर्वर से फिर जोड़ें? true = हाँ (तुरंत फिर कोशिश) */
+    fun noteFail(kind: LiveFailWhy.Kind?, serverAi: Boolean = AiRouter.serverAiOk(), now: Long = System.currentTimeMillis()): Boolean {
+        if (lastRunServer || !spareKind(kind) || !serverAi || !on(now)) return false
+        spareUntil = now + SPARE_MS
+        return true
+    }
+
+    fun spare(now: Long = System.currentTimeMillis()): Boolean = now < spareUntil && on(now)
+
+    fun clearSpare() { spareUntil = 0L }
+
+    /** बिना अपनी key (सर्वर से) Live: बातचीत की शुरुआत में एक बार key डालने की नरम याद */
+    const val ASK_KEY_HI = "पहले API key डाल लीजिए एक बार, फिर और अच्छे से बात होगी"
+    val ASK_KEY_NOTE = "\n\nKEY NOTE: The user has not added their own API key yet, so this talk runs on DK's server. " +
+        "In your FIRST reply only (once, never repeat), after answering, politely say exactly: \"$ASK_KEY_HI\". Then talk normally."
+
+    fun keyNote(ask: Boolean): String = if (ask) ASK_KEY_NOTE else ""
+
     /** रोज़ का समय पूरा: भारतीय समय की अगली आधी रात तक रोक */
     fun stopToday(now: Long = System.currentTimeMillis()) {
         val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Kolkata"))

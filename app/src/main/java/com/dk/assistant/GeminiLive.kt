@@ -279,6 +279,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile private var prevAlive = false
     /** run() की keys/models - goAway पर पीछे से नया connection तैयार करने के लिए */
     @Volatile internal var curKeys: List<String> = emptyList()
+    /** इस Live बातचीत में key डालने की याद अभी बाकी ([LiveDkServer.keyNote]) - पहले setup में एक बार */
+    @Volatile internal var askKey = false
     @Volatile internal var curModels: List<String> = emptyList()
     internal var useSearch = true
 
@@ -1075,10 +1077,16 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         val livePin = BrainPin.resolve(svc, BrainPin.LIVE)
         val ownKeys = Prefs.liveGeminiKeys(svc)
         // 18 नवंबर 2026: कोई Gemini key नहीं = DK सर्वर का टिकट ([LiveDkServer]) - वरना पहले जैसा "key नहीं"
-        val keys = (livePin?.let { listOf(it.key) } ?: (ownKeys + BrainPin.spareGemini(svc, ownKeys)))
+        val mine = livePin?.let { listOf(it.key) } ?: (ownKeys + BrainPin.spareGemini(svc, ownKeys))
+        // 21 नवंबर 2026 (मालिक): अपनी key अभी पक्की फेल हुई ([LiveDkServer.noteFail]) = कुछ देर सीधे DK सर्वर का टिकट
+        val spare = mine.isNotEmpty() && LiveDkServer.spare()
+        val keys = (if (spare) emptyList() else mine)
             .ifEmpty { if (LiveDkServer.on()) listOf(LiveDkServer.KEY) else throw Fatal("Gemini की key नहीं है", kind = LiveFailWhy.Kind.NO_KEY) }
         val dkServer = keys.size == 1 && LiveDkServer.isServer(keys[0])
-        if (dkServer) log("Live: अपनी Gemini key नहीं - ${AiRouter.LABEL} के टिकट से (असली key फ़ोन पर नहीं)")
+        LiveDkServer.lastRunServer = dkServer
+        askKey = dkServer && mine.isEmpty()      // बिना key = शुरुआत में एक बार "पहले API key डाल लीजिए…"
+        if (dkServer) log(if (spare) "Live: अपनी key अभी नहीं चली - ${AiRouter.LABEL} के टिकट से (${LiveDkServer.SPARE_MS / 60_000} मिनट, फिर अपनी key)"
+            else "Live: अपनी Gemini key नहीं - ${AiRouter.LABEL} के टिकट से (असली key फ़ोन पर नहीं)")
         if (livePin != null) log("Live: आपका चुना मॉडल ${livePin.model} (सिर्फ़ यही, fallback बंद)")
         // 16 नवंबर 2026 (मालिक): "सारी keys इस्तेमाल करो" चालू = हर नई बातचीत DK लाइव की अगली अपनी key से (Round-Robin).
         // सूची का क्रम वही (limit का हिसाब key के नंबर से), सिर्फ़ शुरुआत बदलती है; बाकी keys घूमकर बचाव में.

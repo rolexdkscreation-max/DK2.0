@@ -103,6 +103,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
@@ -116,7 +117,7 @@ jobs:
         run: |
           umask 077
           echo '{}' > "$RUNNER_TEMP/dk-secrets.json"
-          for n in ALLOWED_EMAILS WEBHOOK_SECRET GEMINI_API_KEY MISTRAL_API_KEY GROQ_API_KEY OPENROUTER_API_KEY ZAI_API_KEY NVIDIA_API_KEY DEEPSEEK_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY TAVILY_API_KEY EXA_API_KEY LINKUP_API_KEY FIRECRAWL_API_KEY; do
+          for n in ALLOWED_EMAILS WEBHOOK_SECRET GEMINI_API_KEY MISTRAL_API_KEY GROQ_API_KEY COHERE_API_KEY OPENROUTER_API_KEY ZAI_API_KEY NVIDIA_API_KEY DEEPSEEK_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY TAVILY_API_KEY EXA_API_KEY LINKUP_API_KEY FIRECRAWL_API_KEY; do
             if [ -n "${!n}" ]; then
               jq --arg k "$n" --arg v "${!n}" '. + {($k): $v}' "$RUNNER_TEMP/dk-secrets.json" > "$RUNNER_TEMP/s.tmp" && mv "$RUNNER_TEMP/s.tmp" "$RUNNER_TEMP/dk-secrets.json"
               echo "✓ $n"

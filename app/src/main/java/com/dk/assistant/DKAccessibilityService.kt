@@ -822,7 +822,9 @@ class DKAccessibilityService : AccessibilityService() {
                         // key/limit/model = asli rukawat. Network/mic busy = thodi der.
                         val userLive = DKState.live && !wakeLive
                         val rawMs = if (userLive) LiveRetry.fast(e.recoverable, LiveRetry.liveOnMs(e.recoverable, liveSoftFails)) else LiveRetry.offMs(e.recoverable, liveSoftFails)
-                        val offMs = rawMs.coerceAtMost(60_000L)
+                        // 21 नवंबर 2026 (मालिक): अपनी key की गलती = तुरंत DK सर्वर के टिकट से (user खाली न लौटे)
+                        val spare = LiveDkServer.noteFail(e.kind)
+                        val offMs = if (spare) 1_000L else rawMs.coerceAtMost(60_000L)
                         if (e.recoverable) liveSoftFails++
                         liveOffSoft = userLive && e.recoverable
                         liveOffUntil = System.currentTimeMillis() + offMs
@@ -832,7 +834,8 @@ class DKAccessibilityService : AccessibilityService() {
                         // (तकनीकी गलती नहीं); फिर जुड़ते ही GeminiLive "जुड़ गई, बोलिए" दिखाता है
                         // मालिक (नवंबर 2026): Live नहीं जुड़ा = साफ़ हिंदी कारण + बैकअप मोड (बोली-पहचान -> text दिमाग़ -> Edge TTS).
                         // जुड़ने के बाद बीच में टूटा (kind नहीं, recoverable) = पहले जैसा तुरंत फिर जोड़ो
-                        if (userLive && (e.kind != null || !e.recoverable)) {
+                        if (spare) DKLog.d("Live: अपनी key नहीं चली (${e.kind?.short}) - ${AiRouter.LABEL} से फिर जोड़ रहा हूँ")
+                        else if (userLive && (e.kind != null || !e.recoverable)) {
                             val kind = e.kind ?: LiveFailWhy.classify(0, e.message, NetProbe.online(this@DKAccessibilityService))
                             enterBackup(kind, e.message ?: "-")
                         }

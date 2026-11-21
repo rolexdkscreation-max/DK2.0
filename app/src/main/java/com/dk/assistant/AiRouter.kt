@@ -48,8 +48,10 @@ object AiRouter {
      * (NEED_OWN_KEY). जड़: अपनी key एक बार अटकी (429/नेट) तो DK सर्वर पर जाता, वहाँ से "अपनी Gemini key डालें"
      * आता और चैट/Live रुक जाते. अब मुफ़्त वाले के लिए सर्वर वाला AI आज़माया ही नहीं जाता - अपनी key की असली गलती
      * दिखती है और चैट कभी बंद नहीं होती. लाइसेंस वाले / मालिक / बिना सर्वर वाला build = पहले जैसा.
+     * 21 नवंबर 2026 (मालिक: "user को खाली नहीं लौटाना"): सर्वर कहे कि मुफ़्त वाले को भी AI ([Plan.serverAi]) = हाँ -
+     * बिना key / अपनी key फेल होने पर सीधे DK सर्वर (रोज़ की मुफ़्त सीमा सर्वर गिनता है).
      */
-    fun serverAiOk(): Boolean = freeOverride?.let { !it } ?: app?.let { Plan.level(it) != Plan.Level.FREE } ?: true
+    fun serverAiOk(): Boolean = freeOverride?.let { !it } ?: app?.let { Plan.level(it) != Plan.Level.FREE || Plan.serverAi(it) } ?: true
 
     /** test बदल सके (true = मुफ़्त वाला) */
     @Volatile var freeOverride: Boolean? = null

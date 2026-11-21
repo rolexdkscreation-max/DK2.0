@@ -239,4 +239,59 @@ export class Db {
   modelHealth() {
     return run(async () => (await this.d1.prepare("SELECT * FROM model_health ORDER BY model").all()).results ?? []);
   }
+
+  // ---------- provider_stats / provider_daily (सबसे तेज़ पहले) ----------
+  providerStats() {
+    return run(async () => (await this.d1.prepare("SELECT * FROM provider_stats").all()).results ?? []);
+  }
+
+  providerDay(day) {
+    return run(async () => (await this.d1.prepare("SELECT provider, requests, tokens, neurons FROM provider_daily WHERE day = ?").bind(day).all()).results ?? []);
+  }
+
+  /** एक कोशिश का नतीजा: ewma (null = नहीं बदला), cool/off (0 = नहीं), गलती */
+  saveProvider(p, { ewma, samples, cool, off, error }, now) {
+    return run(() =>
+      this.d1
+        .prepare(
+          "INSERT INTO provider_stats (provider, ewma_ms, samples, cool_until, off_until, last_error, last_error_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) " +
+            "ON CONFLICT(provider) DO UPDATE SET ewma_ms = COALESCE(excluded.ewma_ms, ewma_ms), samples = MAX(samples, excluded.samples), " +
+            "cool_until = excluded.cool_until, off_until = MAX(off_until, excluded.off_until), " +
+            "last_error = COALESCE(excluded.last_error, last_error), last_error_at = COALESCE(excluded.last_error_at, last_error_at), updated_at = excluded.updated_at",
+        )
+        .bind(p, ewma ?? null, samples ?? 0, cool ?? 0, off ?? 0, error ? String(error).slice(0, 200) : null, error ? now : null, now)
+        .run(),
+    );
+  }
+
+  addProviderDay(day, p, requests, tokens, neurons) {
+    return run(() =>
+      this.d1
+        .prepare(
+          "INSERT INTO provider_daily (day, provider, requests, tokens, neurons) VALUES (?, ?, ?, ?, ?) " +
+            "ON CONFLICT(day, provider) DO UPDATE SET requests = requests + excluded.requests, tokens = tokens + excluded.tokens, neurons = neurons + excluded.neurons",
+        )
+        .bind(day, p, requests, tokens, neurons)
+        .run(),
+    );
+  }
+
+  // ---------- सफ़ाई (रोज़ cron): 7 दिन से पुराना हिसाब ----------
+  /** istCut / utcCut = "YYYY-MM-DD" (उससे पहले के दिन मिटें), msCut = उससे पुराने समय वाले */
+  cleanup(istCut, utcCut, msCut) {
+    return run(async () => {
+      const out = {};
+      const go = async (name, sql, ...args) => {
+        const r = await this.d1.prepare(sql).bind(...args).run();
+        out[name] = r?.meta?.changes ?? 0;
+      };
+      await go("usage", "DELETE FROM usage WHERE day < ?", istCut);
+      await go("image_usage", "DELETE FROM image_usage WHERE day < ?", utcCut);
+      await go("provider_daily", "DELETE FROM provider_daily WHERE day < ?", utcCut);
+      await go("model_health", "DELETE FROM model_health WHERE MAX(COALESCE(last_ok, 0), COALESCE(last_fail, 0)) < ?", msCut);
+      await go("live_grants", "DELETE FROM live_grants WHERE until_ms < ?", msCut);
+      await go("provider_errors", "UPDATE provider_stats SET last_error = NULL, last_error_at = NULL WHERE last_error_at < ?", msCut);
+      return out;
+    });
+  }
 }
