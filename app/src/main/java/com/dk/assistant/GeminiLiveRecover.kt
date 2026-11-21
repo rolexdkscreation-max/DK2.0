@@ -3,6 +3,7 @@ package com.dk.assistant
 import android.util.Base64
 import com.dk.assistant.GeminiLive.Companion.CHUNK_MS
 import com.dk.assistant.GeminiLive.Companion.IN_RATE
+import kotlinx.coroutines.launch
 
 // GeminiLive का हिस्सा (नवंबर 2026, DKI-406DD9 / DKI-70D747 / DKI-D24C3A): टूटने / अटकने के बाद यूज़र की बात न खोए.
 // नियम LiveRecover.kt में (unit test); यहाँ सिर्फ़ जोड़ना.
@@ -63,18 +64,54 @@ internal fun GeminiLive.swapForStuck(now: Long, why: String): Boolean {
     val again = zombieSwaps.recent(now) > 1
     replayAudio = utt.snapshot(now); replayAt = now
     recoverWhy = why; recoverAt = now
-    if (again) handle = null          // फिर अटका = नई बातचीत (याद prompt में)
-    log("Live: $why - नया connection${if (again) " (नई बातचीत)" else " (बातचीत वहीं से)"} और आपकी वही आवाज़ एक बार दोबारा (#$zombieN) • ${timeline.summary()}")
+    // 21 नवंबर 2026: फिर अटका = पहले हमेशा नई बातचीत; अब सिर्फ़ वही handle दोबारा अटके तब ([LiveRecover.dropHandle])
+    val dropH = LiveRecover.dropHandle(again, handle, stuckHandle)
+    stuckHandle = handle
+    if (dropH) handle = null
+    if (again) log("सुधार#1 handle: फिर अटका - ${if (dropH) "वही handle दोबारा अटका, नई बातचीत (पिछली बातें prompt में)" else "handle रखा, बातचीत वहीं से"}")
+    log("Live: $why - नया connection${if (dropH) " (नई बातचीत)" else " (बातचीत वहीं से)"} और आपकी वही आवाज़ एक बार दोबारा (#$zombieN) • ${timeline.summary()}")
     return true      // बुलाने वाला: goAway = true; goAwayDrop = true; break
 }
 
 /**
  * नवंबर 2026 (मालिक: "कभी-कभी जवाब ही नहीं देता"): अटका, पर मिनट में 2 बार connection बदल चुका = पहले DK बिल्कुल चुप
  * ("सोच रहा हूँ" पर अटका भी दिखता). अब: स्क्रीन पर साफ़ बताओ कि फिर बोलें, और सुनने पर लौटो - चुप्पी नहीं.
+ * 21 नवंबर 2026 (मालिक: "अटके session पर SYSTEM NOTE वाला text मत भेजो, Whisper का सुना हुआ वाक्य भेजो"): पहले असली शब्द
+ * न हों तो "(SYSTEM NOTE: you did not hear the user clearly...)" जाता था = DK कहता "आवाज़ साफ़ नहीं आ रही". अब Whisper का
+ * वाक्य (वरना caption) ही text में; वह भी न हो = कुछ नहीं भेजते, DK खुद (फ़ोन की आवाज़ में) साफ़ कहे कि फिर से बोलिए.
  */
 internal fun GeminiLive.stuckNoSwap() {
-    // 18 नवंबर 2026 (मालिक): सिर्फ़ स्क्रीन का इशारा काफ़ी नहीं - आख़िरी मौका: लिखी बात text में (या DK खुद "फिर से बोलिए" कहे)
-    if (lastChance("connection बदलने की सीमा पूरी", sorryOk = true)) return
+    val now = System.currentTimeMillis()
+    val cap = caption?.text().orEmpty().trim().ifBlank { synchronized(turnLock) { userText.toString().trim() } }
+    val chunks = utt.snapshot(now); val ms = utt.speechMs(); val heardAt = utt.lastRealAt()
+    svc.scope.launch {
+        val cached = lastWhisper?.takeIf { lastWhisperAt >= heardAt && heardAt > 0L }
+        val w = cached ?: if (LiveWhisper.on(svc)) LiveWhisper.hear(svc, chunks, ms) else null
+        if (stopped) return@launch
+        val t = LiveRecover.stuckText(w, cap, dkHeardNow())
+        if (t != null && lastChance("connection बदलने की सीमा पूरी", sorryOk = false, text = t)) {
+            log("सुधार#1 अटका: SYSTEM NOTE नहीं - आपकी असली बात भेजी (${if (w != null && t == w.trim().trim('"', '.', ' ')) "Whisper" else "caption"})")
+            return@launch
+        }
+        askAgain()
+    }
+}
+
+/** 21 नवंबर 2026: भेजने लायक बात नहीं मिली = चुप नहीं; स्क्रीन पर + फ़ोन की अपनी आवाज़ में साफ़ "फिर से बोलिए" (मिनट में एक बार) */
+internal fun GeminiLive.askAgain() {
+    val now = System.currentTimeMillis()
     DKState.hint("जवाब अटक गया — कृपया एक बार फिर बोलिए")
     if (!isPlaying() && DKState.mode == Mode.THINKING) setMode(Mode.LISTENING)
+    if (!LiveRecover.lastChanceOk(now, askAgainAt)) return
+    askAgainAt = now
+    log("सुधार#1 सीमा: 1 मिनट में ${LiveRecover.MAX_SWAPS} बार बदल चुका, भेजने लायक बात नहीं - आपको साफ़ बताया: फिर से बोलिए")
+    if (isPlaying()) return
+    val engines = com.dk.assistant.voice.engine.VoiceEngines
+    val e = engines.byId(engines.ST3_OFFLINE)?.takeIf { it.notReady(svc) == null }
+        ?: engines.fallback()?.takeIf { it.notReady(svc) == null } ?: return
+    try {
+        pipeline.begin(e)
+        pipeline.feed(LiveRecover.ASK_AGAIN_LINE)
+        pipeline.endTurn()
+    } catch (ex: Exception) { Quiet.note(ex) }
 }
