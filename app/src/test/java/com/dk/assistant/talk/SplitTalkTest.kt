@@ -2,15 +2,14 @@ package com.dk.assistant.talk
 
 import com.dk.assistant.plus.models.ModelCatalog
 import com.dk.assistant.plus.models.ModelManager
+import com.dk.assistant.stt.SherpaStt
 import com.dk.assistant.stt.SttRouter
-import com.dk.assistant.stt.WhisperNative
-import com.dk.assistant.stt.WhisperStt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** 18 नवंबर 2026: "सुनना अलग, सोचना-बोलना अलग" - VAD, पहचान का चुनाव, Whisper मॉडल, डाउनलोड रोकना */
+/** 18 नवंबर 2026: "सुनना अलग, सोचना-बोलना अलग" - VAD, पहचान का चुनाव, मॉडल, डाउनलोड रोकना (21 नवंबर: Whisper की जगह Sherpa-ONNX) */
 class SplitTalkTest {
 
     private fun Endpointer.run(vararg parts: Pair<Float, Int>): List<Endpointer.Ev> =
@@ -69,39 +68,39 @@ class SplitTalkTest {
         assertEquals(750L, TalkPrefs.SILENCE_DEF)
     }
 
-    @Test fun router_whisperUntilModel_thenAndroidFallback() {
+    @Test fun router_sherpaUntilModel_thenAndroidFallback() {
         val r = SttRouter()
-        val noModel = r.pick(prefWhisper = true, whisperReady = false, whyNot = "Whisper मॉडल अभी डाउनलोड नहीं हुआ", androidOk = true)
+        val noModel = r.pick(prefSherpa = true, sherpaReady = false, whyNot = "Sherpa-ONNX मॉडल अभी डाउनलोड नहीं हुआ", androidOk = true)
         assertEquals(SttRouter.Engine.ANDROID, noModel.engine)
         assertTrue(noModel.notice.contains("Android"))
-        assertEquals(SttRouter.Engine.WHISPER, r.pick(true, true, "", true).engine)
+        assertEquals(SttRouter.Engine.SHERPA, r.pick(true, true, "", true).engine)
         assertEquals(SttRouter.Engine.ANDROID, r.pick(false, true, "", true).engine)
         assertEquals("", r.pick(false, true, "", true).notice)
     }
 
     @Test fun router_twoSlowStrikes_switchToAndroidForSession() {
         val r = SttRouter()
-        assertFalse(r.whisperResult(ok = false, slow = true))
-        assertTrue(r.whisperResult(ok = false, slow = true))
+        assertFalse(r.sherpaResult(ok = false, slow = true))
+        assertTrue(r.sherpaResult(ok = false, slow = true))
         assertEquals(SttRouter.Engine.ANDROID, r.pick(true, true, "", true).engine)
-        // Android न हो = Whisper ही (कुछ तो चले)
-        assertEquals(SttRouter.Engine.WHISPER, r.pick(true, true, "", false).engine)
+        // Android न हो = Sherpa-ONNX ही (कुछ तो चले)
+        assertEquals(SttRouter.Engine.SHERPA, r.pick(true, true, "", false).engine)
         r.reset()
-        assertEquals(SttRouter.Engine.WHISPER, r.pick(true, true, "", true).engine)
+        assertEquals(SttRouter.Engine.SHERPA, r.pick(true, true, "", true).engine)
     }
 
     @Test fun router_successResetsStrikes() {
         val r = SttRouter()
-        r.whisperResult(ok = false, slow = false)
-        r.whisperResult(ok = true, slow = false)
-        assertFalse(r.whisperResult(ok = false, slow = false))
-        assertFalse(r.whisperOff)
+        r.sherpaResult(ok = false, slow = false)
+        r.sherpaResult(ok = true, slow = false)
+        assertFalse(r.sherpaResult(ok = false, slow = false))
+        assertFalse(r.sherpaOff)
     }
 
     @Test fun router_none_hasHindiReason() {
-        val p = SttRouter().pick(prefWhisper = false, whisperReady = false, whyNot = "", androidOk = false)
+        val p = SttRouter().pick(prefSherpa = false, sherpaReady = false, whyNot = "", androidOk = false)
         assertEquals(SttRouter.Engine.NONE, p.engine)
-        assertTrue(p.notice.contains("Whisper"))
+        assertTrue(p.notice.contains("Sherpa-ONNX"))
     }
 
     @Test fun router_timeouts() {
@@ -111,13 +110,19 @@ class SplitTalkTest {
         assertFalse(SttRouter.slow(3_000, 2_500))
     }
 
-    @Test fun whisperModel_officialHuggingFace_pinned() {
-        val a = ModelCatalog.WHISPER_SMALL
-        assertTrue(a in ModelCatalog.ALL)
-        assertEquals(ModelCatalog.Kind.STT, a.kind)
-        assertEquals(listOf("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin"), a.urls)
-        assertEquals("ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb", a.sha256)
-        assertEquals(190_085_487L, a.bytes)
+    @Test fun sherpaModel_pinnedHuggingFace_under100MB() {
+        val e = ModelCatalog.STT_ENCODER; val t = ModelCatalog.STT_TOKENS
+        assertTrue(e in ModelCatalog.ALL && t in ModelCatalog.ALL)
+        assertEquals(listOf(e, t), ModelCatalog.STT_SHERPA)
+        for (a in ModelCatalog.STT_SHERPA) { assertEquals(ModelCatalog.Kind.STT, a.kind); assertTrue(ModelCatalog.wifiOnly(a)) }
+        val base = "https://huggingface.co/mobilebytesensei/betterflow-hindi-streaming-ctc/resolve/2c8ad90337fa5228dd182ab0525db1c71f18eb72/"
+        assertEquals(listOf(base + "encoder.int8.onnx"), e.urls)
+        assertEquals("e5758a0c0549063edf02fafc8af1be19d42715eb816d1b8f4d45e8de0fa6d039", e.sha256)
+        assertEquals(68_954_634L, e.bytes)
+        assertEquals(listOf(base + "tokens.txt"), t.urls)
+        assertEquals("800fa1703a555fe52fbd8271f1b3764c5911a94cd16e3b618333118aadd75771", t.sha256)
+        assertEquals(659L, t.bytes)
+        assertTrue(ModelCatalog.STT_SHERPA.sumOf { it.bytes } < 100L * 1024 * 1024)
         assertEquals(emptyList<String>(), ModelCatalog.problems())
     }
 
@@ -129,37 +134,32 @@ class SplitTalkTest {
         assertEquals(ModelManager.St.None, ModelManager.restState(false, 100, 100))   // पूरी पर जाँच नहीं हुई = फिर से
     }
 
-    @Test fun whisper_audioWindow() {
-        assertEquals(512, WhisperStt.audioCtx(1_000))
-        assertEquals(1500, WhisperStt.audioCtx(40_000))
-        val mid = WhisperStt.audioCtx(10_000)
-        assertTrue(mid in 600..640 && mid % 64 == 0)
+    @Test fun sherpa_threads() {
+        assertEquals(2, SherpaStt.threads(8))
+        assertEquals(1, SherpaStt.threads(4))
+        assertEquals(1, SherpaStt.threads(0))
     }
 
-    @Test fun whisper_threads() {
-        assertEquals(4, WhisperStt.threads(8))
-        assertEquals(3, WhisperStt.threads(4))
-        assertEquals(1, WhisperStt.threads(0))
-    }
-
-    @Test fun whisper_pcmToFloat() {
-        val f = WhisperStt.toFloat(byteArrayOf(0, 0, 0xff.toByte(), 0x7f, 0, 0x80.toByte()))
+    @Test fun sherpa_pcmToFloat() {
+        val f = SherpaStt.toFloat(byteArrayOf(9, 9, 0, 0, 0xff.toByte(), 0x7f, 0, 0x80.toByte()), 2, 6)
+        assertEquals(3, f.size)
         assertEquals(0f, f[0]); assertEquals(32767 / 32768f, f[1]); assertEquals(-1f, f[2])
     }
 
-    @Test fun whisper_cleanText() {
-        assertEquals("व्हाट्सऐप खोलो", WhisperStt.clean("  [संगीत] व्हाट्सऐप   खोलो "))
-        assertEquals("", WhisperStt.clean("(music)"))
-        assertEquals("", WhisperStt.clean("सब्सक्राइब करें"))
-        assertEquals("धन्यवाद", WhisperStt.clean("धन्यवाद"))          // मालिक सच में बोल सकता है
-        assertEquals("", WhisperStt.clean(WhisperStt.PROMPT))
+    @Test fun sherpa_cleanText() {
+        assertEquals("व्हाट्सऐप खोलो", SherpaStt.clean("  व्हाट्सऐप   खोलo "))
+        assertEquals("मुझे को", SherpaStt.clean("मुझे कo"))
+        assertEquals("open youtube", SherpaStt.clean("open youtube"))      // अंग्रेज़ी शब्द वैसे ही
+        assertEquals("", SherpaStt.clean("   "))
     }
 
-    @Test fun whisper_cpuCheck() {
-        val good = "processor\t: 0\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm lrcpc dcpop asimddp\n"
-        assertTrue(WhisperNative.cpuOk(good, listOf("arm64-v8a", "armeabi-v7a")))
-        assertFalse(WhisperNative.cpuOk(good, listOf("armeabi-v7a")))
-        assertFalse(WhisperNative.cpuOk("Features\t: fp asimd evtstrm aes pmull sha1 sha2 crc32\n", listOf("arm64-v8a")))
-        assertFalse(WhisperNative.cpuOk("", listOf("arm64-v8a")))
+    @Test fun sherpa_cpuCheck() {
+        assertTrue(SherpaStt.abiOk(listOf("arm64-v8a", "armeabi-v7a")))
+        assertFalse(SherpaStt.abiOk(listOf("armeabi-v7a")))
+        assertFalse(SherpaStt.abiOk(listOf("x86_64")))
+        assertFalse(SherpaStt.abiOk(emptyList()))
+        assertTrue(SherpaStt.libError(UnsatisfiedLinkError("x")))
+        assertTrue(SherpaStt.libError(NoClassDefFoundError("x")))
+        assertFalse(SherpaStt.libError(IllegalArgumentException("x")))
     }
 }

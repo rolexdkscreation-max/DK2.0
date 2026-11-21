@@ -36,7 +36,9 @@ class VoiceActivity : AppCompatActivity() {
     private fun renderClock() {
         if (!::clock.isInitialized) return
         val now = System.currentTimeMillis()
-        val t = if (LiveClock.running()) LiveClock.runningLine(now) else LiveClock.lastLine(now)
+        val t0 = if (LiveClock.running()) LiveClock.runningLine(now) else LiveClock.lastLine(now)
+        // 21 नवंबर 2026: लिखावट (caption) बंद = घड़ी के नीचे छोटी चेतावनी ([com.dk.assistant.CaptionWarn])
+        val t = listOf(t0, if (DKState.live) DKState.captionWarn else "").filter { it.isNotBlank() }.joinToString("\n")
         clock.visibility = if (t.isBlank()) android.view.View.GONE else android.view.View.VISIBLE
         if (clock.text.toString() != t) clock.text = t
         if (DKState.live) { clock.removeCallbacks(clockTick); clock.postDelayed(clockTick, 1000) }

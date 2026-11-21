@@ -156,13 +156,6 @@ object AiRouter {
 
     /** खोज: अपनी Tavily/Exa/Gemini keys न चलीं - backend की खोज (स्रोत उसी पुराने रूप में) */
     fun search(c: Context, q: String, deep: Boolean): Pair<String, String> = BackendWire.searchRaw(BackendApi.search(c, q, deep))
-
-    /** आवाज़ -> लिखा (backend का Whisper). टिकट याद */
-    fun stt(c: Context, wav: ByteArray, lang: String): String {
-        val r = BackendApi.stt(c, wav, lang)
-        noteTicket(r.ticket)
-        return r.text
-    }
 }
 
 /** backend से AI ([AiRouter.client]) - पुराने [AiClient] जैसा, ताकि [BrainManager] / [CoderAi] बिना बदलाव इस्तेमाल करें */

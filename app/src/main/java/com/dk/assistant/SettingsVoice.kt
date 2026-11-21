@@ -134,10 +134,10 @@ internal fun SettingsActivity.secVoice() {
     card("सुनना (माइक)", "लगातार सुनना — बिना बीप की आवाज़") { box ->
         rgListen = radios(box, listOf(
             "auto" to "सबसे तेज़ — Gemini Live, आवाज़ से आवाज़ (DK लाइव की Gemini key से); न चले तो बिना बीप",
-            "classic" to "बिना बीप — DK खुद सुनेगा (DK लाइव की Groq/Gemini key) + जवाब DK चैट की API से",
+            "classic" to "बिना बीप — DK खुद सुनेगा (फ़ोन पर Sherpa-ONNX, कोई key नहीं) + जवाब DK चैट की API से",
             "google" to "Google माइक — बिना key, पर हर बार बीप आ सकती है"),
             Prefs.listenEngine(this), 2200)
-        hint(box, "बिना बीप वाले मोड में सबसे तेज़ और सही हिंदी पहचान के लिए Groq की फ्री key डालें (Whisper)। Groq key न हो तो Gemini key से काम चलेगा।")
+        hint(box, "बिना बीप वाले मोड में आपकी बोली फ़ोन पर ही Sherpa-ONNX लिखता है (इंटरनेट / key नहीं) - मॉडल \"बातचीत का तरीका\" कार्ड से डाउनलोड करें। मॉडल न हो तो Google माइक से सुनता है।")
         switch(box, "बोलते समय पीछे का गाना/वीडियो धीमा करो (करीब 20%), जवाब के बाद धीरे-धीरे वापस", Prefs.duckMedia(this))
             .setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean("duck_media", on) }; if (!on) Ducker.releaseNow() }
         hint(box, "आवाज़ धीरे से (fade) कम-ज़्यादा होती है। फ़ोन की volume नहीं बदलती। कुछ ऐप (जैसे podcast) धीमे होने की जगह थोड़ी देर रुक जाते हैं।")

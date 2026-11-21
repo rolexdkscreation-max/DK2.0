@@ -153,14 +153,6 @@ object Prefs {
     fun voiceKey(c: Context) = sp(c).getString("voice_key", "") ?: ""
     fun voiceProvider(c: Context) = sp(c).getString("voice_provider", "") ?: ""
 
-    /** सुनने (आवाज़ → text) की keys - सिर्फ़ DK लाइव की अपनी: Groq (Whisper, तेज़) फिर Gemini */
-    fun sttKeys(c: Context): List<Pair<String, String>> {
-        val out = mutableListOf<Pair<String, String>>()
-        scopeKey(c, ApiScopes.LIVE, "groq").takeIf { it.isNotBlank() }?.let { out.add("groq" to it) }
-        scopeKey(c, ApiScopes.LIVE, "gemini").takeIf { it.isNotBlank() }?.let { out.add("gemini" to it) }
-        return out.distinctBy { it.second }
-    }
-
     /** Gemini Live और Gemini आवाज़ (बोलना) की key - सिर्फ़ DK लाइव की अपनी Gemini key */
     fun ttsGeminiKey(c: Context): String = scopeKey(c, ApiScopes.LIVE, "gemini")
     /**

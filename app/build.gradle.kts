@@ -36,23 +36,6 @@ android {
         buildConfigField("String", "FIREBASE_AUTH_DOMAIN", "\"${pub("VITE_FIREBASE_AUTH_DOMAIN")}\"")
         buildConfigField("String", "BACKEND_URL", "\"${pub("VITE_BACKEND_URL")}\"")
         buildConfigField("String", "WHATSAPP_NUMBER", "\"${pub("VITE_WHATSAPP_NUMBER")}\"")
-        // 18 नवंबर 2026 (मालिक: "सुनना अलग, सोचना-बोलना अलग"): फ़ोन पर ऑफलाइन Whisper (whisper.cpp) - सिर्फ़ arm64
-        // (ONNX जैसा). 32-bit / x86 फ़ोन पर .so नहीं = Whisper अपने-आप बंद, Android की बोली-पहचान चलती है.
-        externalNativeBuild {
-            cmake {
-                abiFilters += "arm64-v8a"
-                arguments += listOf("-DANDROID_STL=c++_static")
-            }
-        }
-    }
-
-    // GitHub runner (ubuntu-24.04) पर पहले से यही NDK / CMake - अपने कंप्यूटर पर Android Studio अपने-आप उतार लेता है
-    ndkVersion = "27.3.13750724"
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.31.5"
-        }
     }
 
     // Hamesha ek hi key se sign -> purane app ke upar naya update install ho sake
@@ -138,6 +121,10 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:21.2.0")
     // 14 नवंबर 2026: DKAI Terminal की `apk` कमांड - फ़ोन पर ही बने ऐप को sign करना (Google की अपनी apksig, pure Java)
     implementation("com.android.tools.build:apksig:8.5.2")
+    // 21 नवंबर 2026 (मालिक: "बोली लिखने वाला फ़ोन पर, बिना नेट / key"): k2-fsa का आधिकारिक Android पैकेज v2.0.2
+    // (onnxruntime अंदर ही static जुड़ा - ऊपर वाले onnxruntime-android से टकराव नहीं), सिर्फ़ arm64 हिस्सा रखा.
+    // मॉडल APK में नहीं - ModelManager Wi-Fi पर उतारता है.
+    implementation(files("libs/k2fsa-onnx-stt-2.0.2-arm64.aar"))
     testImplementation("junit:junit:4.13.2")
     // Android ka org.json unit test me khali (stub) hota hai - asli wala
     testImplementation("org.json:json:20240303")

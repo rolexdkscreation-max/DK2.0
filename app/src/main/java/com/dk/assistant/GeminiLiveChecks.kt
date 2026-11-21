@@ -247,7 +247,7 @@ internal fun GeminiLive.sendAudio(pcm: ByteArray, silent: Boolean = false): Unit
     if (upSlow.update(q, now)) log("सुधार#6 network: " + (if (upSlow.on) "line में ${q / 1024}KB अटका - आवाज़ अब ${LiveUplink.SLOW_RATE / 1000} kHz (आधा upload)" else "line साफ़ - आवाज़ फिर ${IN_RATE / 1000} kHz"))
     if (LiveUplink.mustHold(silent, q)) {
         upHold.add(pcm)?.let { old ->
-            dropped++; utt.add(old, true, now); whisperUtt.add(old, true, now)
+            dropped++; utt.add(old, true, now)
             if (upHold.dropped == 1 || upHold.dropped % 25 == 0) log("सुधार#6 network: line ${q / 1024}KB भरी - सबसे पुराना आवाज़ का टुकड़ा गिराया (कुल ${upHold.dropped}), ताज़ी बात रखी")
         }
         return@synchronized
@@ -259,13 +259,13 @@ internal fun GeminiLive.sendAudio(pcm: ByteArray, silent: Boolean = false): Unit
     if (end && endGate.onSilenceEnd()) try { w.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (e: Exception) { Quiet.note(e) }
 }
 
-/** एक टुकड़ा line में (धीमे network पर 8 kHz). utt / whisperUtt को हमेशा असली 16 kHz */
+/** एक टुकड़ा line में (धीमे network पर 8 kHz). utt को हमेशा असली 16 kHz */
 internal fun GeminiLive.sendPcm(w: okhttp3.WebSocket, pcm: ByteArray, silent: Boolean) {
     val slow = upSlow.on
     val body = if (slow) LiveUplink.half(pcm) else pcm
     val msg = "{\"realtimeInput\":{\"audio\":{\"mimeType\":\"audio/pcm;rate=${if (slow) LiveUplink.SLOW_RATE else IN_RATE}\",\"data\":\"" +
         Base64.encodeToString(body, Base64.NO_WRAP) + "\"}}}"
-    if (w.tx(msg)) { sent++; sentBytes += body.size; utt.add(pcm, !silent, System.currentTimeMillis()); whisperUtt.add(pcm, !silent, System.currentTimeMillis()) } else dropped++
+    if (w.tx(msg)) { sent++; sentBytes += body.size; utt.add(pcm, !silent, System.currentTimeMillis()) } else dropped++
 }
 
 /**

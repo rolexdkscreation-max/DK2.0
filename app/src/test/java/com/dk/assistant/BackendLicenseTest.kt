@@ -56,7 +56,7 @@ class BackendLicenseTest {
 
     @Test fun routerIsTheOnlyPlaceForOrder() {
         val bm = read("BrainManager.kt"); val ca = read("CoderAi.kt"); val tr = read("Transcriber.kt")
-        assertTrue(bm.contains("AiRouter.")); assertTrue(ca.contains("AiRouter.")); assertTrue(tr.contains("AiRouter.stt"))
+        assertTrue(bm.contains("AiRouter.")); assertTrue(ca.contains("AiRouter.")); assertTrue(tr.contains("SherpaStt.transcribe"))
         // backend को ऐप की कोई key नहीं भेजी जाती
         val api = read("backend/BackendApi.kt")
         assertFalse(api.contains("Prefs.getKey")); assertFalse(api.contains("key_gemini"))
@@ -142,8 +142,8 @@ class BackendLicenseTest {
     }
 
     @Test fun typingMicServerFirstThenPhone() {
-        assertTrue(read("DKChatUi.kt").contains("BackendDictation.pick(act,"))
-        assertTrue(read("dkai/DkaiScreen.kt").contains("BackendDictation.pick(c,"))
+        assertTrue(read("DKChatUi.kt").contains("SherpaDictation.pick(act,"))
+        assertTrue(read("dkai/DkaiScreen.kt").contains("SherpaDictation.pick(c,"))
         assertTrue(DictationChunks.cut(500, 700, 1200))
         assertFalse(DictationChunks.cut(100, 700, 1200))
         assertTrue(DictationChunks.cut(0, 0, 12_000))

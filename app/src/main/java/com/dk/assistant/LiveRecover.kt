@@ -80,9 +80,12 @@ object LiveRecover {
      * 21 नवंबर 2026 (मालिक: "अटके session पर SYSTEM NOTE मत भेजो, मेरी असली बात का transcript भेजो"): Whisper का सुना
      * वाक्य (असली शब्द, DK की गूँज नहीं) वरना caption; दोनों में शब्द नहीं = null (तब कुछ नहीं भेजते, यूज़र को साफ़ बताते हैं).
      */
-    fun stuckText(whisper: String?, caption: String, dkSaid: String = ""): String? {
-        val t = LiveWhisper.pick(whisper, caption.trim().trimEnd('…').trim(), dkSaid).trim()
-        return t.takeIf { BargeGate.realWords(it) }
+    // 21 नवंबर 2026: Groq Whisper हटा - [heard] = कोई और सुना वाक्य (अब आम तौर पर null), वरना caption (Sherpa-ONNX)
+    fun stuckText(heard: String?, caption: String, dkSaid: String = ""): String? {
+        val cap = caption.trim().trimEnd('…').trim()
+        val w = heard?.trim()?.trim('"', '.', ' ').orEmpty()
+        val t = if (w.isBlank() || !BargeGate.realWords(w) || (dkSaid.isNotBlank() && BargeGate.isEcho(w, dkSaid))) cap else w
+        return t.trim().takeIf { BargeGate.realWords(it) }
     }
 
     /**

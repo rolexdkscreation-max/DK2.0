@@ -534,7 +534,7 @@ class DKAccessibilityService : AccessibilityService() {
     @Volatile private var wakeLive = false
     private var lastWhyNot = ""
 
-    /** Bina beep wala tareeka chalega? (Groq ya Gemini key chahiye) */
+    /** Bina beep wala tareeka chalega? (फ़ोन पर Sherpa-ONNX मॉडल चाहिए - key नहीं) */
     fun silentEar(): Boolean = Prefs.listenEngine(this) != "google" && Transcriber.available(this) &&
         System.currentTimeMillis() > googleUntil
 
@@ -547,7 +547,7 @@ class DKAccessibilityService : AccessibilityService() {
      * v3.7: purane (bina beep) tareeke me bhi bolte-bolte shabd screen par.
      * Gemini key ho to mic ki awaaz (sirf jab aap bol rahe ho) tez caption model ko bhi jaati hai.
      */
-    internal var earCaption: LiveCaption? = null
+    internal var earCaption: CaptionSource? = null
     @Volatile internal var earShowing = false
 
     @Volatile private var ownerSeenAt = 0L
@@ -666,10 +666,10 @@ class DKAccessibilityService : AccessibilityService() {
         val text = text0 ?: fromCaption ?: capText.trim().takeIf { it.length >= 2 }
         DKLog.d("Deri: bolna khatam -> STT ${System.currentTimeMillis() - sttT0} ms (${pcm.size / 32} ms awaaz)")
         if (text == null && fromCaption == null && Transcriber.lastError != null) {
-            // sunne wali key nahi chali: aapki baat kho gayi - batao aur Google mic par chalo (2 min)
+            // फ़ोन वाली पहचान (Sherpa-ONNX) नहीं चली: aapki baat kho gayi - batao aur Google mic par chalo (2 min)
             googleUntil = System.currentTimeMillis() + 2 * 60_000L
             DKState.user("")
-            warn("stt", "सुनने वाली key अभी नहीं चली (${Transcriber.lastError}). अभी Google माइक से सुन रहा हूँ, एक बार फिर बोलिए।")
+            warn("stt", "फ़ोन वाली पहचान अभी नहीं चली (${Transcriber.lastError}). अभी Google माइक से सुन रहा हूँ, एक बार फिर बोलिए।")
             return null
         }
         return text

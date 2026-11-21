@@ -423,8 +423,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         if (d0 != null) { finishDictation(send = true); return }
         if (!Setup.hasMic(c)) { host.ready(); return }
         dictBase = input.text.toString().trimEnd()
-        // पहले DK सर्वर (/stt), न चले तो फ़ोन की पहचान (InlineDictation, पहले जैसा)
-        val dd = com.dk.assistant.BackendDictation.pick(c,
+        // 21 नवंबर 2026: पहले फ़ोन पर Sherpa-ONNX (बोलते-बोलते, बिना नेट / key), न चले तो Android/Google (InlineDictation, पहले जैसा)
+        val dd = com.dk.assistant.SherpaDictation.pick(c,
             onText = { t -> input.setText(DkaiHomeCore.joinDictation(dictBase, t)); input.setSelection(input.text.length) },
             onLevel = { lv -> dictBtn.scaleX = 1f + lv * 0.25f; dictBtn.scaleY = dictBtn.scaleX },
             onEnd = { msg -> if (msg != null) toast(msg); finishDictation(send = false) },
