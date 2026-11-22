@@ -241,10 +241,12 @@ internal fun GeminiLive.sendAudio(pcm: ByteArray, silent: Boolean = false): Unit
     // network dheema: line me atka data. Pehle khaamoshi chhodo (32KB), asli awaaz sirf bahut atakne par (256KB) -
     // OkHttp ki line se purana nahi hata sakte, isliye pehle asli baat ke naye tukde hi gir jaate the.
     // 21 नवंबर 2026 (मालिक, सुधार#6): line 30 KB+ भरी = असली आवाज़ फ़ोन में रोको (1 s तक, ज़्यादा = सबसे पुराना गिरा);
-    // line खाली होते ही पहले रुकी हुई, फिर नई. धीमे network पर 8 kHz (आधा upload).
+    // line खाली होते ही पहले रुकी हुई, फिर नई. (rate कभी नहीं बदलता - 1007 से बचाव)
     val q = w.queueSize()
     val now = System.currentTimeMillis()
-    if (upSlow.update(q, now)) log("सुधार#6 network: " + (if (upSlow.on) "line में ${q / 1024}KB अटका - आवाज़ अब ${LiveUplink.SLOW_RATE / 1000} kHz (आधा upload)" else "line साफ़ - आवाज़ फिर ${IN_RATE / 1000} kHz"))
+    // 22 नवंबर 2026 (मालिक का log: बार-बार 1007 "Sample rate changed ... not supported"): Gemini Live एक connection में
+    // पहली आवाज़ के बाद rate बदलने नहीं देता - इसलिए धीमे network पर भी rate नहीं बदलते, सिर्फ़ रोकना/पुराना गिराना.
+    if (upSlow.update(q, now)) log("सुधार#6 network: " + (if (upSlow.on) "line में ${q / 1024}KB अटका - आवाज़ फ़ोन में रोकी (rate ${IN_RATE / 1000} kHz ही, बदलने से connection टूटता है)" else "line साफ़"))
     if (LiveUplink.mustHold(silent, q)) {
         upHold.add(pcm)?.let { old ->
             dropped++; utt.add(old, true, now)
@@ -259,11 +261,13 @@ internal fun GeminiLive.sendAudio(pcm: ByteArray, silent: Boolean = false): Unit
     if (end && endGate.onSilenceEnd()) try { w.tx("{\"realtimeInput\":{\"audioStreamEnd\":true}}") } catch (e: Exception) { Quiet.note(e) }
 }
 
-/** एक टुकड़ा line में (धीमे network पर 8 kHz). utt को हमेशा असली 16 kHz */
+/**
+ * एक टुकड़ा line में - हमेशा [IN_RATE] (16 kHz). 22 नवंबर 2026: पहले धीमे network पर 8 kHz भेजते थे, पर Gemini Live
+ * session के बीच rate बदलते ही code=1007 से connection बंद कर देता था (बार-बार टूटना). [LiveUplink.wireRate] देखो.
+ */
 internal fun GeminiLive.sendPcm(w: okhttp3.WebSocket, pcm: ByteArray, silent: Boolean) {
-    val slow = upSlow.on
-    val body = if (slow) LiveUplink.half(pcm) else pcm
-    val msg = "{\"realtimeInput\":{\"audio\":{\"mimeType\":\"audio/pcm;rate=${if (slow) LiveUplink.SLOW_RATE else IN_RATE}\",\"data\":\"" +
+    val body = pcm
+    val msg = "{\"realtimeInput\":{\"audio\":{\"mimeType\":\"audio/pcm;rate=${LiveUplink.wireRate(upSlow.on)}\",\"data\":\"" +
         Base64.encodeToString(body, Base64.NO_WRAP) + "\"}}}"
     if (w.tx(msg)) { sent++; sentBytes += body.size; utt.add(pcm, !silent, System.currentTimeMillis()) } else dropped++
 }

@@ -6,7 +6,9 @@ package com.dk.assistant
  *   रुकी आवाज़ [MAX_HOLD_CHUNKS] से ज़्यादा = सबसे पुराना टुकड़ा गिराओ (नया रखो - ताज़ी बात ज़रूरी).
  *   OkHttp की line में जा चुका data वापस नहीं निकलता, इसलिए "पुराना गिराना" फ़ोन वाली रोक में होता है.
  * - audioStreamEnd तभी जब फ़ोन में रुकी आवाज़ पूरी चली जाए (line खुद क्रम से भेजती है - end आवाज़ के बाद ही पहुँचता है).
- * - network धीमा ([Slow]) = आवाज़ 16 kHz की जगह 8 kHz (आधा upload); Gemini Live किसी भी rate का PCM ले लेता है.
+ * - network धीमा ([Slow]) = सिर्फ़ पता रखना (log). 22 नवंबर 2026: पहले 8 kHz पर बदल देते थे, पर Gemini Live एक
+ *   connection में पहली आवाज़ के बाद rate बदलने पर code=1007 ("Sample rate changed ... not supported") से बंद करता है -
+ *   यही बार-बार टूटने की वजह थी. अब rate हमेशा 16 kHz ([wireRate]).
  * pure (JVM test).
  */
 object LiveUplink {
@@ -31,6 +33,10 @@ object LiveUplink {
         fun clear() = synchronized(q) { q.clear() }
         fun resetCount() { dropped = 0 }
     }
+
+    /** line पर जाने वाला rate - धीमे network पर भी वही (session के बीच बदलना = 1007). pure */
+    @Suppress("UNUSED_PARAMETER")
+    fun wireRate(slow: Boolean): Int = GeminiLive.IN_RATE
 
     /** network धीमा है? queue भरी = हाँ; [CLEAR_MS] तक लगभग खाली = नहीं */
     class Slow {

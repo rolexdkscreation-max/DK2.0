@@ -121,6 +121,18 @@ class DkPersonaMoodSideTalkTest {
         assertFalse(s.listening(t + 1))
     }
 
+    /** 22 नवंबर 2026 (मालिक का log): आवाज़ का मिलान गलत होने पर भी "हैलो क्या तुम सुन पा रहे हो" का जवाब रुके नहीं */
+    @Test fun side_directQuestionNotMuted() {
+        assertTrue(SideTalk.direct("हैलो क्या तुम सुन पा रहे हो"))
+        assertTrue(SideTalk.direct("Hello. हैलो क्याम सुन पया हो"))
+        assertTrue(SideTalk.direct("क्या तुम सुन रहे हो"))
+        assertFalse(SideTalk.direct("कल ऑफिस जल्दी आना"))
+        val s = SideTalk.State()
+        s.begin(1_000); s.voice(SideTalk.Who.BOSS, 1_100)
+        s.begin(2_000); s.voice(SideTalk.Who.OTHER, 2_100)
+        assertNull(s.muteReason(2_200, "हैलो क्या तुम सुन पा रहे हो"))
+    }
+
     @Test fun side_addressed() {
         assertTrue(SideTalk.addressed("डीके, लाइट बंद करो"))
         assertTrue(SideTalk.addressed("अच्छा तो DK तुम बताओ"))

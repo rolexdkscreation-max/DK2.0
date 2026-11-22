@@ -93,6 +93,13 @@ class LiveMiscUnlockTest {
         assertTrue(t.contains("flushHeldAudio(w) && try { w.tx("))
         val c = src("GeminiLiveChecks.kt")
         assertTrue(c.contains("LiveUplink.mustHold(silent, q)"))
-        assertTrue(c.contains("rate=\${if (slow) LiveUplink.SLOW_RATE else IN_RATE}"))
+        assertTrue(c.contains("rate=\${LiveUplink.wireRate(upSlow.on)}"))
+        assertFalse(c.contains("LiveUplink.half(pcm)"))         // 22 नवंबर 2026: rate बदलना = 1007
+    }
+
+    /** 22 नवंबर 2026 (मालिक का log): session के बीच rate बदला = 1007 "Sample rate changed" - धीमे network पर भी 16 kHz */
+    @Test fun wireRateNeverChanges() {
+        assertEquals(GeminiLive.IN_RATE, LiveUplink.wireRate(false))
+        assertEquals(GeminiLive.IN_RATE, LiveUplink.wireRate(true))
     }
 }

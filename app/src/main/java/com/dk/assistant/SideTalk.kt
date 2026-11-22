@@ -99,6 +99,7 @@ object SideTalk {
                 return "सुनने वाला मोड - DK का नाम नहीं"
             }
             if (addr) return null
+            if (direct(heard)) return null                 // 22 नवंबर 2026: "हैलो / सुन पा रहे हो" = DK से बात, आवाज़ का मिलान कुछ भी हो
             val cur = current(now)
             // कोई और बोला और अभी-अभी आप बोल रहे थे = आप दोनों की बात
             if (cur == Who.OTHER && lastBossAt > 0 && now - lastBossAt < BOSS_RECENT_MS) return "कोई और आपसे बात कर रहा है"
@@ -113,6 +114,14 @@ object SideTalk {
     // ------------------------------------------------------------------ pure नियम
 
     private val NAME = Regex("(?:^|[\\s,.!?।])(?:डी\\s?\\.?\\s?के|दी\\s?\\.?\\s?के|डीके|dk|d\\.k|deekay)(?=$|[\\s,.!?।:;-])", RegexOption.IGNORE_CASE)
+
+    /**
+     * 22 नवंबर 2026 (मालिक का log: "हैलो क्या तुम सुन पा रहे हो" को बगल की बातचीत मानकर जवाब रोका - आवाज़ का मिलान गलत था).
+     * DK से सीधी बात: शुरू में हैलो/hello, या "सुन पा रहे हो / सुनाई दे रहा / तुम सुन" जैसा सवाल */
+    private val DIRECT = Regex("^\\s*(?:हैलो|हेलो|हलो|hello|helo)(?=$|[\\s,.!?।])|सुन\\s?पा\\s?र(?:हे|ही|हा)|सुनाई\\s?दे|(?:तुम|आप|तू)\\s+(?:मुझे\\s+)?सुन|can you hear", RegexOption.IGNORE_CASE)
+
+    /** DK से सीधा सवाल / हैलो (सुनने वाले मोड के बाहर ही माना जाता है - फ़ोन पर "हैलो" से मोड न टूटे) */
+    fun direct(text: String): Boolean = DIRECT.containsMatchIn(text.trim())
 
     /** बात DK से कही गई (शुरू में या कहीं भी नाम / जगाने वाला शब्द) */
     fun addressed(text: String, wake: List<String> = emptyList()): Boolean {
