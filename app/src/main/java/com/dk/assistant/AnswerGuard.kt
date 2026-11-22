@@ -109,7 +109,10 @@ class AnswerGuard {
         when {
             dup -> { dupRun++; if (dupRun >= 2) { stopped = true; held.setLength(0) } else held.append(part) }
             !long && held.isNotEmpty() -> held.append(part)
-            else -> { if (long) dupRun = 0; out.append(held); held.setLength(0); out.append(part) }
+            else -> {
+                if (long) { dupRun = 0 }
+                out.append(held); held.setLength(0); out.append(part)
+            }
         }
         cur.setLength(0); emitted = 0
     }
@@ -171,7 +174,8 @@ class AnswerGuard {
             val g = AnswerGuard()
             val out = StringBuilder()
             fun emit(s: String) { if (s.isNotEmpty()) { out.append(s); onDelta(s) } }
-            try { run { d -> emit(g.feed(d)); if (g.stopped) throw Stop() } } catch (_: Stop) { }
+            // loop पकड़ा = यहीं रुकना ही काम है (गलती नहीं)
+            try { run { d -> emit(g.feed(d)); if (g.stopped) throw Stop() } } catch (expected: Stop) { }
             emit(g.flush())
             return out.toString()
         }
