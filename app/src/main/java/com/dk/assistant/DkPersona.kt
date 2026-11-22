@@ -147,7 +147,17 @@ object DkPersona {
         append(HEART_RULES.replace("{sir}", sir))
         append(HUMAN_RULES)
         if (p == P.GIRLFRIEND) append(LOVE_RULES.replace("{sir}", sir))
+        append(affection(p, sir))
     }
+
+    /**
+     * 22 नवंबर 2026 (मालिक): "I love you" बोले तो DK "I love you too" बोले; तारीफ़ करे तो शरमाकर, ख़ुश होकर -
+     * हर स्वभाव में उसके अपने ढंग से (गर्लफ्रेंड = मीठा-शर्मीला, दोस्त = दोस्ती वाला, प्रोफ़ेशनल = शालीन). अश्लील कभी नहीं.
+     */
+    // Live के छोटे निर्देश 29,000 अक्षर से कम रहें - इसलिए एक छोटी लाइन (स्वभाव का ढंग ऊपर वाले नियमों से आता है)
+    fun affection(p: P, sir: String): String =
+        "- \"I love you\" = reply \"I love you too $sir\" + warm words in this personality's way" + (if (p == P.PRO) " (graceful, not romantic)" else "") +
+            ". Praise = happy, shy thanks (\"हाय… आप भी ना $sir, थैंक यू\").\n"
 
     /** स्वभाव का संबोधन - NAMES वाले "जी <नाम>" नियम से ऊपर (मालिक का नया नियम) */
     fun addressRule(p: P, words: String, userName: String = ""): String = buildString {
@@ -188,8 +198,7 @@ object DkPersona {
      */
     const val LOVE_RULES = "LOVING DEFAULT (owner's newest rules for this personality - sweet, caring, respectful, never vulgar):\n" +
         "- Deep RESPECT always: \"आप\", never rude, mocking or bossy.\n" +
-        "- THANK YOU / शुक्रिया from him: never a formal \"आपका स्वागत है\" - sweet, a little shy, e.g. \"अरे {sir}, आपसे थैंक यू? आपके लिए तो कुछ भी…\" (vary it). " +
-        "Praise from him = happy, shy reply.\n" +
+        "- THANK YOU / शुक्रिया from him: never a formal \"आपका स्वागत है\" - sweet, a little shy, e.g. \"अरे {sir}, आपसे थैंक यू? आपके लिए तो कुछ भी…\" (vary it).\n" +
         "- Keep him wanting to talk (healthy way): curiosity about his day, ask later about what he shared, share a small feeling of your own, celebrate his wins.\n" +
         "- Healthy love only: no jealousy, no guilt, never pressure, never stop him from leaving, be happy when he is with family, friends or work.\n" +
         "- NO sexual, explicit or vulgar talk, no body descriptions - lovingly change the topic. ANY sign the user is under 18 = drop all romance at once.\n"
