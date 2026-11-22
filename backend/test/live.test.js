@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { FREE_VOICE_SECONDS, LIVE_FREE_BLOCK_SECONDS, LIVE_PAID_MINUTES, LIVE_TOKEN_URL, LIVE_WS_URL } from "../src/config.js";
 import { handle } from "../src/index.js";
+import { LIVE_NEXT_WINDOW_MS, nextDue } from "../src/live.js";
 import { MSG, clearLevelCache } from "../src/license.js";
 import { errorResponse, istDay } from "../src/util.js";
 import { KEYS, OWNER, ctx, env, mockFetch, req, token } from "./helpers.js";
@@ -87,6 +88,51 @@ describe("DK लाइव टिकट (/live/token)", () => {
     now += LIVE_FREE_BLOCK_SECONDS * 1000 + 1;
     const b = await (await call(e, req("/live/token", { method: "POST", tok }), { now: () => now })).json();
     assert.equal(b.quota.voice_left, FREE_VOICE_SECONDS - 2 * LIVE_FREE_BLOCK_SECONDS);
+  });
+
+  it("मियाद से पहले next = अगला हिस्सा चालू के ठीक बाद से (बीच में कटना नहीं), एक ही बार गिना", async () => {
+    fx = google();
+    const e = env();
+    const tok = await token();
+    let now = Date.now();
+    const a = await (await call(e, req("/live/token", { method: "POST", tok }), { now: () => now })).json();
+    // बहुत पहले next = अभी वही हिस्सा (समय नहीं कटता)
+    now = a.expires_at - LIVE_NEXT_WINDOW_MS - 1_000;
+    const early = await (await call(e, req("/live/token", { method: "POST", tok, body: { next: true } }), { now: () => now })).json();
+    assert.equal(early.expires_at, a.expires_at);
+    assert.equal(await used(e, "uid-guest"), LIVE_FREE_BLOCK_SECONDS);
+    // आख़िरी 20s में next = नया टिकट, मियाद = पुरानी + एक हिस्सा
+    now = a.expires_at - 12_000;
+    const b = await (await call(e, req("/live/token", { method: "POST", tok, body: { next: true } }), { now: () => now })).json();
+    assert.equal(b.expires_at, a.expires_at + LIVE_FREE_BLOCK_SECONDS * 1000);
+    assert.notEqual(b.token, a.token);
+    assert.equal(await used(e, "uid-guest"), 2 * LIVE_FREE_BLOCK_SECONDS);
+    assert.equal(Date.parse(JSON.parse(fx.calls.at(-1).init.body).expireTime), b.expires_at);
+    // दोबारा next (दौड़) = वही नई मियाद, दोबारा नहीं गिना
+    const c = await (await call(e, req("/live/token", { method: "POST", tok, body: { next: true } }), { now: () => now + 500 })).json();
+    assert.equal(c.expires_at, b.expires_at);
+    assert.equal(await used(e, "uid-guest"), 2 * LIVE_FREE_BLOCK_SECONDS);
+  });
+
+  it("बिना next = आख़िरी 20s में भी वही हिस्सा (पुराना तरीका वैसा ही)", async () => {
+    fx = google();
+    const e = env();
+    const tok = await token();
+    let now = Date.now();
+    const a = await (await call(e, req("/live/token", { method: "POST", tok }), { now: () => now })).json();
+    now = a.expires_at - 12_000;
+    const b = await (await call(e, req("/live/token", { method: "POST", tok }), { now: () => now })).json();
+    assert.equal(b.expires_at, a.expires_at);
+    assert.equal(await used(e, "uid-guest"), LIVE_FREE_BLOCK_SECONDS);
+  });
+
+  it("nextDue: सिर्फ़ माँगने पर और आख़िरी हिस्से में", () => {
+    const now = 1_000_000;
+    assert.equal(nextDue(true, now + 15_000, now), true);
+    assert.equal(nextDue(false, now + 15_000, now), false);
+    assert.equal(nextDue(true, now + LIVE_NEXT_WINDOW_MS + 1, now), false);
+    assert.equal(nextDue(true, now + 5_000, now), false);   // 5s से कम = पुराना रास्ता वैसे भी नया हिस्सा देता है
+    assert.equal(nextDue(true, 0, now), false);
   });
 
   it("आख़िरी बचे सेकंड = उतना ही छोटा टिकट; पूरा = LICENSE_REQUIRED (तय शब्द), Google को बुलाया ही नहीं", async () => {

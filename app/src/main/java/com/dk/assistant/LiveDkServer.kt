@@ -90,6 +90,44 @@ object LiveDkServer {
         }
     }
 
+    // ---- 22 नवंबर 2026 (मालिक: "DK लाइव का connection बार-बार, तुरंत-तुरंत टूट रहा"): असली कारण - टिकट की मियाद पर
+    // Google चालू बातचीत काट देता था (मुफ़्त = हर 60 सेकंड, बाकी = 30 मिनट) और ऐप कटने के बाद ही नया टिकट लेता था
+    // (बीच का जवाब कटा, 1-3s चुप). अब मियाद से [RENEW_AHEAD_MS] पहले अगला टिकट (सर्वर: {next: true}) और उसी से पीछे
+    // नया connection (goAway वाला बिना-रुकावट रास्ता, [LiveSpare]) - कटने से पहले ही बदल जाता है.
+    /** मियाद से इतना पहले अगला टिकट माँगो (सर्वर अगला हिस्सा आख़िरी 20s में ही देता है - backend LIVE_NEXT_WINDOW_MS) */
+    const val RENEW_AHEAD_MS = 15_000L
+    /** अगला टिकट न मिला / पुराना सर्वर वही टिकट लौटाए = इतने बाद फिर (आख़िरी 5s में पुराना सर्वर भी नया देता है) */
+    const val RENEW_RETRY_MS = 2_000L
+    /** connection इस मियाद के इतने पास कटा = टिकट की वजह से (key/limit की गलती नहीं) */
+    const val EXPIRY_SLACK_MS = 2_000L
+
+    /** चालू टिकट की मियाद (0 = टिकट नहीं) */
+    fun until(): Long = ticket?.expiresAt ?: 0L
+
+    /** अब अगला टिकट माँगें? leftMs = चालू टिकट में कितना बचा */
+    fun renewDue(leftMs: Long, sinceTryMs: Long, renewing: Boolean): Boolean =
+        !renewing && leftMs in 1..RENEW_AHEAD_MS && sinceTryMs >= RENEW_RETRY_MS
+
+    /** सर्वर का नया टिकट सच में आगे तक चलता है? (पुराना सर्वर मियाद से पहले वही हिस्सा लौटाता है) */
+    fun extends(old: BackendWire.LiveTicket?, new: BackendWire.LiveTicket): Boolean =
+        old == null || new.expiresAt > old.expiresAt
+
+    /** connection टूटा - क्या वजह टिकट की मियाद? connUntil = उस connection के टिकट की मियाद */
+    fun dropByTicket(expiredNow: Boolean, connUntil: Long, dropAt: Long): Boolean =
+        expiredNow || connUntil > 0L && dropAt >= connUntil - EXPIRY_SLACK_MS
+
+    @Volatile var renewing = false
+    @Volatile var renewTriedAt = 0L
+
+    /** मियाद से पहले अगला टिकट (network - main thread पर नहीं). true = नया, आगे तक चलने वाला टिकट अब चालू */
+    fun renew(c: Context): Boolean {
+        val old = ticket
+        val t = BackendApi.liveToken(c.applicationContext, next = true)
+        if (!extends(old, t)) return false
+        ticket = t
+        return true
+    }
+
     /** टिकट header में (Google का तय तरीका "Authorization: Token …") - URL में नहीं, ताकि log / error में न छपे */
     fun auth(t: BackendWire.LiveTicket): String = "Token " + t.token
 

@@ -53,7 +53,8 @@ class LiveDkServerTest {
         assertTrue(g.contains("if (LiveDkServer.on()) listOf(LiveDkServer.KEY)"))
         assertTrue(g.contains("if (LiveDkServer.isServer(key)) return GeminiLive.FALLBACK_MODELS"))
         assertTrue(g.contains("LiveDkServer.stopToday(); stopped = true"))
-        assertTrue(g.contains("if (dkServer && LiveDkServer.expired())"))
+        // 22 नवंबर 2026: मियाद वाला कटना = अब expired() या उस connection के टिकट की मियाद ([LiveDkServer.dropByTicket])
+        assertTrue(g.contains("if (dkServer && LiveDkServer.dropByTicket(LiveDkServer.expired(), if (seamless) 0L else connTicketUntil, dropAt))"))
         val warm = liveFile("GeminiLiveWakeWarm.kt")
         assertTrue(warm.contains("keys.all { LiveDkServer.isServer(it) }"))
         val s = AccSrc.all()
@@ -72,5 +73,45 @@ class LiveDkServerTest {
             d = d.parentFile
         }
         error("$n नहीं मिला")
+    }
+
+    // 22 नवंबर 2026 (मालिक: "DK लाइव का connection तुरंत-तुरंत टूट रहा"): मियाद से पहले अगला टिकट, कटने से पहले बदलना
+    @Test fun renewDue_onlyNearExpiry() {
+        assertTrue(LiveDkServer.renewDue(LiveDkServer.RENEW_AHEAD_MS, 10_000L, false))
+        assertTrue(LiveDkServer.renewDue(3_000L, LiveDkServer.RENEW_RETRY_MS, false))
+        assertFalse(LiveDkServer.renewDue(LiveDkServer.RENEW_AHEAD_MS + 1, 10_000L, false))   // अभी बहुत समय बचा
+        assertFalse(LiveDkServer.renewDue(0L, 10_000L, false))                                // टिकट नहीं / खत्म = पुराना रास्ता
+        assertFalse(LiveDkServer.renewDue(-500L, 10_000L, false))
+        assertFalse(LiveDkServer.renewDue(8_000L, 10_000L, true))                             // पहले से माँग रहे
+        assertFalse(LiveDkServer.renewDue(8_000L, LiveDkServer.RENEW_RETRY_MS - 1, false))   // अभी-अभी माँगा
+        // सर्वर अगला हिस्सा आख़िरी 20s में ही देता है - उससे पहले माँगना बेकार
+        assertTrue(LiveDkServer.RENEW_AHEAD_MS in (LiveDkServer.FRESH_MS + 1)..20_000L)
+    }
+
+    @Test fun extends_onlyLaterTicket() {
+        val old = BackendWire.LiveTicket("a", ws, 100_000L, null)
+        assertTrue(LiveDkServer.extends(old, BackendWire.LiveTicket("b", ws, 160_000L, null)))
+        assertFalse(LiveDkServer.extends(old, BackendWire.LiveTicket("a2", ws, 100_000L, null)))   // पुराना सर्वर: वही हिस्सा
+        assertTrue(LiveDkServer.extends(null, old))
+    }
+
+    @Test fun dropByTicket_nearConnExpiry() {
+        assertTrue(LiveDkServer.dropByTicket(true, 0L, 0L))
+        assertTrue(LiveDkServer.dropByTicket(false, 100_000L, 99_000L))       // मियाद पर कटा (नया टिकट पहले से है)
+        assertTrue(LiveDkServer.dropByTicket(false, 100_000L, 101_000L))
+        assertFalse(LiveDkServer.dropByTicket(false, 100_000L, 90_000L))      // मियाद से बहुत पहले = दूसरी वजह
+        assertFalse(LiveDkServer.dropByTicket(false, 0L, 99_000L))            // अपनी key / बिना रुकावट बदला
+    }
+
+    @Test fun mainLoop_renewsBeforeExpiry() {
+        val src = liveFile("GeminiLive.kt")
+        assertTrue(src.contains("LiveDkServer.renewDue(LiveDkServer.until() - nowL"))
+        assertTrue(src.contains("renewTicket(LiveDkServer.until())"))
+        assertTrue(src.contains("LiveDkServer.dropByTicket("))
+        val race = liveFile("GeminiLiveRace.kt")
+        val body = race.substringAfter("fun GeminiLive.renewTicket(").substringBefore("\n}\n")
+        assertTrue(body.contains("LiveDkServer.renew(svc)"))
+        assertTrue(body.contains("goAwayDeadline = until"))
+        assertTrue(body.contains("prepareSpare("))
     }
 }

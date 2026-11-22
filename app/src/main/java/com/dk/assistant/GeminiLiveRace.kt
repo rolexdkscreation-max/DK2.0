@@ -271,6 +271,33 @@ internal fun GeminiLive.onGoAway(timeLeft: String) {
     prepareSpare("goAway", idle = !(turnActive || isPlaying() || toolJobs.isNotEmpty() || generating))
 }
 
+/**
+ * 22 नवंबर 2026 (मालिक: "DK लाइव का connection तुरंत-तुरंत टूट रहा"): DK सर्वर के टिकट की मियाद [until] पर Google बातचीत
+ * काटता है (मुफ़्त = हर 60s). मियाद से पहले अगला टिकट लो; मिला = इसे goAway जैसा मानो (समय = पुराने टिकट की मियाद) -
+ * पीछे से नए टिकट वाला उसी बातचीत (handle) का connection, DK चुप होते ही उस पर (0 ms). न मिला = पहले जैसा (मियाद पर नया टिकट).
+ */
+internal fun GeminiLive.renewTicket(until: Long) {
+    LiveDkServer.renewing = true
+    LiveDkServer.renewTriedAt = System.currentTimeMillis()
+    svc.scope.launch(Dispatchers.IO) {
+        try {
+            if (!LiveDkServer.renew(svc) || stopped || goAway) return@launch
+            val now = System.currentTimeMillis()
+            log("DK सर्वर का टिकट ${(until - now).coerceAtLeast(0L) / 1000}s में पूरा - अगला टिकट मिला, कटने से पहले पीछे से नया connection (बातचीत वहीं से)")
+            goAwayDeadline = until
+            goAwayAt = now
+            goAway = true
+            prepareSpare("टिकट की मियाद", idle = !(turnActive || isPlaying() || toolJobs.isNotEmpty() || generating))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log("अगला टिकट अभी नहीं मिला (${e.message?.take(60)}) - फिर कोशिश")
+        } finally {
+            LiveDkServer.renewing = false
+        }
+    }
+}
+
 /** standby (दूसरा connection) उसी ताज़ा बातचीत से बना और ज़िंदा है? */
 internal fun GeminiLive.spareReady(): Boolean = parked?.let {
     !it.closed.isCompleted && System.currentTimeMillis() - it.at < PARK_MS &&

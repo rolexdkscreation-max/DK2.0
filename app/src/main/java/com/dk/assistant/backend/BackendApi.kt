@@ -82,8 +82,10 @@ object BackendApi {
     }
 
     /** DK लाइव का टिकट (अपनी Gemini key नहीं) - [com.dk.assistant.LiveDkServer] ही बुलाता है */
-    fun liveToken(c: Context): BackendWire.LiveTicket =
-        BackendWire.liveTicket(postJson(c, "/live/token", JSONObject())).also { t -> t.quota?.let { lastQuota = it } }
+    /** [next] = 22 नवंबर 2026: मियाद से पहले अगला टिकट (चालू के ठीक बाद से) - बिना कटे connection बदलने के लिए ([LiveDkServer.renew]) */
+    fun liveToken(c: Context, next: Boolean = false): BackendWire.LiveTicket =
+        BackendWire.liveTicket(postJson(c, "/live/token", if (next) JSONObject().put("next", true) else JSONObject()))
+            .also { t -> t.quota?.let { lastQuota = it } }
 
     /** मुफ़्त वाले की आवाज़ (अपनी key) का समय - [VoiceGate] ही बुलाता है */
     fun voiceGrant(c: Context): BackendWire.VoiceGrant =
