@@ -50,6 +50,25 @@ internal fun SettingsActivity.secGuard() {
             button("सायरन रोकें") { Guard.disarm(this, "सेटिंग्स से रोका"); refresh() })
     }
 
+    // 22 नवंबर 2026 (मालिक): दो टॉगल - छूने / उठाने पर सायरन (पहले जैसा, बाय डिफ़ॉल्ट चालू) और
+    // हमेशा वाला "गलत PIN = सायरन" (बाय डिफ़ॉल्ट बंद) - फ़ोन जेब में, कोई चुराकर लॉक खोलने की कोशिश करे तो तुरंत सायरन + लोकेशन
+    card("सायरन कब बजे", "छूने / उठाने पर • लॉक स्क्रीन पर गलत PIN पर (हमेशा)", startOpen = true) { box ->
+        switch(box, "छूने / उठाने / खिसकाने पर सायरन (टच मोड चालू हो तब)", Guard.motionOn(this))
+            .setOnCheckedChangeListener { _, v ->
+                Prefs.edit(this) { putBoolean(Guard.P_MOTION, v) }
+                toast(if (Guard.active()) "सेव हो गया — टच मोड अगली बार चालू करने पर लागू" else "सेव हो गया")
+            }
+        hint(box, "बंद करें तो टच मोड में फ़ोन उठाने / हिलाने / PIN का खाना खोलने पर सायरन नहीं बजेगा — सिर्फ़ गलत PIN, पावर मेनू / ऊपर का पैनल, चार्जर और SIM निकालने पर।")
+        val swWrong = switch(box, "हमेशा पहरा: लॉक स्क्रीन पर कोई गलत PIN / पैटर्न डाले = तुरंत सायरन + टच मोड चालू", Guard.wrongAlwaysOn(this))
+        swWrong.setOnCheckedChangeListener { _, v ->
+            if (v && !Guard.secure(this)) { swWrong.isChecked = false; toast("पहले फ़ोन में PIN / पैटर्न लगाइए — तभी गलत PIN पकड़ा जा सकता है"); return@setOnCheckedChangeListener }
+            Prefs.edit(this) { putBoolean(Guard.P_WRONG_ALWAYS, v) }
+            Guard.sentinel(this)
+            toast(if (v) "हमेशा पहरा चालू — गलत PIN डालते ही सायरन" else "हमेशा पहरा बंद")
+        }
+        hint(box, "यह टच मोड बंद होने पर भी चलता है — फ़ोन लॉक हो और कोई गलत PIN डाले तो उसी पल टच मोड चालू, सायरन, फ़ोटो और (ऊपर नंबर सेट हो तो) लोकेशन SMS। आप खुद गलती से गलत PIN डाल दें तो चेतावनी स्क्रीन पर अपना चेहरा या DK सीक्रेट PIN से बंद करें। DK का Accessibility चालू रहना ज़रूरी है।")
+    }
+
     // 15 नवंबर 2026 (मालिक, मास्टर प्रॉम्प्ट): गॉड मोड / स्टेल्थ मोड - टच मोड के रूप
     card("टच मोड का रूप", "नॉर्मल • गॉड मोड (सबसे सख़्त) • स्टेल्थ मोड (चुपचाप)") { box ->
         val ms = GuardModes.Mode.values().toList()

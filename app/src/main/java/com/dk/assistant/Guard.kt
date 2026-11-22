@@ -76,6 +76,10 @@ object Guard {
     const val P_TRACK = "guard_track"
     /** 21 नवंबर 2026: सायरन बजते फ़ोन खुला (सायरन बंद नहीं किया) = 1.5 सेकंड में फिर लॉक */
     const val P_RELOCK = "guard_relock_open"
+    /** 22 नवंबर 2026 (मालिक): टच मोड में छूने / उठाने / खिसकाने पर सायरन - बंद करें तो सिर्फ़ गलत PIN (और पैनल / चार्जर / SIM) पर */
+    const val P_MOTION = "guard_motion"
+    /** 22 नवंबर 2026 (मालिक): हमेशा का पहरा - टच मोड चालू न हो तब भी लॉक स्क्रीन पर गलत PIN = टच मोड चालू + सायरन + लोकेशन SMS (बाय डिफ़ॉल्ट बंद) */
+    const val P_WRONG_ALWAYS = "guard_wrong_pin_always"
 
     fun untilOf(c: Context): Long = Prefs.str(c, P_UNTIL, "0").toLongOrNull() ?: 0L
     fun code(c: Context) = Prefs.str(c, P_CODE, "").trim()
@@ -88,6 +92,8 @@ object Guard {
     fun chargerOn(c: Context) = Prefs.bool(c, P_CHARGER, true)
     fun simOn(c: Context) = Prefs.bool(c, P_SIM, true)
     fun relockOn(c: Context) = Prefs.bool(c, P_RELOCK, true)
+    fun motionOn(c: Context) = Prefs.bool(c, P_MOTION, true)
+    fun wrongAlwaysOn(c: Context) = Prefs.bool(c, P_WRONG_ALWAYS, false)
 
     // ------------------------------------------------------------------ हालत
     /** पहरा चालू (5 सेकंड की गिनती के बाद) */
@@ -104,6 +110,9 @@ object Guard {
         private set
     @Volatile var alarmAt = 0L
         private set
+    /** सायरन में खुला फ़ोन DK ने फिर लॉक किया - अब स्क्रीन अपने-आप नहीं जलेगी जब तक कोई खुद न जलाए ([GuardRules.wakeForAlarm]) */
+    @Volatile var relockDark = false
+        private set
 
     fun active() = armed || arming || alarming
 
@@ -119,6 +128,9 @@ object Guard {
     @Volatile private var wakeSensor = false
     @Volatile private var idleWake = false
     private var appCtx: Context? = null
+    private var relockJob: Job? = null
+    /** हमेशा वाला गलत-PIN पहरा ([sentinel]) */
+    private var sentry: BroadcastReceiver? = null
     private var wasCharging = false
     @Volatile private var smsSentFor = 0L
     /** बार-बार सटीक लोकेशन SMS ([trackLoop]) */
@@ -216,8 +228,8 @@ object Guard {
         val app = c.applicationContext
         if (!active() && !Prefs.bool(app, P_ARMED, false)) return
         Prefs.edit(app) { putBoolean(P_ARMED, false); putString(P_UNTIL, "0"); putBoolean(P_TRACK, false) }
-        arming = false; armed = false
-        armJob?.cancel(); timerJob?.cancel()
+        arming = false; armed = false; relockDark = false
+        armJob?.cancel(); timerJob?.cancel(); relockJob?.cancel()
         if (locJob?.isActive == true) note(app, "लोकेशन भेजना बंद ($locSent SMS गए)")
         locJob?.cancel(); locJob = null; locSent = 0
         stopAlarm()
@@ -237,11 +249,15 @@ object Guard {
         if (GuardRules.relockOnOpen(alarming, relockOn(app), FaceAI.enrolled(app) && FaceAI.ready(app),
                 code(app).length >= GuardRules.MIN_CODE, AppLockStore.hasPin(app))) {
             note(app, "सायरन बजते फ़ोन खुला - ${GuardRules.RELOCK_MS / 1000.0} सेकंड में फिर लॉक (चेहरा / DK सीक्रेट PIN / गुप्त शब्द से ही बंद)")
-            scope.launch {
+            // 22 नवंबर 2026 (मालिक: "खुलने के बाद तुरंत लॉक नहीं होता, बस सायरन वाली स्क्रीन दिखती है"): पहले लॉक के 0.5 सेकंड बाद
+            // DK खुद स्क्रीन जलाकर चेतावनी ऊपर ले आता था = लॉक स्क्रीन ढक जाती थी / कुछ फ़ोन में लॉक रद्द. अब: लॉक, फिर जाँच कि
+            // सच में लॉक हुआ (न हुआ तो फिर कोशिश), और स्क्रीन अँधेरी रहती है जब तक कोई खुद न जलाए ([relockDark]).
+            relockJob?.cancel()
+            relockJob = scope.launch {
                 delay(GuardRules.RELOCK_MS)
                 if (!alarming) return@launch
-                svcOf(app)?.let { lockNow(it) }
-                delay(500); GuardAlarmActivity.show(app)
+                relockDark = true
+                note(app, if (lockSure(app)) "फ़ोन फिर से लॉक हो गया" else "⚠ फ़ोन फिर लॉक नहीं हो पाया - DK Accessibility / Smart Lock देखें")
             }
             return
         }
@@ -267,6 +283,18 @@ object Guard {
 
     // ------------------------------------------------------------------ पहरा
 
+    /** लॉक करो और देखो कि सच में लॉक हुआ ([GuardRules.LOCK_TRIES] बार तक). @return लॉक हुआ? */
+    private suspend fun lockSure(app: Context): Boolean {
+        repeat(GuardRules.LOCK_TRIES) {
+            val svc = svcOf(app)
+            if (svc != null) lockNow(svc) else if (Build.VERSION.SDK_INT < 28) NativeActionEngine.lockOld()
+            repeat(GuardRules.LOCK_POLLS) { delay(GuardRules.LOCK_POLL_MS); if (lockedNow(app)) return true }
+        }
+        return lockedNow(app)
+    }
+
+    private fun lockedNow(c: Context) = try { c.getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true } catch (_: Exception) { false }
+
     private fun lockNow(svc: DKAccessibilityService) {
         try {
             if (Build.VERSION.SDK_INT >= 28) svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
@@ -280,11 +308,13 @@ object Guard {
         appCtx = app
         armed = true
         motion = GuardRules.Motion(sense(app))
+        val moveOn = motionOn(app)
         // 21 नवंबर 2026 (मालिक: "टच मोड रात भर चालू = सुबह बैटरी बहुत कम"): पहले पूरे समय (24 घंटे तक) PARTIAL_WAKE_LOCK -
         // CPU कभी सोता ही नहीं था + accelerometer तेज़ (UI) रफ़्तार पर. अब: "wake-up" accelerometer, धीमी रफ़्तार, batching -
         // sensor-hub खुद देखता है, CPU सिर्फ़ पल भर के लिए जागता है. wake lock सिर्फ़ सायरन / लोकेशन भेजते समय ([holdWake]).
         wakeSensor = false
-        try {
+        // 22 नवंबर 2026: "छूने / उठाने पर सायरन" बंद = accelerometer ही नहीं (सिर्फ़ गलत PIN / पैनल / चार्जर / SIM)
+        if (moveOn) try {
             val sm = app.getSystemService(SensorManager::class.java)
             val ws = sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER, true)
             val s = ws ?: sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -304,8 +334,9 @@ object Guard {
                 wakeSensor = ws != null
             } else DKLog.d("गार्ड: accelerometer नहीं मिला - सिर्फ़ PIN / पैनल / चार्जर / सिम से पता चलेगा")
         } catch (e: Exception) { DKLog.d("गार्ड: sensor नहीं चला (${e.message})") }
+        else DKLog.d("टच मोड: छूने / उठाने वाला पहरा बंद (सेटिंग) - सिर्फ़ गलत PIN / पैनल / चार्जर / SIM")
         // पुराने फ़ोन जिनमें wake-up sensor नहीं: स्क्रीन बंद पर हिलना पता चले, इसलिए पहले जैसा wake lock (पर धीमी रफ़्तार)
-        idleWake = GuardRules.idleWake(wakeSensor)
+        idleWake = moveOn && GuardRules.idleWake(wakeSensor)
         watchContent(svc, true)
         holdWake(app)
         DKLog.d(if (wakeSensor) "टच मोड: बैटरी-बचत sensor (CPU सोता रहेगा)" else "टच मोड: इस फ़ोन में wake-up sensor नहीं - wake lock रखा")
@@ -321,6 +352,7 @@ object Guard {
                         Intent.ACTION_USER_PRESENT -> if (secure(app)) pinUnlocked(app)
                         Intent.ACTION_POWER_DISCONNECTED -> if (wasCharging && chargerOn(app)) trigger(app, "चार्जर निकाला")
                         Intent.ACTION_SCREEN_OFF -> if (alarming) scope.launch { delay(400); GuardAlarmActivity.show(app) }
+                        Intent.ACTION_SCREEN_ON -> relockDark = false          // किसी ने खुद स्क्रीन जलाई - अब चेतावनी दिखे
                         "android.intent.action.SIM_STATE_CHANGED" ->
                             if (simOn(app) && i.getStringExtra("ss") == "ABSENT") trigger(app, "सिम निकाली")
                     }
@@ -328,7 +360,7 @@ object Guard {
             }
             val f = IntentFilter().apply {
                 addAction(Intent.ACTION_USER_PRESENT); addAction(Intent.ACTION_POWER_DISCONNECTED); addAction(Intent.ACTION_SCREEN_OFF)
-                addAction("android.intent.action.SIM_STATE_CHANGED")
+                addAction(Intent.ACTION_SCREEN_ON); addAction("android.intent.action.SIM_STATE_CHANGED")
             }
             ContextCompat.registerReceiver(app, r, f, ContextCompat.RECEIVER_NOT_EXPORTED)
             recv = r
@@ -366,7 +398,7 @@ object Guard {
     private fun stopWatch(app: Context) {
         try { sensorL?.let { app.getSystemService(SensorManager::class.java)?.unregisterListener(it) } } catch (e: Exception) { Quiet.note(e) }
         sensorL = null; motion = null
-        watchContent(svcOf(app), false)
+        if (sentry == null || !locked(app)) watchContent(svcOf(app), false)
         try { recv?.let { app.unregisterReceiver(it) } } catch (e: Exception) { Quiet.note(e) }
         recv = null
         try { wake?.let { if (it.isHeld) it.release() } } catch (e: Exception) { Quiet.note(e) }
@@ -375,7 +407,7 @@ object Guard {
 
     /** accessibility event: लॉक स्क्रीन पर PIN का खाना / पावर मेनू / ऊपर का पैनल */
     fun onEvent(svc: DKAccessibilityService, e: AccessibilityEvent) {
-        if (!armed && !alarming) return
+        if (!armed && !alarming) { if (sentry != null && !arming) sentinelEvent(svc, e); return }
         val type = e.eventType
         if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
             type != AccessibilityEvent.TYPE_ANNOUNCEMENT) return
@@ -397,7 +429,7 @@ object Guard {
                 if (blockMenus(app)) closeMenus(svc)
                 trigger(app, "ऊपर का पैनल खोला")
             }
-            GuardRules.isBouncer(texts) && !alarming -> trigger(app, "PIN / पैटर्न डालने की कोशिश")
+            GuardRules.isBouncer(texts) && GuardRules.bouncerTrips(motionOn(app), alarming) -> trigger(app, "PIN / पैटर्न डालने की कोशिश")
         }
     }
 
@@ -428,6 +460,71 @@ object Guard {
         lastRelock = now
         note(app, "गलत PIN / पैटर्न डाला - फ़ोन तुरंत फिर से लॉक")
         if (!alarming) trigger(app, "गलत PIN / पैटर्न डाला") else lockNow(svc)
+    }
+
+    // ------------------------------------------------------------------ 22 नवंबर 2026: हमेशा वाला "गलत PIN = सायरन"
+
+    /**
+     * मालिक: "फ़ोन जेब में, कोई चुरा ले और लॉक खोलने के लिए कुछ गलत डाले = फटाक से टच मोड + सायरन + लोकेशन".
+     * टॉगल ([P_WRONG_ALWAYS]) चालू + फ़ोन में PIN = हमेशा: स्क्रीन जले और फ़ोन लॉक हो तभी लॉक स्क्रीन की लिखावट देखो
+     * (बाकी समय कुछ नहीं - बैटरी). service जुड़ने पर और टॉगल बदलने पर बुलाओ.
+     */
+    @Synchronized
+    fun sentinel(c: Context) {
+        val app = c.applicationContext
+        val want = GuardRules.sentinelOn(wrongAlwaysOn(app), secure(app))
+        if (want && sentry == null) {
+            try {
+                val r = object : BroadcastReceiver() {
+                    override fun onReceive(ctx: Context?, i: Intent?) {
+                        when (i?.action) {
+                            Intent.ACTION_SCREEN_ON -> if (locked(app)) watchContent(svcOf(app), true)
+                            Intent.ACTION_USER_PRESENT -> if (!active()) watchContent(svcOf(app), false)
+                        }
+                    }
+                }
+                ContextCompat.registerReceiver(app, r, IntentFilter().apply { addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT) },
+                    ContextCompat.RECEIVER_NOT_EXPORTED)
+                sentry = r
+                if (locked(app)) watchContent(svcOf(app), true)
+                DKLog.d("टच मोड: हमेशा वाला गलत-PIN पहरा चालू")
+            } catch (e: Exception) { DKLog.d("गार्ड: गलत-PIN पहरा नहीं लगा (${e.message})") }
+        } else if (!want && sentry != null) {
+            try { sentry?.let { app.unregisterReceiver(it) } } catch (e: Exception) { Quiet.note(e) }
+            sentry = null
+            if (!active()) watchContent(svcOf(app), false)
+            DKLog.d("टच मोड: हमेशा वाला गलत-PIN पहरा बंद")
+        }
+    }
+
+    /** टच मोड बंद है, पर हमेशा वाला पहरा: लॉक स्क्रीन पर "गलत PIN" = तुरंत टच मोड चालू + सायरन (+ SMS अगर चालू) */
+    private fun sentinelEvent(svc: DKAccessibilityService, e: AccessibilityEvent) {
+        val pkg = e.packageName?.toString().orEmpty()
+        if (pkg != "android" && !pkg.contains("systemui")) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastWrongCheck < GuardRules.WRONG_CHECK_MS) return
+        lastWrongCheck = now
+        val texts = ArrayList<String>()
+        e.text?.forEach { it?.toString()?.let(texts::add) }
+        e.contentDescription?.toString()?.let(texts::add)
+        try { (e.source ?: svc.rootInActiveWindow)?.let { collect(it, texts, 0) } } catch (x: Exception) { Quiet.note(x) }
+        if (texts.isEmpty() || !GuardRules.isWrongPin(texts)) return
+        val app = svc.applicationContext
+        if (!locked(app)) return
+        armNow(svc, "लॉक स्क्रीन पर गलत PIN / पैटर्न डाला")
+    }
+
+    /** बिना 5 सेकंड की गिनती: पहरा चालू और तुरंत अलार्म (फ़ोन पहले से लॉक है) */
+    @Synchronized
+    private fun armNow(svc: DKAccessibilityService, why: String) {
+        if (active()) return
+        val app = svc.applicationContext
+        Prefs.edit(app) { putBoolean(P_ARMED, true); putString(P_UNTIL, "0") }
+        codeNow = code(app)
+        lastRelock = SystemClock.elapsedRealtime()
+        note(app, "टच मोड अपने-आप चालू (हमेशा वाला पहरा) - $why")
+        startWatch(svc, 0L)
+        trigger(app, why)
     }
 
     /** पहरे में ही लॉक स्क्रीन की लिखावट के बदलाव माँगो (बाकी समय नहीं - बैटरी और DK की रफ़्तार) */

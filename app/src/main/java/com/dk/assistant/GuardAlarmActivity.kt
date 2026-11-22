@@ -334,9 +334,11 @@ class GuardAlarmActivity : AppCompatActivity() {
 
         fun show(c: Context) {
             if (!Guard.alarming) return
-            // स्क्रीन बंद की गई हो (power बटन) - फिर जलाओ
+            // स्क्रीन बंद की गई हो (power बटन) - फिर जलाओ. 22 नवंबर 2026: पर सायरन में खुला फ़ोन DK ने अभी फिर लॉक किया हो
+            // तो नहीं - स्क्रीन अँधेरी और फ़ोन लॉक रहे, जब तक कोई खुद स्क्रीन न जलाए (पहले यहीं से लॉक स्क्रीन ढक जाती थी)
+            val pm = c.getSystemService(android.os.PowerManager::class.java)
+            if (!GuardRules.wakeForAlarm(Guard.relockDark, pm?.isInteractive != false)) return
             try {
-                val pm = c.getSystemService(android.os.PowerManager::class.java)
                 if (pm != null && !pm.isInteractive) {
                     @Suppress("DEPRECATION")
                     pm.newWakeLock(android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP, "dk:guard-screen").acquire(3_000)
