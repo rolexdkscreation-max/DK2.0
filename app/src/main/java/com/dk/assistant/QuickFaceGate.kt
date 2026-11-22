@@ -19,6 +19,9 @@ import kotlin.math.hypot
  *    साथ में पुरानी सख़्त AI शर्त ([FaceSpoof.SURE_MEAN] / [FaceSpoof.SURE_FLOOR]) फिर भी ज़रूरी.
  *  - फ़ोटो / स्क्रीन (AI औसत [FaceSpoof.FAKE_MAX] से नीचे) = तुरंत FAIL. दो चेहरे / चेहरा कूदा / बदला = फिर से शुरू.
  *  - मॉडल न हो = FAIL (बिना जाँच कभी नहीं खुलता).
+ *  - 22 नवंबर 2026 (मालिक: "रिकॉर्ड किया वीडियो दिखाया तो भी खुल गया"): ऊपर का सब पास होने के बाद भी आख़िरी ताला -
+ *    स्क्रीन की random रंगीन रोशनी ([FlashLive], ~1.5 s). उसका जवाब सिर्फ़ सामने खड़ा असली चेहरा देता है, वीडियो / फ़ोटो नहीं.
+ *    बीच में चेहरा हटा / बदला / दूसरा आया = FAIL.
  */
 class QuickFaceGate(private val side: Int = FaceLiveness.randomSide()) {
     data class Frame(
@@ -28,7 +31,15 @@ class QuickFaceGate(private val side: Int = FaceLiveness.randomSide()) {
     )
     enum class State { WAIT, PASS, FAIL }
     /** [step] 0-3 स्क्रीन के ●●● के लिए, [turn] = अभी सिर घुमाने को कहा */
-    data class Verdict(val state: State, val why: String, val step: Int = 0, val turn: Boolean = false)
+    data class Verdict(val state: State, val why: String, val step: Int = 0, val turn: Boolean = false, val flash: Boolean = false)
+
+    /** रंगीन रोशनी वाली जाँच (चल रही हो तो) - [FlashScreen] इसी से रंग दिखाता है */
+    @Volatile var flash: FlashLive? = null
+        private set
+    /** पिछली रंगीन जाँच का नतीजा (लॉग) */
+    @Volatile var lastFlash: FlashLive.Result? = null
+        private set
+    val flashing get() = flash != null
 
     private val votes = ArrayDeque<Float>()
     private var hits = 0
@@ -40,7 +51,7 @@ class QuickFaceGate(private val side: Int = FaceLiveness.randomSide()) {
     private var turned = false
 
     fun reset() {
-        votes.clear(); hits = 0; notBoss = 0; lastAt = 0L; lastW = 0f; matchAt = 0L; turnAsked = false; turned = false
+        votes.clear(); hits = 0; notBoss = 0; lastAt = 0L; lastW = 0f; matchAt = 0L; turnAsked = false; turned = false; flash = null
     }
 
     fun mean(): Float = if (votes.isEmpty()) 0f else votes.sum() / votes.size
@@ -53,6 +64,7 @@ class QuickFaceGate(private val side: Int = FaceLiveness.randomSide()) {
 
     fun feed(f: Frame): Verdict {
         if (!f.spoofReady) return Verdict(State.FAIL, "AI anti-spoof मॉडल तैयार नहीं — PIN से खोलें")
+        flash?.let { fl -> return flashStep(fl, f) }
         if (f.faces == 0) {
             if (lastAt > 0L && f.at - lastAt > GAP_MS) reset()
             hits = 0
@@ -87,18 +99,39 @@ class QuickFaceGate(private val side: Int = FaceLiveness.randomSide()) {
         hits++
         if (matchAt == 0L) matchAt = f.at
         val pct = (s * 100).toInt()
-        if (hits >= HITS && fastReal()) return Verdict(State.PASS, "✓ LIVE — मालिक पक्का ($pct%)", 3)
+        if (hits >= HITS && fastReal()) return startFlash(pct)
         if (!turnAsked && f.at - matchAt >= UNSURE_MS) turnAsked = true
         if (turnAsked) {
-            if (turned && hits >= HITS && sureReal()) return Verdict(State.PASS, "✓ LIVE — मालिक पक्का ($pct%)", 3)
+            if (turned && hits >= HITS && sureReal()) return startFlash(pct)
             return Verdict(State.WAIT, turnHint(), 2, true)
         }
         return Verdict(State.WAIT, "✓ चेहरा मिला — AI लाइव जाँच (${votes.size}/$FAST_FRAMES)…", 2)
     }
 
+    private var flashAskedAt = 0L
+
+    private fun startFlash(pct: Int): Verdict {
+        flash = FlashLive(); flashAskedAt = lastAt
+        return Verdict(State.WAIT, "✓ चेहरा मिला ($pct%) — आख़िरी लाइव जाँच: रंग बदलेंगे, सीधे देखते रहिए", 3, flash = true)
+    }
+
+    private fun flashStep(fl: FlashLive, f: Frame): Verdict {
+        if (!fl.started && f.at - flashAskedAt > FLASH_START_MS) { reset(); return Verdict(State.WAIT, "चेहरा कैमरे के सामने करें") }
+        if (!fl.track(f.at, f.faces, f.cx, f.cy, f.w)) {
+            val why = fl.broken; reset()
+            return Verdict(State.FAIL, "लाइव जाँच बीच में टूटी ($why) — फिर से")
+        }
+        if (!fl.done(f.at)) return Verdict(State.WAIT, "लाइव जाँच — रंग बदल रहे हैं, सीधे देखते रहिए", 3)
+        val r = fl.result(); lastFlash = r; reset()
+        return if (r.live) Verdict(State.PASS, "✓ LIVE — असली इंसान, मालिक पक्का", 3)
+        else Verdict(State.FAIL, FLASH_FAIL)
+    }
+
     private fun turnHint() = if (turned) "✓ ठीक — अब सीधे कैमरे में देखिए" else "सिर हल्का-सा ${FaceLiveness.side(side)} घुमाइए"
 
     companion object {
+        const val FLASH_FAIL = "स्क्रीन की रोशनी चेहरे पर नहीं दिखी — फ़ोटो / वीडियो / स्क्रीन? (बहुत तेज़ धूप हो तो छाँव में आइए या PIN से खोलें)"
+        const val FLASH_START_MS = 2_000L
         const val HITS = 2
         const val WINDOW = 6
         const val FAST_FRAMES = 4

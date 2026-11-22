@@ -50,6 +50,8 @@ class AppLockActivity : AppCompatActivity() {
     @Volatile private var busy = false
     // 22 नवंबर 2026: तेज़ लाइव जाँच - बिना सिर घुमाए; AI पक्का न हो तभी एक छोटा random घुमाव ([QuickFaceGate])
     @Volatile private var gate = QuickFaceGate()
+    /** 22 नवंबर 2026: आख़िरी लाइव ताला - स्क्रीन की random रंगीन रोशनी ([FlashLive]) - वीडियो / फ़ोटो इसका जवाब नहीं दे सकते */
+    private val flashScr by lazy { FlashScreen(this) }
     @Volatile private var pauseUntil = 0L
     private var lastUi = 0L
     private val d by lazy { resources.displayMetrics.density }
@@ -270,7 +272,7 @@ class AppLockActivity : AppCompatActivity() {
         gate = QuickFaceGate()
         val go = {
             say("सीधे कैमरे में देखिए — लाइव चेहरा जाँच रहा हूँ")
-            cam = FaceCam(this, pv) { b -> onFrame(b) }.also { it.start { why -> say("कैमरा नहीं खुला ($why) — दूसरा तरीका चुनें", HoloScanView.WARN) } }
+            cam = FaceCam(this, pv, gapMs = FlashLive.CAM_GAP_MS) { b -> flashScr.sample(b); onFrame(b) }.also { it.start { why -> say("कैमरा नहीं खुला ($why) — दूसरा तरीका चुनें", HoloScanView.WARN) } }
         }
         if (FaceAI.hasSpoof(this)) go()
         else {
@@ -286,6 +288,7 @@ class AppLockActivity : AppCompatActivity() {
     }
 
     private fun stopFace() {
+        flashScr.cancel()
         try { cam?.stop() } catch (e: Exception) { Quiet.note(e) }
         cam = null; holo = null
     }
@@ -304,10 +307,13 @@ class AppLockActivity : AppCompatActivity() {
                 val dets = FaceAI.detectAll(this, copy, minScore = 0.6f)
                 val det = dets.maxByOrNull { it.w * it.h }
                 val one = det != null && dets.size == 1
+                flashScr.box = det?.let { floatArrayOf(it.x, it.y, it.w, it.h) }
                 val yaw = det?.let { FaceLiveness.yaw(it.kps) }
                 val nearFront = yaw != null && kotlin.math.abs(yaw) <= FaceLiveness.TURN
-                val real = if (one && det != null) FaceAI.realness(this, copy, det, force = true) else null
-                val e = if (one && det != null && nearFront) FaceAI.embed(this, copy, det) else null
+                // रंगीन रोशनी के बीच AI / पहचान नहीं (रंग से गड़बड़ाते हैं) - सिर्फ़ वही लगातार चेहरा
+                val flashing = gate.flashing
+                val real = if (one && det != null && !flashing) FaceAI.realness(this, copy, det, force = true) else null
+                val e = if (one && det != null && nearFront && !flashing) FaceAI.embed(this, copy, det) else null
                 val s = e?.let { FaceAI.score(this, it) }
                 val other = e?.let { x -> FacePeople.all(this).maxOfOrNull { FaceMatch.cosineSimilarity(it.print, x) } }
                 val v = gate.feed(QuickFaceGate.Frame(now, dets.size, det?.let { it.x + it.w / 2f } ?: 0f, det?.let { it.y + it.h / 2f } ?: 0f,
@@ -324,9 +330,12 @@ class AppLockActivity : AppCompatActivity() {
                         }
                     }
                 }
+                if (v.flash) { val g = gate; runOnUiThread { g.flash?.let { flashScr.begin(it) } } }
+                gate.lastFlash?.let { if (v.state != QuickFaceGate.State.WAIT) DKLog.d("ऐप लॉक ${it.log()}") }
                 when (v.state) {
                     QuickFaceGate.State.PASS -> runOnUiThread { ok("DK फ़ेस स्कैन") }
                     QuickFaceGate.State.FAIL -> {
+                        flashScr.cancel()
                         say("✗ DECLINED — ${v.why}", HoloScanView.BAD)
                         Guard.note(this, "ऐप लॉक: $label पर चेहरा नहीं मिला (${v.why})")
                         // कुछ देर रुककर फिर से नई जाँच (नई random तरफ़)
