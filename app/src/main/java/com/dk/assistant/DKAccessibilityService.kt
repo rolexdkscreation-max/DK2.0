@@ -91,6 +91,7 @@ class DKAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        DKState.earUp = { voiceUp() }   // 22 नवंबर 2026: लाइव की घड़ी जुड़ने (LISTENING) से, CONNECTING से नहीं
         try { PayGuard.onServiceBack(this) } catch (e: Exception) { Quiet.note(e) }
         try { PhoneLockStore.reload(this) } catch (e: Exception) { Quiet.note(e) }
         try { Guard.resume(this) } catch (e: Exception) { DKLog.d("गार्ड: ${e.message}") }   // नवंबर 2026: गार्ड मोड चालू था तो फिर से पहरा
@@ -188,6 +189,7 @@ class DKAccessibilityService : AccessibilityService() {
         com.dk.assistant.inspector.Inspector.stopTimer()
         exitBackup("सेवा बंद")
         instance = null
+        DKState.earUp = { true }
         AppVisible.onChange = null
         floatOrb?.release(); floatOrb = null
         try { DKIsland.stop(); PrivacyScreen.stop(); LiveNotify.release(this) } catch (e: Exception) { Quiet.note(e) }
@@ -492,7 +494,14 @@ class DKAccessibilityService : AccessibilityService() {
     /** 21 नवंबर 2026: अलग तरीका (अपना माइक + पहचान) अभी चल रहा है - तब Gemini Live नहीं जुड़ता, फिर भी DK सुन रहा है */
     @Volatile var splitTalking = false; private set
     /** DK अभी सच में सुन रहा है? (Live जुड़ा, या अलग तरीका, या बैकअप) - सिर्फ़ बैज के लिए */
-    fun voiceUp(): Boolean = com.dk.assistant.dkai.DkaiCore.voiceUp(DKState.live, gemLive.canTalk(), splitTalking, backupMode)
+    fun voiceUp(): Boolean = com.dk.assistant.dkai.DkaiCore.voiceUp(DKState.live, gemLive.hearing(), splitTalking, backupMode, oldEarLive)
+    /**
+     * 22 नवंबर 2026 (मालिक: "बात होती है, फिर भी CONNECTING ही लिखा रहता है"): Live चालू पर Gemini Live इस्तेमाल नहीं हो रहा
+     * (सुनने का तरीका 'अपने आप' नहीं / key नहीं / पिछली गलती का इंतज़ार) = पुराना कान (फ़ोन की पहचान -> दिमाग़ -> आवाज़) सुनता है.
+     * तब भी DK सुन रहा है - बैज LISTENING और घड़ी उसी से.
+     */
+    @Volatile var oldEarLive = false; private set
+    private fun oldEar(on: Boolean) { if (oldEarLive != on) { oldEarLive = on; DKState.linkChanged() } }
     fun talkWanted(): Boolean = com.dk.assistant.talk.TalkPrefs.wanted(this) && System.currentTimeMillis() > talkBlockedUntil
     @Volatile internal var liveOffUntil = 0L
     /** Lagatar kitni baar Live network/mic ki thodi-der wali dikkat se ruka (backoff ke liye) */
@@ -739,6 +748,7 @@ class DKAccessibilityService : AccessibilityService() {
                 // अपना माइक -> Whisper / Android पहचान -> दिमाग़ -> आवाज़ ([com.dk.assistant.talk.TalkLoop]). बीच में टोकना वहीं.
                 // नहीं चुना = नीचे वाला Gemini Live बिल्कुल पहले जैसा.
                 if (DKState.live && talkWanted() && !callBusy()) {
+                    oldEar(false)
                     val me = this@DKAccessibilityService
                     if (!checkMic()) { delay(2000); continue }
                     if (!voiceOk()) { delay(800); continue }
@@ -787,12 +797,14 @@ class DKAccessibilityService : AccessibilityService() {
                 // v4.6: Live थोड़ी देर के लिए टूटा (नेट/connection) - पुराने तरीके (दूसरा STT + chat) पर नहीं जाना:
                 // वहाँ बोला हुआ लिखा जाता था (कभी ग़लत) पर जवाब अक्सर नहीं आता था. बस इंतज़ार और तुरंत फिर Live
                 if (DKState.live && !wakeLive && liveOffSoft && System.currentTimeMillis() <= liveOffUntil && GeminiLive.canRun(this@DKAccessibilityService)) {
+                    oldEar(false)                    // फिर जोड़ रहा = सच में CONNECTING
                     ear.release(); listener.release(); earCaptionOff()
                     delay(250); continue
                 }
                 // Gemini Live: mic ki awaaz lagatar stream, jawab ki awaaz turant stream (sabse kam deri)
                 // नवंबर 2026: नेट नहीं (बैकअप) = Live जोड़ने के लिए माइक बंद-चालू नहीं; नेट लौटते ही फिर Live
                 if (useGeminiLive() && !callBusy() && !OfflineListen.cmdsOnly(backupMode, DKState.live, NetProbe.online(this@DKAccessibilityService))) {
+                    oldEar(false)                    // अब Gemini Live - बैज उसके जुड़ने (setupComplete) से
                     if (!checkMic()) { delay(2000); continue }
                     if (!voiceOk()) { delay(800); continue }   // 18 नवंबर 2026: मुफ़्त वाले का आज का समय पूरा / नेट नहीं = Live नहीं
                     ear.release(); listener.release(); earCaptionOff()
@@ -889,6 +901,7 @@ class DKAccessibilityService : AccessibilityService() {
                 // v4.8 का "बिना नेट डीके ..." (फ़ोन की अपनी पहचान, इंटरनेट नहीं) सिर्फ़ तब, जब पुराना "हमेशा सुनो" भी चालू हो
                 val offlineEar = Prefs.wakeMode(this@DKAccessibilityService) && !NetProbe.online(this@DKAccessibilityService) && OfflineStt.available(this@DKAccessibilityService)
                 if (!DKState.live && !callRinging() && !offlineEar) {
+                    oldEar(false)
                     val me = this@DKAccessibilityService
                     if (!com.dk.assistant.wake.WakeWord.active(me)) {
                         // मोड (स्क्रीन बंद / चार्जिंग नहीं / सिर्फ़ बटन) या मॉडल नहीं = माइक पूरा बंद
@@ -949,6 +962,7 @@ class DKAccessibilityService : AccessibilityService() {
                     continue
                 }
                 val liveBefore = DKState.live
+                oldEar(liveBefore)                   // Live चालू + पुराना कान = DK सुन रहा है (LISTENING)
                 val heard = hear(wakeGate = !liveBefore && !callRinging())
                 if (DKState.mode == Mode.LISTENING || DKState.mode == Mode.THINKING) DKState.set(Mode.IDLE)
                 // sunte-sunte Live chalu hua: yeh baat Live se pehle ki (background) - command nahi, Gemini Live khud sunega
