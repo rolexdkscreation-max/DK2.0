@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
+import com.dk.assistant.OWNER_ONLY_LABEL
 import com.dk.assistant.PhoneLockStore
 import com.dk.assistant.PhoneLockVoice
 import com.dk.assistant.SecretCodec
