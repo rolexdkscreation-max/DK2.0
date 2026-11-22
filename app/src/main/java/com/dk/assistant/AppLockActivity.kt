@@ -30,7 +30,7 @@ import java.util.concurrent.Executors
 /**
  * 21 नवंबर 2026 (मालिक): ऐप लॉक की futuristic स्क्रीन - काला-नीला निऑन, ऐप का आइकन, और ताला खोलने के तरीके:
  * DK सीक्रेट PIN (● बिंदु), DK पैटर्न, फ़ोन का अपना फ़िंगरप्रिंट / फ़ेस / स्क्रीन लॉक (Android BiometricPrompt),
- * और DK फ़ेस स्कैन (होलोग्राम + सिर घुमाना + AI anti-spoof, [BossGate] जितना सख़्त).
+ * और DK फ़ेस स्कैन (होलोग्राम + हर फ़्रेम AI anti-spoof + सख़्त मिलान, [QuickFaceGate] - लाइव चेहरा ही, फ़ोटो / वीडियो नहीं).
  * back = होम पर (ताले वाला ऐप नहीं खुलता). [AppLock] खोलता है.
  */
 class AppLockActivity : AppCompatActivity() {
@@ -48,9 +48,8 @@ class AppLockActivity : AppCompatActivity() {
     private var holo: HoloScanView? = null
     private val work = Executors.newSingleThreadExecutor { r -> Thread(r, "dk-applock-face").apply { isDaemon = true } }
     @Volatile private var busy = false
-    @Volatile private var gate = BossGate()
-    private val liveness = FaceLiveness().apply { challenge(FaceLiveness.randomSide()) }
-    private val spoof = FaceSpoof.Vote(BossGate.SPOOF_WINDOW)
+    // 22 नवंबर 2026: तेज़ लाइव जाँच - बिना सिर घुमाए; AI पक्का न हो तभी एक छोटा random घुमाव ([QuickFaceGate])
+    @Volatile private var gate = QuickFaceGate()
     @Volatile private var pauseUntil = 0L
     private var lastUi = 0L
     private val d by lazy { resources.displayMetrics.density }
@@ -159,9 +158,11 @@ class AppLockActivity : AppCompatActivity() {
         val wait = AppLockStore.waitLeft(this)
         when (m) {
             AppLockRules.Method.PIN -> {
-                val pad = NeonPinPad(this).apply { onDone = { p -> tryPin(p, this) } }
+                // 22 नवंबर 2026 (मालिक): सही PIN पूरा होते ही तुरंत खुले - OK नहीं. गलत = वहीं लाल, गिनती बढ़े ([AppLockStore.P_PIN_LEN])
+                val auto = AppLockStore.pinLen(this)
+                val pad = NeonPinPad(this, autoLen = auto).apply { onDone = { p -> tryPin(p, this) } }
                 body.addView(pad, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
-                say(if (wait > 0) waitText(wait) else "DK सीक्रेट PIN डालें, फिर OK")
+                say(if (wait > 0) waitText(wait) else if (auto > 0) PIN_AUTO_HINT else "DK सीक्रेट PIN डालें, फिर OK")
             }
             AppLockRules.Method.PATTERN -> {
                 val pv = NeonPattern(this).apply { onDone = { dots -> tryPattern(dots, this) } }
@@ -182,8 +183,8 @@ class AppLockActivity : AppCompatActivity() {
     private fun tryPin(p: String, pad: NeonPinPad) {
         val wait = AppLockStore.waitLeft(this)
         if (wait > 0) { say(waitText(wait), HoloScanView.WARN); return }
-        if (AppLockStore.checkPin(this, p)) { ok("PIN"); return }
-        pad.tone = HoloScanView.BAD; pad.postDelayed({ pad.tone = HoloScanView.SCAN }, 600)
+        if (AppLockStore.checkPin(this, p)) { pad.grant(); ok("PIN"); return }
+        pad.reject()
         wrong()
     }
 
@@ -266,9 +267,9 @@ class AppLockActivity : AppCompatActivity() {
             val p = (3 * d).toInt(); setPadding(p, p, p, p); clipToOutline = true
             addView(pv, FrameLayout.LayoutParams(-1, -1)); addView(hv, FrameLayout.LayoutParams(-1, -1))
         }, FrameLayout.LayoutParams(w, (w * 1.25f).toInt(), Gravity.CENTER))
-        gate = BossGate(); liveness.challenge(FaceLiveness.randomSide()); spoof.reset()
+        gate = QuickFaceGate()
         val go = {
-            say(liveness.guide())
+            say("सीधे कैमरे में देखिए — लाइव चेहरा जाँच रहा हूँ")
             cam = FaceCam(this, pv) { b -> onFrame(b) }.also { it.start { why -> say("कैमरा नहीं खुला ($why) — दूसरा तरीका चुनें", HoloScanView.WARN) } }
         }
         if (FaceAI.hasSpoof(this)) go()
@@ -289,6 +290,10 @@ class AppLockActivity : AppCompatActivity() {
         cam = null; holo = null
     }
 
+    /**
+     * 22 नवंबर 2026 (मालिक: "बहुत टाइम लगाता है, इधर-उधर घुमाना पड़ता है"): हर फ़्रेम पर एक साथ detect + AI anti-spoof + पहचान
+     * (पहले anti-spoof सिर्फ़ सीधे चेहरे पर और पहचान सिर्फ़ कुछ कदमों पर), फ़ैसला [QuickFaceGate], PASS पर तुरंत खुलना (600ms रुकना हटा).
+     */
     private fun onFrame(b: Bitmap) {
         if (busy || done || System.currentTimeMillis() < pauseUntil) return
         busy = true
@@ -298,36 +303,37 @@ class AppLockActivity : AppCompatActivity() {
                 val now = System.currentTimeMillis()
                 val dets = FaceAI.detectAll(this, copy, minScore = 0.6f)
                 val det = dets.maxByOrNull { it.w * it.h }
-                val live = liveness.update(if (dets.size == 1) det else null, now)
-                if (det == null) { spoof.reset(); holo?.show(HoloScanView.Mode.SEARCH, emptyList()) }
-                val front = det != null && FaceLiveness.yaw(det.kps)?.let { kotlin.math.abs(it) <= FaceLiveness.CENTER } == true
-                val nearFront = det != null && FaceLiveness.yaw(det.kps)?.let { kotlin.math.abs(it) <= FaceLiveness.TURN } == true
-                if (det != null && dets.size == 1 && nearFront) FaceAI.realness(this, copy, det, force = true)?.let { spoof.add(it) }
-                val e = if (det != null && dets.size == 1 && liveness.idNow(front)) FaceAI.embed(this, copy, det) else null
+                val one = det != null && dets.size == 1
+                val yaw = det?.let { FaceLiveness.yaw(it.kps) }
+                val nearFront = yaw != null && kotlin.math.abs(yaw) <= FaceLiveness.TURN
+                val real = if (one && det != null) FaceAI.realness(this, copy, det, force = true) else null
+                val e = if (one && det != null && nearFront) FaceAI.embed(this, copy, det) else null
                 val s = e?.let { FaceAI.score(this, it) }
                 val other = e?.let { x -> FacePeople.all(this).maxOfOrNull { FaceMatch.cosineSimilarity(it.print, x) } }
-                val v = gate.feed(BossGate.Frame(dets.size, s, other, live, front, FaceAI.hasSpoof(this), spoof.count(), spoof.sure(), spoof.fake()))
-                if (det != null) holo?.let { h ->
-                    val tone = when (v.state) { BossGate.State.PASS -> HoloScanView.OK; BossGate.State.FAIL -> HoloScanView.BAD; else -> HoloScanView.SCAN }
+                val v = gate.feed(QuickFaceGate.Frame(now, dets.size, det?.let { it.x + it.w / 2f } ?: 0f, det?.let { it.y + it.h / 2f } ?: 0f,
+                    det?.w ?: 0f, yaw, s, other, real, FaceAI.hasSpoof(this)))
+                if (det == null) holo?.show(HoloScanView.Mode.SEARCH, emptyList())
+                else holo?.let { h ->
+                    val tone = when (v.state) { QuickFaceGate.State.PASS -> HoloScanView.OK; QuickFaceGate.State.FAIL -> HoloScanView.BAD; else -> HoloScanView.SCAN }
                     h.place(det, copy.width, copy.height, true, tone = tone)?.let { f ->
-                        val bars = buildList { s?.let { add("MATCH" to it) }; add("LIVENESS" to liveness.done() / 3f); add("AI ANTI-SPOOF" to spoof.mean()) }
+                        val bars = buildList { s?.let { add("MATCH" to it) }; add("LIVE" to v.step / 3f); add("AI ANTI-SPOOF" to gate.mean()) }
                         when (v.state) {
-                            BossGate.State.PASS -> h.show(HoloScanView.Mode.AUTHORIZED, listOf(f), bars = bars, banner = HoloScanView.AUTHORIZED)
-                            BossGate.State.FAIL -> h.show(HoloScanView.Mode.DECLINED, listOf(f), bars = bars, banner = HoloScanView.DECLINED)
-                            else -> h.show(HoloScanView.Mode.SCAN, listOf(f), liveness.done(), bars)
+                            QuickFaceGate.State.PASS -> h.show(HoloScanView.Mode.AUTHORIZED, listOf(f), bars = bars, banner = HoloScanView.AUTHORIZED)
+                            QuickFaceGate.State.FAIL -> h.show(HoloScanView.Mode.DECLINED, listOf(f), bars = bars, banner = HoloScanView.DECLINED)
+                            else -> h.show(HoloScanView.Mode.SCAN, listOf(f), v.step, bars)
                         }
                     }
                 }
                 when (v.state) {
-                    BossGate.State.PASS -> runOnUiThread { status.postDelayed({ ok("DK फ़ेस स्कैन") }, 600) }
-                    BossGate.State.FAIL -> {
+                    QuickFaceGate.State.PASS -> runOnUiThread { ok("DK फ़ेस स्कैन") }
+                    QuickFaceGate.State.FAIL -> {
                         say("✗ DECLINED — ${v.why}", HoloScanView.BAD)
                         Guard.note(this, "ऐप लॉक: $label पर चेहरा नहीं मिला (${v.why})")
-                        // कुछ देर रुककर फिर से नई जाँच (नया क्रम)
+                        // कुछ देर रुककर फिर से नई जाँच (नई random तरफ़)
                         pauseUntil = now + RETRY_MS
-                        gate = BossGate(); liveness.challenge(FaceLiveness.randomSide()); spoof.reset()
+                        gate = QuickFaceGate()
                     }
-                    else -> if (now - lastUi > 400) { lastUi = now; say(v.why.ifBlank { liveness.hint() }) }
+                    else -> if (now - lastUi > UI_MS || v.turn) { lastUi = now; say(v.why) }
                 }
             } catch (t: Throwable) {
                 Quiet.note(t)
@@ -363,6 +369,8 @@ class AppLockActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_PKG = "pkg"
         private const val REQ_PHONE = 7311
-        private const val RETRY_MS = 1_800L
+        private const val RETRY_MS = 1_000L
+        private const val UI_MS = 250L
+        const val PIN_AUTO_HINT = "DK सीक्रेट PIN डालें — सही होते ही अपने-आप खुलेगा"
     }
 }

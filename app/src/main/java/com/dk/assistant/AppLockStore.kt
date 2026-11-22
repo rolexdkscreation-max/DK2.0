@@ -17,6 +17,12 @@ object AppLockStore {
     const val P_GRACE = "applock_grace_ms"
     const val P_FAILS = "applock_fails"
     const val P_LAST_FAIL = "applock_last_fail"
+    /**
+     * 22 नवंबर 2026 (मालिक: "सही PIN डालते ही तुरंत खुले, OK दबाए बिना; गलत पर भी OK की ज़रूरत नहीं").
+     * PIN की लंबाई (अंक नहीं) - इतने अंक होते ही पैड ख़ुद जाँचता है ([NeonPinPad] autoLen). हर जाँच = एक कोशिश
+     * (गलत = गिनती बढ़े), तो बिना गिनती के अंदाज़ा लगाने का रास्ता नहीं खुलता. पुराने PIN की लंबाई पहली सही जाँच पर सीखी जाती है.
+     */
+    const val P_PIN_LEN = "applock_pin_len"
 
     fun on(c: Context) = Prefs.bool(c, P_ON, false)
     fun setOn(c: Context, v: Boolean) = Prefs.edit(c) { putBoolean(P_ON, v) }
@@ -26,12 +32,17 @@ object AppLockStore {
 
     private fun salt() = ByteArray(16).also { SecureRandom().nextBytes(it) }
 
-    fun setPin(c: Context, pin: String) = Prefs.edit(c) { putString(P_PIN, AppLockRules.seal(pin, salt())) }
+    fun setPin(c: Context, pin: String) = Prefs.edit(c) { putString(P_PIN, AppLockRules.seal(pin, salt())); putLong(P_PIN_LEN, pin.length.toLong()) }
+
+    /** सेव PIN कितने अंक का (0 = अभी पता नहीं - पुराना PIN, एक बार OK से खुलते ही सीख लेगा) */
+    fun pinLen(c: Context): Int = AppLockRules.autoLen(Prefs.long(c, P_PIN_LEN, 0L).toInt(), hasPin(c))
     fun setPattern(c: Context, dots: List<Int>) = Prefs.edit(c) { putString(P_PATTERN, AppLockRules.seal(AppLockRules.patternKey(dots), salt())) }
     fun clearPattern(c: Context) = Prefs.edit(c) { remove(P_PATTERN); if (method(c) == AppLockRules.Method.PATTERN) putString(P_METHOD, AppLockRules.Method.PIN.id) }
 
     /** PIN जाँच (गलत = गिनती बढ़े, सही = गिनती शून्य). रुकने का समय चल रहा हो तो false */
-    fun checkPin(c: Context, pin: String): Boolean = tryCode(c) { AppLockRules.check(pin, Prefs.str(c, P_PIN, "")) }
+    fun checkPin(c: Context, pin: String): Boolean = tryCode(c) { AppLockRules.check(pin, Prefs.str(c, P_PIN, "")) }.also { good ->
+        if (good && pinLen(c) != pin.length) Prefs.edit(c) { putLong(P_PIN_LEN, pin.length.toLong()) }
+    }
     fun checkPattern(c: Context, dots: List<Int>): Boolean = tryCode(c) { AppLockRules.check(AppLockRules.patternKey(dots), Prefs.str(c, P_PATTERN, "")) }
 
     private fun tryCode(c: Context, ok: () -> Boolean): Boolean {

@@ -9,12 +9,20 @@ import android.graphics.Typeface
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
+import kotlin.math.cos
 import kotlin.math.hypot
+import kotlin.math.sin
 import kotlin.math.min
 
 /**
  * 21 नवंबर 2026: ऐप लॉक / टच मोड के futuristic (निऑन) PIN पैड और पैटर्न.
  * PIN कभी दिखता नहीं - सिर्फ़ ● बिंदु. दोनों अपना काम [onDone] से बताते हैं.
+ */
+/**
+ * 22 नवंबर 2026 (मालिक: "PIN वाला पैनल थोड़ा और फ़्यूचरिस्टिक बनाओ"): HUD जैसा पैड - षट्कोण (hex) बटन, घूमता स्कैन,
+ * कोनों पर HUD ब्रैकेट, ऊपर षट्कोण खाने (कितने अंक डाले - अंक कभी नहीं), दबाने पर फैलती लहर.
+ * गलत = लाल + हिलना ([reject]), सही = हरी लहर ([grant]).
+ * [autoLen] > 0 = इतने अंक होते ही ख़ुद [onDone] (OK की ज़रूरत नहीं) - तब OK की जगह "CLR" (सब मिटाओ).
  */
 class NeonPinPad(context: Context, private val maxLen: Int = AppLockRules.PIN_MAX, private val autoLen: Int = 0) : View(context) {
     /** पूरा PIN (OK दबाया / [autoLen] अंक हुए) */
@@ -24,50 +32,130 @@ class NeonPinPad(context: Context, private val maxLen: Int = AppLockRules.PIN_MA
     private val sb = StringBuilder()
     private val d = resources.displayMetrics.density
     private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.6f * d }
-    private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 6f * d }
+    private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 6f * d; strokeCap = Paint.Cap.ROUND }
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val txt = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD); textAlign = Paint.Align.CENTER }
+    private val hex = Path()
     private var pressed = -1
-    private val keys = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "OK")
+    private var tapKey = -1
+    private var tapAt = 0L
+    private var pulseAt = 0L
+    private val born = System.currentTimeMillis()
+    private val keys = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", if (autoLen > 0) "CLR" else "OK")
 
     val length get() = sb.length
     fun clear() { sb.setLength(0); invalidate() }
 
+    /** गलत: लाल चमक + पैड हिलता है, फिर नीला */
+    fun reject() {
+        tone = HoloScanView.BAD; sb.setLength(0)
+        animate().cancel(); translationX = 0f
+        val s = 10 * d
+        animate().translationX(s).setDuration(SHAKE_MS).withEndAction {
+            animate().translationX(-s).setDuration(SHAKE_MS).withEndAction {
+                animate().translationX(s / 2).setDuration(SHAKE_MS).withEndAction { animate().translationX(0f).setDuration(SHAKE_MS).start() }.start()
+            }.start()
+        }.start()
+        postDelayed({ tone = HoloScanView.SCAN }, BAD_MS)
+    }
+
+    /** सही: हरी लहर */
+    fun grant() { tone = HoloScanView.OK; pulseAt = System.currentTimeMillis(); invalidate() }
+
     override fun onMeasure(w: Int, h: Int) {
         val width = MeasureSpec.getSize(w)
-        val dotsH = (44 * d).toInt()
+        val dotsH = (TOP_DP * d).toInt()
         setMeasuredDimension(width, dotsH + (width * 4 / 3).coerceAtMost((360 * d).toInt()))
     }
 
     private fun cell(): Triple<Float, Float, Float> {
-        val top = 44 * d
+        val top = TOP_DP * d
         val cw = width / 3f; val ch = (height - top) / 4f
         return Triple(cw, ch, top)
     }
 
-    override fun onDraw(c: Canvas) {
-        val (cw, ch, top) = cell()
-        // ऊपर बिंदु (कितने अंक डाले - अंक नहीं)
-        val n = sb.length.coerceAtLeast(if (autoLen > 0) autoLen else AppLockRules.PIN_MIN)
-        val gap = 20 * d
-        val sx = width / 2f - (n - 1) * gap / 2f
-        for (i in 0 until n) {
-            val x = sx + i * gap; val y = 20 * d
-            ring.color = tone; c.drawCircle(x, y, 6 * d, ring)
-            if (i < sb.length) { fill.color = tone; c.drawCircle(x, y, 4.2f * d, fill) }
+    /** नुकीले सिरे ऊपर वाला षट्कोण */
+    private fun hexPath(cx: Float, cy: Float, r: Float): Path {
+        hex.reset()
+        for (k in 0 until 6) {
+            val a = Math.toRadians(60.0 * k - 90.0)
+            val x = cx + r * cos(a).toFloat(); val y = cy + r * sin(a).toFloat()
+            if (k == 0) hex.moveTo(x, y) else hex.lineTo(x, y)
         }
-        val r = min(cw, ch) * 0.36f
-        txt.textSize = r * 0.72f
+        hex.close(); return hex
+    }
+
+    override fun onDraw(c: Canvas) {
+        val now = System.currentTimeMillis()
+        val t = (now - born) / 1000f
+        val (cw, ch, top) = cell()
+        drawFrame(c, t)
+        drawSlots(c, t)
+        val r = min(cw, ch) * 0.40f
         for ((i, k) in keys.withIndex()) {
             val cx = (i % 3) * cw + cw / 2; val cy = top + (i / 3) * ch + ch / 2
-            if (i == pressed) { glow.color = HoloScanView.alpha(tone, 0.35f); c.drawCircle(cx, cy, r + 3 * d, glow) }
-            ring.color = HoloScanView.alpha(tone, if (i == pressed) 1f else 0.65f)
-            c.drawCircle(cx, cy, r, ring)
-            fill.color = HoloScanView.alpha(tone, if (i == pressed) 0.22f else 0.06f)
-            c.drawCircle(cx, cy, r, fill)
-            txt.color = if (k == "OK") HoloScanView.OK else 0xFFE6FBFF.toInt()
-            if (k == "OK") txt.textSize = r * 0.5f else txt.textSize = r * 0.72f
+            val on = i == pressed
+            val p = hexPath(cx, cy, r)
+            // भीतर हल्की चमक, बाहर पतली रेखा, दबाने पर मोटी चमक
+            fill.color = HoloScanView.alpha(tone, if (on) 0.28f else 0.07f); c.drawPath(p, fill)
+            if (on) { glow.color = HoloScanView.alpha(tone, 0.35f); c.drawPath(p, glow) }
+            ring.color = HoloScanView.alpha(tone, if (on) 1f else 0.6f); c.drawPath(p, ring)
+            // भीतरी छोटा षट्कोण (HUD)
+            ring.color = HoloScanView.alpha(tone, 0.18f); c.drawPath(hexPath(cx, cy, r * 0.78f), ring)
+            // दबाने के बाद फैलती लहर
+            val age = now - tapAt
+            if (i == tapKey && age < RIPPLE_MS) {
+                val f = age / RIPPLE_MS.toFloat()
+                ring.color = HoloScanView.alpha(tone, 0.8f * (1f - f)); c.drawPath(hexPath(cx, cy, r * (1f + 0.45f * f)), ring)
+            }
+            val special = k == "OK" || k == "CLR"
+            txt.color = when { k == "OK" -> HoloScanView.OK; special -> HoloScanView.alpha(tone, 0.9f); else -> 0xFFE6FBFF.toInt() }
+            txt.textSize = if (special) r * 0.42f else r * 0.66f
             c.drawText(k, cx, cy - (txt.descent() + txt.ascent()) / 2, txt)
+        }
+        // सही PIN पर हरी लहर पूरे पैड पर
+        val pa = now - pulseAt
+        if (pulseAt > 0 && pa < PULSE_MS) {
+            val f = pa / PULSE_MS.toFloat()
+            glow.color = HoloScanView.alpha(HoloScanView.OK, 0.6f * (1f - f))
+            c.drawCircle(width / 2f, top + (height - top) / 2f, (height - top) * 0.7f * f, glow)
+        }
+        if (isAttachedToWindow) postInvalidateOnAnimation()
+    }
+
+    /** कोनों के HUD ब्रैकेट + ऊपर से नीचे चलती स्कैन-रेखा + छोटी लिखावट */
+    private fun drawFrame(c: Canvas, t: Float) {
+        val L = 18 * d; val w = width.toFloat(); val h = height.toFloat(); val i = 2 * d
+        ring.color = HoloScanView.alpha(tone, 0.85f)
+        c.drawLine(i, i, i + L, i, ring); c.drawLine(i, i, i, i + L, ring)
+        c.drawLine(w - i, i, w - i - L, i, ring); c.drawLine(w - i, i, w - i, i + L, ring)
+        c.drawLine(i, h - i, i + L, h - i, ring); c.drawLine(i, h - i, i, h - i - L, ring)
+        c.drawLine(w - i, h - i, w - i - L, h - i, ring); c.drawLine(w - i, h - i, w - i, h - i - L, ring)
+        val top = TOP_DP * d
+        val y = top + (h - top) * ((t / SCAN_S) % 1f)
+        fill.color = HoloScanView.alpha(tone, 0.10f); c.drawRect(i, y - 10 * d, w - i, y, fill)
+        ring.color = HoloScanView.alpha(tone, 0.35f); c.drawLine(i, y, w - i, y, ring)
+        txt.textSize = 9 * d; txt.color = HoloScanView.alpha(tone, 0.7f)
+        val label = when (tone) { HoloScanView.OK -> "ACCESS GRANTED"; HoloScanView.BAD -> "ACCESS DENIED"; else -> "DK SECURE INPUT // LIVE" }
+        c.drawText(label, w / 2f, 12 * d, txt)
+    }
+
+    /** ऊपर षट्कोण खाने - भरे = कितने अंक (अंक नहीं दिखते) */
+    private fun drawSlots(c: Canvas, t: Float) {
+        val n = sb.length.coerceAtLeast(if (autoLen > 0) autoLen else AppLockRules.PIN_MIN)
+        val gap = 24 * d
+        val sx = width / 2f - (n - 1) * gap / 2f
+        val y = 34 * d
+        val beat = 0.6f + 0.4f * sin(t * 4f)
+        for (i in 0 until n) {
+            val x = sx + i * gap
+            ring.color = HoloScanView.alpha(tone, 0.8f); c.drawPath(hexPath(x, y, 8 * d), ring)
+            if (i < sb.length) {
+                glow.color = HoloScanView.alpha(tone, 0.25f); c.drawCircle(x, y, 6 * d, glow)
+                fill.color = tone; c.drawPath(hexPath(x, y, 5 * d), fill)
+            } else if (i == sb.length) {
+                fill.color = HoloScanView.alpha(tone, 0.25f * beat); c.drawPath(hexPath(x, y, 5 * d), fill)
+            }
         }
     }
 
@@ -78,7 +166,7 @@ class NeonPinPad(context: Context, private val maxLen: Int = AppLockRules.PIN_MA
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> { pressed = i; invalidate() }
             MotionEvent.ACTION_UP -> {
-                if (i >= 0 && i == pressed) press(keys[i])
+                if (i >= 0 && i == pressed) { tapKey = i; tapAt = System.currentTimeMillis(); press(keys[i]) }
                 pressed = -1; invalidate()
             }
             MotionEvent.ACTION_CANCEL -> { pressed = -1; invalidate() }
@@ -90,6 +178,7 @@ class NeonPinPad(context: Context, private val maxLen: Int = AppLockRules.PIN_MA
         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         when (k) {
             "⌫" -> if (sb.isNotEmpty()) sb.setLength(sb.length - 1)
+            "CLR" -> sb.setLength(0)
             "OK" -> if (sb.isNotEmpty()) { val p = sb.toString(); sb.setLength(0); onDone?.invoke(p) }
             else -> if (sb.length < maxLen) {
                 sb.append(k)
@@ -97,6 +186,15 @@ class NeonPinPad(context: Context, private val maxLen: Int = AppLockRules.PIN_MA
             }
         }
         invalidate()
+    }
+
+    private companion object {
+        const val TOP_DP = 54
+        const val SHAKE_MS = 45L
+        const val BAD_MS = 650L
+        const val RIPPLE_MS = 380L
+        const val PULSE_MS = 500L
+        const val SCAN_S = 2.6f
     }
 }
 
