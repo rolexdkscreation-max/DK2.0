@@ -121,6 +121,7 @@ internal fun GeminiLive.bargeIn(why: String) {
 internal fun GeminiLive.replyPartArrived(what: String) {
     if (!replyStarted) {
         replyStarted = true
+        replySeq++
         // naya jawab: pichhla (agar abhi bhi baj raha tha) poora likho, ginti shuru se
         commitPending(true)
         turnRecvBytes = 0; turnPlayedBytes = 0; shownReply = ""
