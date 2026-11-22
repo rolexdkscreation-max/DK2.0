@@ -259,6 +259,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var goAwayDeadline = 0L
     /** 21 नवंबर 2026: goAway कब आया ([LiveSpare.goAwayTurnSwap]); पिछली बार जो handle अटका ([LiveRecover.dropHandle]) */
     @Volatile internal var goAwayAt = 0L
+    /** 22 नवंबर 2026: इस connection के DK सर्वर टिकट की मियाद (0 = अपनी key) - [LiveDkServer.dropByTicket] */
+    @Volatile internal var connTicketUntil = 0L
     @Volatile internal var stuckHandle: String? = null
     @Volatile internal var askAgainAt = 0L
     @Volatile internal var spareTriedAt = 0L
@@ -1358,6 +1360,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                     // पहले "जुड़ नहीं पा रही" बताया था = अब "फिर जुड़ गई, बोलिए" (स्क्रीन पर; माइक चालू है, इसलिए फ़ोन की आवाज़ नहीं)
                     if (svc.liveTroubleShown || svc.liveTroubleSpoken) { svc.liveTroubleShown = false; svc.liveTroubleSpoken = false; DKState.reply(LiveConnectNotice.BACK) }
                     val upAt = System.currentTimeMillis()
+                    connTicketUntil = if (dkServer) LiveDkServer.until() else 0L
                     val resumedConn = handle != null
                     // नवंबर 2026: कितनी देर टूटा रहा - 12s तक = यूज़र को पता नहीं चला (अपने-आप संभला); ज़्यादा = सच में रुकावट
                     if (lostAt > 0L) {
@@ -1406,6 +1409,10 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                             beginFreeze("इतिहास: तरीका B (context ${ctxTokens / 1000}k, $turnsSinceFresh बारियाँ)", nowL)
                             if (rotFreezeAt > 0L) { delay(50); continue }
                         }
+                        // 22 नवंबर 2026 (मालिक: "बार-बार connection टूट रहा"): DK सर्वर का टिकट खत्म होने वाला = कटने से पहले अगला
+                        // टिकट और उसी से पीछे नया connection (नीचे वही goAway रास्ता) - मियाद पर Google का काटना अब नहीं दिखता
+                        if (dkServer && !goAway && LiveDkServer.renewDue(LiveDkServer.until() - nowL, nowL - LiveDkServer.renewTriedAt, LiveDkServer.renewing))
+                            renewTicket(LiveDkServer.until())
                         if (LiveSpare.due(goAway, nowL - upAt)) prepareSpare(if (goAway) "goAway" else "${(nowL - upAt) / 60_000} मिनट चला", idleNow)
                         if (goAway && !turnActive && !isPlaying()) {
                             if (LiveSpare.waitForSpare(spareReady(), nowL - spareTriedAt, goAwayDeadline - nowL)) { delay(100); continue }
@@ -1604,7 +1611,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                     reconnects++
                     log("टूटने से पहले भेजे: ${wire.summary()}")
                     // 18 नवंबर 2026: DK सर्वर के टिकट की मियाद पूरी (Google ने रोका) = key/limit की गलती नहीं - नया टिकट, बातचीत वहीं से
-                    if (dkServer && LiveDkServer.expired()) {
+                    if (dkServer && LiveDkServer.dropByTicket(LiveDkServer.expired(), if (seamless) 0L else connTicketUntil, dropAt)) {
                         if (turnActive) finishTurn()
                         log("DK सर्वर का टिकट पूरा (code=$code) - नए टिकट से फिर जोड़ रहा हूँ" + if (handle != null) " (बातचीत वहीं से)" else "")
                         continue

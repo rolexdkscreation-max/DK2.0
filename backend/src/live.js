@@ -13,6 +13,13 @@ import { CODES, HttpError, json } from "./util.js";
 /** पिछला टिकट इतनी देर से कम बचा हो तो उसे दोबारा न दो (नया लो) */
 const REUSE_MIN_MS = 5_000;
 
+/**
+ * 22 नवंबर 2026 (मालिक: "DK लाइव का connection बार-बार टूट रहा"): मियाद पर Google बातचीत काटता था (मुफ़्त = हर 60s).
+ * अब ऐप मियाद से पहले {next: true} माँगता है - चालू हिस्से में इतना या कम बचा हो तो अगला हिस्सा ठीक चालू के खत्म होने
+ * से जुड़ा (from = until, समय दोबारा नहीं कटता), ताकि ऐप पीछे से नए टिकट वाला connection बनाकर बिना कटे बदल सके.
+ */
+export const LIVE_NEXT_WINDOW_MS = 20_000;
+
 /** Google से टिकट. uses 0 = इस मियाद में कितने भी connection (दौड़/दोबारा जुड़ना) */
 export async function createLiveToken(env, expiresAt, now) {
   if (!env.GEMINI_API_KEY) throw new HttpError(503, CODES.NOT_CONFIGURED, "सर्वर पर Gemini key (GEMINI_API_KEY) नहीं डली");
@@ -32,6 +39,11 @@ export async function createLiveToken(env, expiresAt, now) {
     throw new HttpError(502, CODES.ALL_FAILED, `Gemini Live का टिकट नहीं बना (${r.status})`);
   }
   return b.name;
+}
+
+/** ऐप ने अगला हिस्सा माँगा और चालू हिस्सा ख़त्म होने वाला है (पर अभी चल रहा) */
+export function nextDue(want, until, now) {
+  return want && until > now + REUSE_MIN_MS && until - now <= LIVE_NEXT_WINDOW_MS;
 }
 
 /** POST /live/token */
@@ -54,12 +66,13 @@ export async function onLiveToken(env, ident, opts = {}) {
   const until = await db.liveUntil(ident.uid);
   let expires_at = until;
   let charged = 0;
-  if (until <= now + REUSE_MIN_MS) {
+  const next = nextDue(opts.next === true, until, now);
+  if (until <= now + REUSE_MIN_MS || next) {
     // नया हिस्सा: पहले Google से टिकट, फिर गिनती (टिकट न बने तो समय नहीं कटता)
     const block = Math.min(q.voice_left, LIVE_FREE_BLOCK_SECONDS);
-    expires_at = now + block * 1000;
+    expires_at = (next ? until : now) + block * 1000;
     const token = await createLiveToken(env, expires_at, now);
-    if (await db.claimLive(ident.uid, now + REUSE_MIN_MS, expires_at)) {
+    if (await db.claimLive(ident.uid, next ? until : now + REUSE_MIN_MS, expires_at)) {
       charged = block;
       await db.addUsage(ident.uid, day, block, 0);
     }

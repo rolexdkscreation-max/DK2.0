@@ -245,7 +245,11 @@ export async function handle(req, env, ctx, opts = {}) {
 
   if (path === "/ai/chat" && M === "POST") return onChat(req, env, ctx, ident, opts);
   if (path === "/stt" && M === "POST") return onStt(req, env, ctx, ident, opts);
-  if (path === "/live/token" && M === "POST") return onLiveToken(env, ident, opts);
+  if (path === "/live/token" && M === "POST") {
+    // 22 नवंबर 2026: {next: true} = मियाद से पहले अगला टिकट (बिना कटे बदलना) - खाली / गलत body = पहले जैसा
+    const b = await req.json().catch(() => ({}));
+    return onLiveToken(env, ident, { ...opts, next: b?.next === true });
+  }
   if (path === "/voice/grant" && M === "POST") return onVoiceGrant(env, ident, opts);
   // 20 नवंबर 2026 (मालिक): इमेज - सिर्फ़ Cloudflare FLUX, सिर्फ़ मालिक ([onImage])
   if (path === "/image" && M === "POST") return onImage(req, env, ctx, ident, opts, later);
