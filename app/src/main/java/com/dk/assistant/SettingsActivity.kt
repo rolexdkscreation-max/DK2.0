@@ -128,7 +128,7 @@ class SettingsActivity : AppCompatActivity() {
             "orb" -> { title.text = "ओर्ब और चेहरा"; secOrb(); secIsland() }
             "ui" -> { title.text = "दिखावट"; secUi() }
             "access" -> { title.text = "Accessibility"; secAccess(); secPayGuard(); secDriving(); secEvents() }
-            "phonelock" -> { title.text = "फ़ोन लॉक / अनलॉक"; secPhoneLock(); secVoiceCmds() }
+            "phonelock" -> { title.text = "फ़ोन लॉक / अनलॉक"; secPhoneLock() }   // 22 नवंबर 2026 (मालिक): रिकॉर्ड करके सिखाने वाला हिस्सा हटा
             "guard" -> { title.text = "टच मोड"; secGuard(); secPrivacy(); secSos() }
             "applock" -> { title.text = "ऐप लॉक"; secAppLock() }
             "face" -> { title.text = "चेहरा पहचान"; secFace() }

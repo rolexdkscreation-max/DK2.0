@@ -33,7 +33,7 @@ internal fun SettingsActivity.secPhoneLock() {
         }
     }
 
-    card("आवाज़ से फ़ोन लॉक / अनलॉक", "अपनी आवाज़ रिकॉर्ड करके — बिना AI, बिना इंटरनेट, सीधे फ़ोन पर", startOpen = true) { box ->
+    card("आवाज़ से फ़ोन लॉक / अनलॉक", "बोलते ही — बिना AI, बिना इंटरनेट, सीधे फ़ोन पर", startOpen = true) { box ->
         if (!Setup.accessibilityOn(this)) hint(box, "⚠ पहले Settings → Accessibility में DK चालू करें — उसके बिना फ़ोन लॉक / अनलॉक नहीं होगा।")
         swLock = switch(box, "आवाज़ से फ़ोन लॉक करो", PhoneLockStore.lockOn(this))
         swUnlock = switch(box, "आवाज़ से फ़ोन अनलॉक करो (PIN / पैटर्न DK डालेगा)", PhoneLockStore.unlockOn(this))
@@ -48,11 +48,16 @@ internal fun SettingsActivity.secPhoneLock() {
                 PhoneLockStore.clearSecret(this); swUnlock.isChecked = false; refresh()
                 toast("फ़ोन का PIN / पैटर्न DK से हटा दिया")
             })
-        hint(box, "लॉक और अनलॉक का वाक्य नीचे \"आवाज़ रिकॉर्ड करके सिखाएँ\" में अलग-अलग 30 सेकंड रिकॉर्ड करें — उसी आवाज़ से फ़ोन लॉक / अनलॉक होगा, इंटरनेट हो या न हो।")
+        // 22 नवंबर 2026 (मालिक): "लॉक-अनलॉक में एक ऑप्शन - सिर्फ़ मालिक की आवाज़ पर; बंद हो तो कोई भी बोले".
+        // आवाज़ की पहचान सिर्फ़ वॉइस गार्डियन से (एक बार सिखाई) - यहाँ अलग से रिकॉर्ड करके सिखाने वाला हिस्सा हटा
+        val swOwner = switch(box, OWNER_ONLY_LABEL, PhoneLockStore.ownerOnly(this))
+        swOwner.setOnCheckedChangeListener { _, on -> PhoneLockStore.setOwnerOnly(this, on) }
+        hint(box, "चालू = सिर्फ़ आपकी आवाज़ (Settings → वॉइस गार्डियन में एक बार सिखाई हुई) पर फ़ोन लॉक / अनलॉक होगा। " +
+            "बंद = पास में कोई भी \"डीके फोन अनलॉक करो\" बोले तो खुल जाएगा। बोलते ही स्क्रीन जगती है, इंटरनेट हो या न हो।")
         hint(box, "ध्यान दें: PIN फ़ोन से बाहर कहीं नहीं जाता " +
             "(न इंटरनेट, न AI)। फ़ोन का PIN बदलें तो यहाँ भी नया सेव करें। लगातार ${PhoneLockStore.MAX_FAILS} बार न खुले तो DK अपने-आप रुक जाता है।")
         // 16 नवंबर 2026 (ऑडिट G1): आवाज़ से अनलॉक की सुरक्षा साफ़-साफ़
-        if (!com.dk.assistant.voice.VoiceGuardian.ready(this)) hint(box, "⚠ आवाज़ से अनलॉक के लिए पहले Settings → वॉइस गार्डियन में अपनी आवाज़ सिखाइए — उसके बिना DK PIN नहीं डालेगा।")
+        if (!com.dk.assistant.voice.VoiceGuardian.ready(this)) hint(box, "⚠ \"$OWNER_ONLY_LABEL\" चालू है तो पहले Settings → वॉइस गार्डियन में अपनी आवाज़ सिखाइए — उसके बिना DK PIN नहीं डालेगा।")
         hint(box, UNLOCK_SAFETY_NOTE)
         // 21 नवंबर 2026 (मालिक): हर फ़ोन में PIN वाला हिस्सा अलग दूरी पर आता है - DK कितना ऊपर स्लाइड करे
         label(box, "अनलॉक: लॉक स्क्रीन पर कितना ऊपर स्लाइड करे")
@@ -91,8 +96,8 @@ internal fun SettingsActivity.secPhoneLock() {
     }
 
     // v4.6 मालिक: "लॉक-अनलॉक में टेक्स्ट हटाकर वॉइस रिकॉर्डिंग वाला डालना" - नाम/वाक्य लिखने वाला खाना हटाया.
-    // अब नीचे "आवाज़ रिकॉर्ड करके सिखाएँ" में लॉक और अनलॉक की अलग-अलग 30 सेकंड की रिकॉर्डिंग (वाक्य 5 बार).
-    // पहले लिखे नाम/वाक्य मिटते नहीं - रिकॉर्डिंग न हो तब तक वही (और DK के नाम) पीछे से चलते रहते हैं.
+    // 22 नवंबर 2026 (मालिक): अलग-अलग 30 सेकंड रिकॉर्ड करके सिखाने वाला हिस्सा भी यहाँ से हटा - आवाज़ सिर्फ़ वॉइस गार्डियन से,
+    // वाक्य आम सुनने से ("डीके फोन अनलॉक करो"). पहले लिखे नाम/वाक्य मिटते नहीं - वही (और DK के नाम) पीछे से चलते रहते हैं.
 
     plSave = {
         PhoneLockStore.saveSettings(this, swLock.isChecked, swUnlock.isChecked,
@@ -100,6 +105,9 @@ internal fun SettingsActivity.secPhoneLock() {
         if (swUnlock.isChecked && !PhoneLockStore.hasSecret(this)) swUnlock.isChecked = false
     }
 }
+
+/** 22 नवंबर 2026: लॉक / अनलॉक सिर्फ़ मालिक की आवाज़ पर (वॉइस गार्डियन) - switch का नाम */
+internal const val OWNER_ONLY_LABEL = "सिर्फ़ मालिक की आवाज़ से लॉक / अनलॉक (वॉइस गार्डियन)"
 
 /**
  * फ़ोन का PIN / पैटर्न / पासवर्ड एक बार डालने का खाना (दो बार - पक्का करने के लिए)।

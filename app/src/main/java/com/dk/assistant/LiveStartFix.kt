@@ -22,6 +22,17 @@ object LiveStart {
  * text पहले से था, पर तभी लिया जाता था जब STT पूरा fail हो.
  */
 object SttTiming {
+    /**
+     * 22 नवंबर 2026: फ़ोन के caption में ही लॉक / अनलॉक का पक्का वाक्य (DK के नाम के साथ) = STT मत माँगो
+     * (आम सुनने वाला loop नाम ज़रूरी मानता है - वही जाँच यहाँ भी).
+     */
+    fun lockFromCaption(cap: String, names: List<String>): Boolean =
+        cap.isNotBlank() && (PhoneLockVoice.match(cap, needName = true) ?: PhoneLockVoice.instant(cap, names, needName = true)) != null
+
+    /** घंटी बजते समय caption में ही पक्का "उठाओ / काट दो" (DK की अपनी गूँज "उठाऊँ या काट दूँ" नहीं) */
+    fun callFromCaption(cap: String): Boolean =
+        cap.isNotBlank() && !CallReply.askEcho(cap) && CallReply.parse(cap).let { it == CallReply.ANSWER || it == CallReply.ANSWER_SPEAKER || it == CallReply.REJECT }
+
     /** इतनी देर में STT न आए और caption के पास साफ़ शब्द हों -> caption का text (सामान्य STT 0.4-2.7s) */
     const val CAPTION_FALLBACK_MS = 3_000L
 

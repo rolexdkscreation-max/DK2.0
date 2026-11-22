@@ -650,6 +650,17 @@ class DKAccessibilityService : AccessibilityService() {
         DKState.set(Mode.THINKING)
         // caption ne bolte-bolte jo likha woh screen par rehne do (pehle "…" se mit jaata tha)
         val capNow = earCaption?.text().orEmpty()
+        // 22 नवंबर 2026 (मालिक: "फोन अनलॉक / लॉक करो बोलते ही तुरंत, नेट रहे न रहे"): जड़ - फ़ोन का अपना caption
+        // (Sherpa-ONNX) पहले ही "डीके फोन अनलॉक करो" लिख चुका होता, फिर भी इंटरनेट वाला STT (3 सेकंड तक) माँगा जाता.
+        // लॉक / अनलॉक का पक्का वाक्य (नाम के साथ) = caption ही, STT / इंटरनेट नहीं.
+        // घंटी बजते समय "कॉल उठाओ / काट दो" भी वैसे ही - caption ने साफ़ सुना तो इंटरनेट वाले STT का इंतज़ार नहीं
+        val capFast = SttTiming.lockFromCaption(capNow, Prefs.wakeWords(this)) || (callRinging() && SttTiming.callFromCaption(capNow))
+        if (capFast) {
+            earShowing = false
+            earCaption?.closeUtterance()
+            DKLog.d("फ़ोन का caption से सीधा काम (STT / इंटरनेट नहीं): \"${capNow.take(40)}\"")
+            return capNow.trim()
+        }
         // wake mode: caption ne saaf baat suni aur usme DK ka naam nahi -> Groq par bhejna bekaar (deri + limit)
         // (फ़ोन लॉक / अनलॉक के अपने नाम - "हे मायरा फोन अनलॉक करो" - भी DK के नाम जैसे गिनो)
         if (wakeGate && SttTiming.skipWakeStt(capNow, Prefs.wakeWords(this) + PhoneLockVoice.cfg.let { if (it.on) it.names else emptyList() })) {
@@ -1011,6 +1022,10 @@ class DKAccessibilityService : AccessibilityService() {
                 if (lockAct != null) {
                     DKState.user(heard); DKLog.d("फ़ोन लॉक: आवाज़ से ${lockAct.type}")
                     if (lockAct == PhoneLockVoice.Act.UNLOCK) com.dk.assistant.voice.UnlockGuard.intent()   // इसी बात की आवाज़ PIN से पहले जाँची जाएगी
+                    // 22 नवंबर 2026 (मालिक): "सिर्फ़ मालिक की आवाज़" switch चालू = लॉक भी सिर्फ़ मालिक की आवाज़ पर
+                    val lockNo = if (lockAct == PhoneLockVoice.Act.LOCK)
+                        com.dk.assistant.voice.UnlockGuard.lockAllow(this@DKAccessibilityService, PhoneLockStore.ownerOnly(this@DKAccessibilityService)) else null
+                    if (lockNo != null) { DKState.reply(lockNo); speaker.speakQuick(lockNo); continue }
                     agent.runQuick(PhoneLockVoice.quick(lockAct)); continue
                 }
                 // नवंबर 2026: "DK किधर हो" (लिखी बात से - आवाज़ वाला नमूना न सिखाया हो तब) / बजते समय "मिल गया"

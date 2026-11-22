@@ -24,6 +24,8 @@ object PhoneLockVoice {
     /** DK लाइव में फ़ोन ने लॉक / अनलॉक कर दिया (या नहीं) - Gemini ठीक यही बोले, "मैं नहीं कर सकता" कभी नहीं */
     fun liveSay(type: String, r: String): String {
         val fail = r.startsWith(UNLOCK_FAIL) || r.startsWith("ERROR") || r.startsWith("STEP_FAILED")
+        // 22 नवंबर 2026: लॉक रुका ("सिर्फ़ मालिक की आवाज़") = वही कारण, "लॉक स्क्रीन नहीं खुला" नहीं
+        if (fail && type == Act.LOCK.type) return r.removePrefix(UNLOCK_FAIL).removePrefix("ERROR").trim().ifBlank { "बॉस, फ़ोन लॉक नहीं हुआ।" }
         if (fail) return failSay(r.removePrefix(UNLOCK_FAIL).removePrefix("ERROR").trim())
         return if (type == Act.UNLOCK.type || type == "wake") LIVE_UNLOCK_SAY else LIVE_LOCK_SAY
     }
@@ -49,7 +51,10 @@ object PhoneLockVoice {
      * नवंबर 2026 (मालिक: "ऑफलाइन में डीके फोन लॉक कर दो नहीं सुनता"): फ़ोन की on-device (बिना नेट) हिंदी पहचान "डीके" को
      * अक्सर "डीजे" / "डी जे" / "DJ" / "टीके" लिखती है - नाम न मिला = पूरी बात अनसुनी. ये भी DK (सिर्फ़ लॉक / अनलॉक / किधर हो वाले वाक्यों में).
      */
-    const val MISHEARD_NAMES = "डीजे, डी जे, दीजे, डिजे, dj, d j, डी के, दी के, डिके, टीके, टी के, deke, decay"
+    const val MISHEARD_NAMES = "डीजे, डी जे, दीजे, डिजे, dj, d j, डी के, दी के, डिके, टीके, टी के, deke, decay, " +
+        // 22 नवंबर 2026 (मालिक के अपने बोले वाक्य की लिखावट: "देखिए, फोन अनलॉक करो" / "देखिए, कॉल उठाओ") - "डीके" जल्दी
+        // बोलने पर पहचान अक्सर "देखिए / देखिये / डेके / डीकेय" लिखती है. सिर्फ़ लॉक / अनलॉक / कॉल वाले छोटे वाक्यों में नाम माना जाता है.
+        "देखिए, देखिये, डेके, डीकेय, दीकेय, डीकी, डिकी"
     const val DEFAULT_LOCK = "फोन लॉक करो, फोन लॉक कर दो, फोन लॉक कीजिए, फोन लॉक, मोबाइल लॉक करो, लॉक करो, लॉक कर दो, lock phone, phone lock karo, phone lock kar do, lock the phone, " +
         // नवंबर 2026 (मालिक): "डीके फोन ऑफ कर दो" = स्क्रीन बंद / लॉक (DK फ़ोन की बिजली बंद नहीं करता)
         "फोन ऑफ करो, फोन ऑफ कर दो, फोन ऑफ कीजिए, मोबाइल ऑफ करो, मोबाइल ऑफ कर दो, स्क्रीन ऑफ करो, स्क्रीन ऑफ कर दो, स्क्रीन बंद करो, स्क्रीन बंद कर दो, " +

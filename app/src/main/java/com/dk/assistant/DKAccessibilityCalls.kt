@@ -66,7 +66,7 @@ internal suspend fun DKAccessibilityService.onIncomingCall(who0: String, ask: St
 
     DKState.reply(msg)
     if (DKState.live && gemLive.canTalk()) {
-        val whoNote = if (ask == null) who else AppCall.current?.let { r -> "${r.who.ifBlank { "कोई" }} (${r.app}${if (r.video) " वीडियो" else ""} कॉल)" } ?: who
+        val whoNote = if (ask == null) CallCmd.sayable(who) else AppCall.current?.let { r -> "${r.who.ifBlank { "कोई" }} (${r.app}${if (r.video) " वीडियो" else ""} कॉल)" } ?: who
         // नवंबर 2026 (मालिक): "इंटरनेट है तो DK लाइव खुद तुरंत बोले; न बोले तो बैकअप तुरंत".
         // पहले यहाँ फ़ोन की सहेजी आवाज़ पहले बजती थी और Live का माइक बंद रहता था - "DK उठा लो" सुनाई नहीं देता था.
         // अब: माइक खुला, Live पहले (1.3s तक); न बोले = बैकअप आवाज़ उसी पल. बीच में उठा / काट दिया = कुछ नहीं बोलना.

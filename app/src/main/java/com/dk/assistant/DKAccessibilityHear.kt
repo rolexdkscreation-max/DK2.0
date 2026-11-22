@@ -170,7 +170,11 @@ internal fun DKAccessibilityService.earCaptionOn() {
     val key = Prefs.captionKey(this)
     val sherpa = com.dk.assistant.stt.SherpaStt.ready(this)
     if (!sherpa && key.isBlank()) { ear.onFrame = null; return }
-    val show: (String, Boolean) -> Unit = { t, _ -> if (earShowing && t.isNotBlank()) DKState.user("$t…") }
+    val show: (String, Boolean) -> Unit = { t, _ ->
+        if (earShowing && t.isNotBlank()) DKState.user("$t…")
+        // 22 नवंबर 2026 (मालिक): "डीके फोन अनलॉक..." सुनते ही (बात पूरी होने से पहले) स्क्रीन जगाओ + PIN वाला हिस्सा - PIN नहीं
+        if (earShowing && UnlockPreWake.wanted(t, Prefs.wakeWords(this), needName = true)) preWakeUnlock("caption")
+    }
     val c = earCaption ?: (if (sherpa) SherpaCaption(this, onText = show, onLate = { })
         else LiveCaption(LiveKeys.order(listOf(key) + Prefs.liveGeminiKeys(this)), onText = show, onLate = { }))
         .also { it.start(); earCaption = it }

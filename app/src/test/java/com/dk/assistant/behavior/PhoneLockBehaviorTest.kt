@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
+import com.dk.assistant.OWNER_ONLY_LABEL
 import com.dk.assistant.PhoneLockStore
 import com.dk.assistant.PhoneLockVoice
 import com.dk.assistant.SecretCodec
@@ -111,7 +112,10 @@ class PhoneLockBehaviorTest {
         val a = s.get()
         assertFalse(Ui.hasText(a, "बुलाने के नाम"))
         assertFalse(Ui.hasText(a, "लॉक करने के लिए क्या बोलें"))
-        assertTrue(Ui.hasText(a, "30 सेकंड रिकॉर्ड करें"))
+        // 22 नवंबर 2026 (मालिक): "सिखाने वाला वहाँ से हटा दो - वॉइस गार्डियन में एक बार सिखाया, वहीं से" -
+        // 30 सेकंड रिकॉर्डिंग वाला हिस्सा अब यहाँ नहीं; उसकी जगह "सिर्फ़ मालिक की आवाज़" वाला switch
+        assertFalse(Ui.hasText(a, "30 सेकंड रिकॉर्ड करें"))
+        assertTrue(Ui.switch(a, OWNER_ONLY_LABEL).isChecked)
         Ui.switch(a, "आवाज़ से फ़ोन लॉक करो").isChecked = true
         s.pause().stop().destroy()
         assertTrue(PhoneLockStore.lockOn(c))
@@ -130,5 +134,17 @@ class PhoneLockBehaviorTest {
         d.dismiss()           // रद्द
         org.robolectric.shadows.ShadowLooper.idleMainLooper()
         assertFalse("PIN नहीं डाला = अनलॉक बंद ही रहे", sw.isChecked)
+    }
+
+    /** 22 नवंबर 2026 (मालिक): लॉक / अनलॉक सिर्फ़ मालिक की आवाज़ पर - switch (शुरू से चालू), बंद = कोई भी */
+    @Test fun ownerOnlySwitchSaves() {
+        assertTrue(PhoneLockStore.ownerOnly(c))
+        val s = open()
+        val sw = Ui.switch(s.get(), OWNER_ONLY_LABEL)
+        sw.isChecked = false
+        assertFalse(PhoneLockStore.ownerOnly(c))
+        sw.isChecked = true
+        assertTrue(PhoneLockStore.ownerOnly(c))
+        s.pause().stop().destroy()
     }
 }

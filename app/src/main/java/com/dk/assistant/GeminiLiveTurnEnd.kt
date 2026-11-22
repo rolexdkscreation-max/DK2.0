@@ -298,7 +298,10 @@ internal fun GeminiLive.runLockNow(q: QuickCommands.Quick, heard: String, from: 
     if (isPlaying()) flushPlayback()
     svc.scope.launch {
         val t0 = System.currentTimeMillis()
-        val r = try { svc.perform(q.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
+        // 22 नवंबर 2026 (मालिक): "सिर्फ़ मालिक की आवाज़" switch चालू = लॉक भी सिर्फ़ मालिक की आवाज़ पर (अनलॉक की जाँच unlock में)
+        val ownerNo = if (type == PhoneLockVoice.Act.LOCK.type)
+            com.dk.assistant.voice.UnlockGuard.lockAllow(svc, PhoneLockStore.ownerOnly(svc))?.let { "ERROR $it" } else null
+        val r = ownerNo ?: try { svc.perform(q.action) } catch (e: CancellationException) { throw e } catch (e: Exception) { "ERROR ${e.message}" }
         fastMemo.finish(q, r); fastN++
         if (LiveFast.ok(type, r)) lastFastOkAt = System.currentTimeMillis()
         log("तुरंत फ़ोन $type ($from, Gemini से पहले) \"${heard.take(40)}\" -> ${r.take(60)} (${System.currentTimeMillis() - t0} ms)")

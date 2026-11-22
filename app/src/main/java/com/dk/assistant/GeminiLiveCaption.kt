@@ -69,6 +69,9 @@ internal fun GeminiLive.onCaption(t: String, final: Boolean) {
     if (t.isNotBlank()) speakerBarge.onWords()    // 16 नवंबर 2026 (ऑडिट S2): speaker वाला जल्दी टोकना भी सही था
     // नवंबर 2026: "फोन लॉक करो" / "DK फोन अनलॉक करो" का पक्का text आते ही - DK बोल रहा हो (जवाब रोके-सुने वाला
     // रास्ता) तब भी, बोलना-खत्म / Gemini के tool का इंतज़ार नहीं। DK की अपनी आवाज़ की गूँज = नहीं।
+    // 22 नवंबर 2026 (मालिक: "बोलते ही तुरंत स्क्रीन ऑन और PIN वाला हिस्सा"): अधूरी बात में "...फोन अनलॉक" आते ही स्क्रीन
+    // जगाओ और PIN वाला हिस्सा माँगो (PIN नहीं - वह पक्की बात + आवाज़ की जाँच के बाद नीचे runLockNow में)
+    if (!final && !micMuted && ComputerSession.ask == null && !isPlaying() && UnlockPreWake.wanted(t, Prefs.wakeWords(svc), dkOnlyNow)) svc.preWakeUnlock("Live caption")
     if (final && !micMuted && ComputerSession.ask == null) {
         PhoneLockVoice.instant(t, Prefs.wakeWords(svc), needName = dkOnlyNow)?.let { act ->
             val dkNear = isPlaying() || System.currentTimeMillis() - playEnd < 1500
