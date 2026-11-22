@@ -541,6 +541,12 @@ class AgentRunner(
                 }
                 ChatOut.THINK -> { if (brain.canThink() && thinkAndSay(goal)) return; if (chatStream(goal, "Deep thinking is unavailable right now: do NOT reply [THINK]. Answer it yourself, carefully and correctly.") != ChatOut.SCREEN) return; chatMode = false }
                 ChatOut.SCREEN -> chatMode = false
+                // हाल-चाल पर भी मॉडल ने [SEARCH] कहा = बिना खोज, साफ़ नियम के साथ एक बार फिर
+                ChatOut.SMALL -> when (chatStream(goal, SMALL_TALK_NOTE)) {
+                    ChatOut.SCREEN -> chatMode = false
+                    ChatOut.SMALL -> { ownMind(goal)?.let { say(it) }; return }
+                    else -> return
+                }
             }
         }
         // 15 नवंबर 2026 (मालिक, हिस्सा 1): "टूल एजेंट" चालू हो तो लंबा फ़ोन-काम Gemini function calling + Retry Loop से.
@@ -595,7 +601,7 @@ class AgentRunner(
             // Baatcheet me "सोचकर बताता हूँ" jaisa kuch nahi bolna - seedha jawab. Phone ke kaam me 1.5 sec baad sirf "ठीक है।"
             val filler = if (step == 1 && !chatMode) scope.launch { delay(1500); sayQuick("ठीक है।") } else null
             val resp: JSONObject = try {
-                brain.next(prompt + if (chatMode && brain.canSearch()) "\nSEARCH AVAILABLE" else "", shot,
+                brain.next(prompt + if (chatMode && brain.canSearch() && !SearchPolicy.smallTalk(goal)) "\nSEARCH AVAILABLE" else "", shot,
                     memoryNote = if (chatMode) "USER SAYS: $goal" else feedback, chat = chatMode)
             } catch (e: Exception) {
                 filler?.cancel()
@@ -624,7 +630,7 @@ class AgentRunner(
 
             resp.optString("remember").takeIf { it.isNotBlank() }?.let { Memory.addFact(svc, it) }
 
-            if (chatMode && (resp.optBoolean("need_research", false) || resp.optBoolean("need_search", false))) {
+            if (chatMode && !SearchPolicy.smallTalk(goal) && (resp.optBoolean("need_research", false) || resp.optBoolean("need_search", false))) {
                 // AI ko taaza jaankari chahiye -> tez search (gehri research nahi)
                 if (searchAndSay(goal, fillerSaid = filler != null && !filler.isCancelled, deep = false)) return
             }
@@ -760,7 +766,7 @@ class AgentRunner(
         sayFailed("बहुत सारे स्टेप हो गए, मैंने काम यहीं रोक दिया - काम पूरा नहीं हुआ।")
     }
 
-    private enum class ChatOut { DONE, SCREEN, SEARCH, THINK }
+    private enum class ChatOut { DONE, SCREEN, SEARCH, THINK, SMALL }
 
     /**
      * Baatcheet ka jawab streaming se: AI jaise-jaise likhta hai, pehla vakya poora hote hi DK bolna shuru.
@@ -768,8 +774,10 @@ class AgentRunner(
      */
     private suspend fun chatStream(goal: String, note: String): ChatOut {
         DKState.set(Mode.THINKING)
+        // 22 नवंबर 2026 (मालिक: "और क्या कर रहे हो / और सब बताओ" पर Tavily से ख़बरें): हाल-चाल = खोज का विकल्प ही नहीं
+        val small = SearchPolicy.smallTalk(goal)
         val prompt = (if (note.isNotBlank()) "$note\n\n" else "") + "USER SAYS: $goal" +
-            (if (brain.canSearch()) "\nSEARCH AVAILABLE" else "") + (if (brain.canThink()) "\nTHINK AVAILABLE" else "")
+            (if (small) "\n$SMALL_TALK_NOTE" else if (brain.canSearch()) "\nSEARCH AVAILABLE" else "") + (if (brain.canThink()) "\nTHINK AVAILABLE" else "")
         val ch = Channel<String>(Channel.UNLIMITED)
         var speakJob: Job? = null
         val buf = StringBuilder()
@@ -883,17 +891,19 @@ class AgentRunner(
             val o = try { JSONObject(full.substring(full.indexOf('{'), full.lastIndexOf('}') + 1)) } catch (_: Exception) { JSONObject().put("say", full) }
             when {
                 o.optBoolean("need_screen") -> { ch.close(); return ChatOut.SCREEN }
-                o.optBoolean("need_search") || o.optBoolean("need_research") -> { ch.close(); return ChatOut.SEARCH }
+                !small && (o.optBoolean("need_search") || o.optBoolean("need_research")) -> { ch.close(); return ChatOut.SEARCH }
             }
             o.optString("remember").takeIf { it.isNotBlank() }?.let { facts.add(it) }
-            speaker.sentences(o.optString("say")).forEach { emit(it) }
+            // 22 नवंबर 2026: कुछ मॉडल सादा जवाब {"response": "..."} में लपेटते हैं - "say" खाली हो तो वही अंदर का वाक्य
+            val said = o.optString("say").ifBlank { ReplyShape.unwrap(full).takeIf { !it.trimStart().startsWith("{") }.orEmpty() }
+            speaker.sentences(said).forEach { emit(it) }
         } else if (mode == 1) feed("\n")
         if (mode == 0 && full.isNotBlank()) speaker.sentences(full).forEach { emit(it) }
         ch.close()
         facts.forEach { Memory.addFact(svc, it) }
         if (mode == 2 || (tag.isNotEmpty() && shown.isEmpty())) {
             speakJob?.join()
-            return when (tag) { "[SCREEN]" -> ChatOut.SCREEN; "[THINK]" -> ChatOut.THINK; else -> ChatOut.SEARCH }
+            return when (tag) { "[SCREEN]" -> ChatOut.SCREEN; "[THINK]" -> ChatOut.THINK; else -> if (small) ChatOut.SMALL else ChatOut.SEARCH }
         }
         val answer = shown.toString().trim()
         if (answer.isEmpty()) {
@@ -943,6 +953,10 @@ class AgentRunner(
         }
     }
 
+    /** 22 नवंबर 2026: हाल-चाल / small talk - खोज नहीं, ख़बरें नहीं, दोस्त की तरह छोटा जवाब */
+    private val SMALL_TALK_NOTE = "This is casual small talk (greeting / how are you / what are you doing / tell me more). " +
+        "Do NOT search, do NOT reply [SEARCH] or need_search, and do NOT list today's news, events or special days. " +
+        "Reply warmly like a friend in 1-2 short natural Hindi sentences and ask what they would like to do."
     private val SEARCH_FAILED_NOTE = "INTERNET SEARCH FAILED (Tavily, Exa and Google search were all tried). Do NOT reply [SEARCH]. " +
         "Start your reply with exactly \"${WebSearch.ALL_FAILED_LINE}।\" then answer from your own knowledge, and say it may not be the latest. " +
         "Never invent exact live figures (today's price, score, weather, results) - for those just say you could not check right now."

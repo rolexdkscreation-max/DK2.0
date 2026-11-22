@@ -162,9 +162,11 @@ object DKState {
     @Volatile var hintText: String = ""
         private set
     fun hint(t: String) { hintText = t; emit() }
-    fun reply(t0: String, sources: List<Pair<String, String>> = emptyList(), g: GroundCite.G? = null) {
+    fun reply(raw: String, sources: List<Pair<String, String>> = emptyList(), g: GroundCite.G? = null) {
         // 14 नवंबर 2026 (मालिक): पहले से लिखी लाइन का "बॉस" = "जी <प्रोफ़ाइल का नाम>"
-        val t = appCtx?.let { NameRule.swap(t0, Prefs.userName(it)) } ?: t0
+        // 22 नवंबर 2026 (मालिक): { "response": "..." } जैसा JSON-लपेट कभी न दिखे
+        val t0 = ReplyShape.unwrap(raw)
+        val t = appCtx?.let { NameRule.tidy(NameRule.swap(t0, Prefs.userName(it)), NameRule.names(Prefs.userName(it))) } ?: t0   // 22 नवंबर 2026: संबोधन वाक्य की शुरुआत में
         val src = if (g != null) (GroundCite.unique(g) + sources).distinctBy { it.second } else sources
         lastReply = t; liveReply = ""; hintText = ""; lastSources = src; lastGround = g
         TeacherBoard.onReply(WebCite.strip(t), final = true)   // v3.87: पढ़ाई का जवाब टीचर के पन्ने पर (बिना [n] निशान)
@@ -181,7 +183,7 @@ object DKState {
     }
     /** Jawab abhi ban raha hai (tukdon me) - screen par dikhao, chat list me abhi mat jodo */
     /** 13 नवंबर 2026: टुकड़ों में आते जवाब में [n] निशान (और आख़िर का अधूरा "[1") नहीं दिखते - चिप जवाब पूरा होने पर */
-    fun replyLive(t0: String) { val t = WebCite.streamSafe(t0); if (liveReply.isEmpty()) { lastSources = emptyList(); lastGround = null }; lastReply = t; liveReply = t; TeacherBoard.onReply(t, final = false); emit() }
+    fun replyLive(raw: String) { val t0 = ReplyShape.live(raw); val t = WebCite.streamSafe(t0); if (liveReply.isEmpty()) { lastSources = emptyList(); lastGround = null }; lastReply = t; liveReply = t; TeacherBoard.onReply(t, final = false); emit() }
     private fun trim() { while (messages.size > 200) messages.removeAt(0); persist() }
 
     // ---- chat phone me save (app band/restart ke baad bhi baatcheet dikhe)

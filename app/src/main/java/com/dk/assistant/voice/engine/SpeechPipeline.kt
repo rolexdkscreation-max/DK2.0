@@ -189,8 +189,10 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     }
 
     // ------------------------------------------------------------------ बनाना
-    private fun enqueue(text: String) {
+    private fun enqueue(text0: String) {
         val e = engine ?: return
+        // 22 नवंबर 2026 (मालिक): वाक्य के आख़िर का "जी बॉस" नहीं बोलना ("हेलो जी boss" = "हेलो boss") - आधा जवाब बज चुका, इसलिए सिर्फ़ हटाना
+        val text = try { com.dk.assistant.NameRule.tidy(text0, com.dk.assistant.NameRule.names(com.dk.assistant.Prefs.userName(ctx)), stream = true) } catch (_: Exception) { text0 }.ifBlank { text0 }
         if (handed) return
         val s = Seg(text, gen, System.currentTimeMillis(), segAt)
         segAt += text.length + 1
