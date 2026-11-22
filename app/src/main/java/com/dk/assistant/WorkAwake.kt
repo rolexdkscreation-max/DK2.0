@@ -48,6 +48,11 @@ class WorkAwake(private val svc: DKAccessibilityService) {
         @Volatile private var cur: WorkAwake? = null
         /** नवंबर 2026 (मालिक: "कहाँ कर रहा है, दिखे"): DK जहाँ दबाने वाला है, वहाँ पल भर का नीला गोला (छूने लायक नहीं) */
         fun mark(x: Int, y: Int) { cur?.markAt(x, y) }
+
+        /** 22 नवंबर 2026: DK का सीधा फ़ोन वाला काम (कोई TaskStatus काम नहीं) - island इसे अपने अंदर दिखाता है */
+        data class Agent(val goal: String, val step: String, val since: Long)
+        @Volatile private var agent: Agent? = null
+        fun agentNow(): Agent? = agent
     }
 
     private fun markAt(x: Int, y: Int) = main.post {
@@ -66,6 +71,7 @@ class WorkAwake(private val svc: DKAccessibilityService) {
 
     fun release() {
         if (cur === this) cur = null
+        if (agent != null) { agent = null; DKIsland.poke() }
         released = true
         main.removeCallbacks(tick)
         removeBanner(); removeKeep()
@@ -82,16 +88,33 @@ class WorkAwake(private val svc: DKAccessibilityService) {
         if (!busy) busySince = 0L else if (busySince == 0L) busySince = now
         val working = WorkAwakeRules.working(busy, DKState.mode, jobs.size, if (modeOnly) now - modeOnlySince else 0L, if (busy) now - busySince else 0L)
         val fg = try { svc.currentPackage() } catch (_: Exception) { "" }
+        setAgent(if (working && jobs.isEmpty()) Agent(DKState.lastUser, DKState.hintText, agentSince()) else null)
         if (!working) { removeBanner(); removeKeep(); return }
-        if (WorkAwakeRules.showBanner(true, fg, svc.packageName)) {
+        val islandShows = try { DKIsland.canShow(svc) } catch (_: Exception) { false }
+        if (WorkAwakeRules.bannerNeeded(true, fg, svc.packageName, islandShows)) {
             removeKeep()
             val text = WorkAwakeRules.label(jobs.firstOrNull()?.last.orEmpty(), DKState.hintText)
             val r = root ?: showBanner() ?: return
             if (r.text != text) r.text = text
         } else {
-            // DK का अपना ऐप सामने: पट्टी नहीं, पर स्क्रीन जगी (ऐप का ScreenAwake भी यही करता है - यह पक्का करने को)
+            // DK का अपना ऐप सामने / काम island के अंदर दिख रहा: पट्टी नहीं, पर स्क्रीन जगी
             removeBanner(); if (keepOnly == null) showKeep()
         }
+    }
+
+    private var agentStart = 0L
+    private fun agentSince(): Long {
+        if (agentStart == 0L) {
+            agentStart = System.currentTimeMillis()
+        }
+        return agentStart
+    }
+    private fun setAgent(a: Agent?) {
+        if (a == null) agentStart = 0L
+        val old = agent
+        if (old == a) return
+        agent = a
+        DKIsland.poke()
     }
 
     private fun flags(touchable: Boolean = false) =

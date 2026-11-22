@@ -331,7 +331,11 @@ object DKIsland {
                     com.dk.assistant.agent.android.SocialAgent.startedAt, com.dk.assistant.agent.android.SocialAgent.endedAt)
             }
         } catch (_: Exception) { null }
-        val allTasks = if (social?.active != true) tasks else IslandCore.recent(tasks + social, emptyList())
+        val withSocial = if (social?.active != true) tasks else IslandCore.recent(tasks + social, emptyList())
+        // 22 नवंबर 2026 (मालिक): DK का सीधा फ़ोन वाला काम भी island के अंदर (नीचे अलग पट्टी नहीं)
+        val agent = WorkAwake.agentNow()
+        val allTasks = if (agent == null || withSocial.any { it.active }) withSocial
+            else listOf(IslandCore.agentTask(agent.goal, agent.step, agent.since)) + withSocial
         // 15 नवंबर 2026 (मालिक): सिर्फ़ बिना देखे notification; सामने वाला ऐप = उसके देख लिए
         frontPkg(s).let { fg -> if (fg.isNotBlank() && !IslandCore.noApp(fg)) IslandFeed.seenApp(fg) }
         val notifs = if (notifsOn(s)) IslandFeed.shown() else emptyList()
@@ -648,7 +652,7 @@ object DKIsland {
             IslandCore.Kind.CALL -> IslandCore.allCalls(sn).getOrNull(it.idx)?.let { c -> openCall(s, c) } ?: false
             IslandCore.Kind.MEDIA -> sn.media?.let { m -> openMediaApp(s, m); true } ?: false
             // कतार चलते टैप = DK का ऐप नहीं खुले (स्क्रीन वाला काम बीच में न टूटे) - island फैलकर सब दिखाए
-            IslandCore.Kind.TASK -> IslandCore.shownTask(sn, now)?.let { t -> if (t.active && t.key == IslandCore.QUEUE_KEY) false else { openTask(s, t); true } } ?: false
+            IslandCore.Kind.TASK -> IslandCore.shownTask(sn, now)?.let { t -> if (IslandCore.flowing(t)) false else { openTask(s, t); true } } ?: false
             IslandCore.Kind.LIVE -> { openDk(s); true }
             IslandCore.Kind.NOTIF -> sn.notifs.firstOrNull()?.let { n -> IslandFeed.open(s, n.key).also { ok -> if (ok) collapse() } } ?: false
             IslandCore.Kind.LOCKED -> sn.locked.singleOrNull()?.let { l -> PrivacyScreen.open(s, l.pkg); collapse(); true } ?: false
