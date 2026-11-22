@@ -26,6 +26,7 @@ object LiveWallStore {
     private const val K_LOC_AUTO = "loc_auto"
     private const val K_PENDING_LOCK = "pending_lock"
     private const val K_CATALOG = "catalog_json"
+    private const val K_ANIM = "anim"
     const val TARGET_BOTH = "both"
     const val TARGET_HOME = "home"
     const val DEFAULT_LAT = 18.63
@@ -66,6 +67,10 @@ object LiveWallStore {
 
     fun target(c: Context): String = p(c).getString(K_TARGET, TARGET_BOTH) ?: TARGET_BOTH
     fun setTarget(c: Context, t: String) { p(c).edit().putString(K_TARGET, t).apply() }
+
+    /** 22 नवंबर 2026: बैटरी - [LiveWallPower.MODE_SAVE] (डिफ़ॉल्ट) या [LiveWallPower.MODE_SMOOTH] */
+    fun animMode(c: Context): String = p(c).getString(K_ANIM, LiveWallPower.MODE_SAVE) ?: LiveWallPower.MODE_SAVE
+    fun setAnimMode(c: Context, m: String) { p(c).edit().putString(K_ANIM, m).apply() }
 
     fun remove(c: Context, id: String) { if (SkyCatalog.validId(id)) dir(c, id).deleteRecursively() }
 
