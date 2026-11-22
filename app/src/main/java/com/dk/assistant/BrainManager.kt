@@ -228,7 +228,7 @@ class BrainManager(private val ctx: Context) {
         var chainKeysSet = false
         val cands = listOfNotNull(chip?.let { it.p to it.client }) + (rankedForChat().mapNotNull { p -> clientFor(p)?.let { p to it } } + chatSpares()).map { (p, c) ->
             // 22 नवंबर 2026 (मालिक: "और क्या कर रहे हो" पर ख़बरें खोजकर बता रहा था): हाल-चाल वाली बात = googleSearch बंद
-            if (c is GeminiClient) { c.fast = true; c.groundChat = true; if (chatSmall) c.groundChat = false; c.lane = OneKeyLanes.Lane.TALK     // 13 नवंबर 2026: चैट = googleSearch चालू
+            if (c is GeminiClient) { c.fast = true; c.groundChat = true; c.groundChat = c.groundChat && !chatSmall; c.lane = OneKeyLanes.Lane.TALK     // 13 नवंबर 2026: चैट = googleSearch चालू
                 // 21 नवंबर 2026 (मालिक): पक्का क्रम 3.5 → 3.1 Flash-Lite → Gemma, हर key पर; पहली Gemini को Key 1/2/3 (Live से = Live की keys पहले)
                 c.chatChain = true
                 if (!chainKeysSet) { chainKeysSet = true; c.chainKeys = Prefs.textChatKeys(ctx, fromLive) } }
