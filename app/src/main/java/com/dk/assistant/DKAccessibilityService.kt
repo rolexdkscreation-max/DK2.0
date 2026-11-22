@@ -95,6 +95,7 @@ class DKAccessibilityService : AccessibilityService() {
         try { PayGuard.onServiceBack(this) } catch (e: Exception) { Quiet.note(e) }
         try { PhoneLockStore.reload(this) } catch (e: Exception) { Quiet.note(e) }
         try { Guard.resume(this) } catch (e: Exception) { DKLog.d("गार्ड: ${e.message}") }   // नवंबर 2026: गार्ड मोड चालू था तो फिर से पहरा
+        try { Guard.sentinel(this) } catch (e: Exception) { DKLog.d("गार्ड: ${e.message}") }   // 22 नवंबर 2026: हमेशा वाला गलत-PIN पहरा
         try { AppLock.start(this) } catch (e: Exception) { Quiet.note(e) }   // 21 नवंबर 2026: DK ऐप लॉक
         // power बटन वाला "Yes Boss" पहले से बना लो (Live चालू हो तो नहीं - तब Live बंद होने पर)
         com.dk.assistant.voice.LiveAckMaker.ensureAsync(this, "DK शुरू", 15_000L)   // आवाज़ से फ़ोन लॉक / अनलॉक के नाम-वाक्य

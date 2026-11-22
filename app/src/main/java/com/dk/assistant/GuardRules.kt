@@ -318,7 +318,7 @@ object GuardRules {
     /** सायरन / लोकेशन के समय wake lock की ऊपरी सीमा (छूट जाए तब भी अपने-आप छूटे) */
     const val WAKE_MAX_MS = 6 * 3_600_000L
     /** सायरन बजते फ़ोन खुला (और सायरन बंद नहीं किया) = इतनी देर में फिर लॉक */
-    const val RELOCK_MS = 1_500L
+    const val RELOCK_MS = 1_000L
     /** गलत PIN देखने की जाँच इससे जल्दी नहीं (content-change बहुत आते हैं) */
     const val WRONG_CHECK_MS = 250L
     /** एक बार गलत PIN पर लॉक किया - इतनी देर दोबारा नहीं (वही लिखावट फिर दिखती है) */
@@ -344,4 +344,24 @@ object GuardRules {
      */
     fun relockOnOpen(alarming: Boolean, on: Boolean, faceReady: Boolean, hasCode: Boolean, hasDkPin: Boolean) =
         alarming && on && (faceReady || hasCode || hasDkPin)
+
+    // ------------------------------------------------------------------ 22 नवंबर 2026: पक्का फिर-लॉक + दो नए टॉगल
+
+    /** फिर लॉक: इतनी बार कोशिश, हर बार [LOCK_POLLS] x [LOCK_POLL_MS] तक देखो कि फ़ोन सच में लॉक हुआ */
+    const val LOCK_TRIES = 3
+    const val LOCK_POLLS = 6
+    const val LOCK_POLL_MS = 100L
+
+    /**
+     * सायरन में फ़ोन खुला और DK ने फिर लॉक किया (relockDark) = स्क्रीन अपने-आप मत जलाओ, जब तक कोई खुद स्क्रीन न जलाए.
+     * पहले: लॉक के 0.4-0.5 सेकंड बाद DK खुद स्क्रीन जलाकर चेतावनी ऊपर ले आता था - लॉक स्क्रीन ढक जाती थी (फ़ोन खुला ही लगता था),
+     * और जिन फ़ोन में "स्क्रीन बंद होने के कुछ सेकंड बाद लॉक" है वहाँ लॉक ही रद्द हो जाता था.
+     */
+    fun wakeForAlarm(relockDark: Boolean, interactive: Boolean) = interactive || !relockDark
+
+    /** "छूने / उठाने पर सायरन" टॉगल बंद = PIN का खाना खोलना भी सायरन नहीं (सिर्फ़ गलत PIN) */
+    fun bouncerTrips(motionOn: Boolean, alarming: Boolean) = motionOn && !alarming
+
+    /** हमेशा वाला "गलत PIN = सायरन" पहरा: टॉगल चालू + फ़ोन में असली PIN / पैटर्न (वरना "गलत PIN" होता ही नहीं) */
+    fun sentinelOn(on: Boolean, secure: Boolean) = on && secure
 }

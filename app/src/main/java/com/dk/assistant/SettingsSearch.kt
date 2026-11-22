@@ -173,6 +173,7 @@ object SettingsSearch {
         E("computer", "इमेज बनाना (मुफ़्त API)", "DK सर्वर पर Cloudflare FLUX - चैट, DK लाइव, DK कंप्यूटर; कोई key नहीं, आज की बची गिनती", "image इमेज photo फोटो तस्वीर picture चित्र flux cloudflare फ्लक्स लिमिट"),
         E("social", "YouTube चैनल जाँच", "\"मेरे चैनल का हाल बताओ\" - subscribers, views, नए वीडियो, comments (सिर्फ़ पढ़ना)", "youtube यूट्यूब channel चैनल subscriber सब्सक्राइबर views"),
         // 15 नवंबर 2026: नई सुविधाएँ (मालिक की सूची) - हर card सर्च में
+        E("guard", "सायरन कब बजे", "छूने / उठाने पर सायरन • हमेशा पहरा: लॉक स्क्रीन पर गलत PIN = तुरंत सायरन", "wrong pin गलत पिन always हमेशा pocket जेब chori चोरी motion हिलाना छूना touch sensor"),
         E("guard", "टच मोड का रूप", "नॉर्मल • गॉड मोड (सबसे सख़्त) • स्टेल्थ मोड (चुपचाप)", "god गॉड stealth स्टेल्थ silent चुपचाप mode मोड"),
         E("face", "चेहरा पहचान", "Boss का चेहरा सेट करें — DK और टच मोड आपको पहचानें", "face फ़ेस चेहरा boss बॉस register रजिस्टर anti-spoof स्पूफ फ़ोटो वीडियो lens लेंस scan स्कैन"),
         E("face", "DK वॉचमैन", "कौन आया, कितनी बार, क्या किया — रिपोर्ट सिर्फ़ Boss के चेहरे से", "watchman वॉचमैन वाचमैन चौकीदार कौन आया visitor आने जाने रिपोर्ट report"),
