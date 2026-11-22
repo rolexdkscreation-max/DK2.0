@@ -7,6 +7,7 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import androidx.lifecycle.lifecycleScope
+import com.dk.assistant.livewall.LiveWallPower
 import com.dk.assistant.livewall.LiveWallPreview
 import com.dk.assistant.livewall.LiveWallStore
 import kotlinx.coroutines.Dispatchers
@@ -133,6 +134,19 @@ internal fun SettingsActivity.secLiveWall() {
             "कुछ फ़ोन (जैसे MIUI / कुछ Samsung) लॉक स्क्रीन पर लाइव वॉलपेपर नहीं चलाते — वहाँ लॉक पर फ़ोन की अपनी फ़ोटो रहेगी.")
     }
 
+    // 22 नवंबर 2026 (मालिक: "वॉलपेपर लगा है तो बैटरी खत्म नहीं होनी चाहिए")
+    card("वॉलपेपर की बैटरी बचत", "डिफ़ॉल्ट: बचत — खुलते समय कुछ सेकंड चलता, फिर रुकी तस्वीर") { box ->
+        val g = radios(box, listOf(
+            LiveWallPower.MODE_SAVE to "बचत (सुझाया) — खुलते समय 6 सेकंड लहरें-तारे चलते, फिर रुकी तस्वीर (हर 30 सेकंड नई)",
+            LiveWallPower.MODE_SMOOTH to "हमेशा चलता — लगातार लहरें-तारे (ज़्यादा बैटरी)"
+        ), LiveWallStore.animMode(this), 7320)
+        g.setOnCheckedChangeListener { _, id ->
+            LiveWallStore.setAnimMode(this, if (id == 7321) LiveWallPower.MODE_SMOOTH else LiveWallPower.MODE_SAVE)
+        }
+        hint(box, "बैटरी सेवर चालू हो या बैटरी ${LiveWallPower.LOW_BATTERY}% से कम (चार्जर नहीं) हो तो अपने-आप सिर्फ़ रुकी तस्वीर. " +
+            "स्क्रीन बंद हो या कोई ऐप खुला हो (वॉलपेपर छिपा) तो वॉलपेपर बिल्कुल नहीं चलता.")
+    }
+
     card("जगह (सूरज-चाँद का सही समय)", "आपके शहर में सूरज कब उगता-डूबता है, चाँद कहाँ है — उसी हिसाब से") { box ->
         val tv = status(box)
         fun show() {
@@ -154,7 +168,8 @@ internal fun SettingsActivity.secLiveWall() {
             "चाँद की कला (पूर्णिमा, अर्धचंद्र…) भी असली, NASA की असली चाँद की तस्वीर पर. रात में असली तारे (Yale तारा-सूची) टिमटिमाते हैं.")
         hint(box, "आसमान का रंग भौतिकी से बनता है (हवा के कण नीला बिखेरते हैं, धूल सूरज के पास चमक, शाम को लंबा रास्ता = नारंगी-लाल). " +
             "झील में आसमान, पेड़, सूरज-चाँद की परछाईं लहरों के साथ.")
-        hint(box, "बैटरी: वॉलपेपर सिर्फ़ तब चलता है जब स्क्रीन पर दिख रहा हो; बैटरी सेवर में धीमा. फ़ाइलें एक बार डाउनलोड होकर फ़ोन में रहती हैं.")
+        hint(box, "दिन में सिर्फ़ सूरज; सूरज डूबने के बाद धीरे-धीरे चाँद आता है, सुबह सूरज निकलने से पहले चाँद छिप जाता है.")
+        hint(box, "बैटरी: वॉलपेपर सिर्फ़ तब बनता है जब स्क्रीन पर दिख रहा हो; \"बैटरी बचत\" में ज़्यादातर रुकी तस्वीर. फ़ाइलें एक बार डाउनलोड होकर फ़ोन में रहती हैं.")
         hint(box, "नए लाइव वॉलपेपर यहीं अपने-आप दिखेंगे (इंटरनेट से).")
     }
 }

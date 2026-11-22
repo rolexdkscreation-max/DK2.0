@@ -63,6 +63,8 @@ class SkyScene(
         var sunAlt = 0.0; var sunX = 0f; var sunY = 0f
         var moonAlt = -90.0; var moonX = 0f; var moonY = 0f; var illum = 0.0; var phase = 180.0
         var night = 0.0
+        /** चाँद कितना दिखे (0 = दिन में बिल्कुल नहीं) - [SkyLight.moonVisible] */
+        var moonVis = 0.0
         var sunCol = DoubleArray(3); var moonCol = DoubleArray(3)
         var amb = DoubleArray(3); var haze = DoubleArray(3); var haze8 = DoubleArray(3); var water = DoubleArray(3)
     }
@@ -127,6 +129,7 @@ class SkyScene(
         st.moonAlt = m.pos.alt; st.moonX = xOf(m.pos.ha, m.pos.riseHa); st.moonY = yOf(m.pos.alt)
         st.illum = m.illum; st.phase = m.phaseAngle
         st.night = SkyLight.night(s.alt)
+        st.moonVis = if (m.pos.alt > -1.5) SkyLight.moonVisible(s.alt) else 0.0
         val t = SkyLight.transmittance(s.alt)
         st.sunCol = normMax(t)
         st.moonCol = normMax(SkyLight.transmittance(m.pos.alt).let { tm -> DoubleArray(3) { 0.55 + 0.45 * tm[it] / max(tm[0], 1e-9) } })
@@ -351,8 +354,8 @@ class SkyScene(
             val a = skyAsync
             if (a == null || !hasSky) { g.upload(SKY, renderBackdrop(), bw, bh); hasSky = true } else a(bw, bh)
         }
-        sunSprite(g)
-        moonSprite(g)
+        if (st.sunAlt > -2) sunSprite(g)
+        if (st.moonVis > 0.01) moonSprite(g)          // दिन में चाँद की तस्वीर बनानी ही नहीं (बैटरी)
         val t = tSec.toFloat()
         val skyH = bh * backdropScale.toFloat()
         g.layer(SKY, 0f, 0f, bw.toFloat(), bh.toFloat(), 0f, 0f, bw * backdropScale.toFloat(), skyH, WHITE, 0, 1f, false)
@@ -368,15 +371,17 @@ class SkyScene(
 
         // चाँद
         val mr = moonR
-        if (st.moonAlt > -1.5) {
-            val gl = (st.illum * st.night).toFloat()
+        // दिन में चाँद नहीं (मालिक) - सूरज डूबने के बाद धीरे-धीरे
+        val mv = st.moonVis.toFloat()
+        if (st.moonAlt > -1.5 && mv > 0.01f) {
+            val gl = (st.illum * st.night * mv).toFloat()
             if (gl > 0.02f) {
                 g.glow(st.moonX, st.moonY, mr * 5f, mr * 5f, rgb(st.moonCol, 0.75, 0.85, 1.0), 0.16f * gl)
                 g.glow(st.moonX, st.moonY, mr * 1.9f, mr * 1.9f, rgb(st.moonCol, 0.9, 0.95, 1.0), 0.28f * gl)
             }
             val sq = squash(st.moonAlt)
             g.layer(MOON, 0f, 0f, (mr * 2 + 4).toInt().toFloat(), (mr * 2 + 4).toInt().toFloat(),
-                st.moonX - mr - 2, st.moonY - (mr + 2) * sq, mr * 2 + 4, (mr * 2 + 4) * sq, WHITE, 0, 1f, false)
+                st.moonX - mr - 2, st.moonY - (mr + 2) * sq, mr * 2 + 4, (mr * 2 + 4) * sq, WHITE, 0, mv, false)
         }
 
         // सूरज + चमक (दोपहर में तेज़, गरम)
@@ -416,8 +421,8 @@ class SkyScene(
         // सूरज/चाँद की परछाईं + झिलमिलाती चमक
         if (st.sunAlt > -1.5) reflectBody(g, st.sunX, st.sunY, sr, rgb(st.sunCol, 1.0, 1.0, 1.0),
             (SkyLight.smooth(-1.5, 2.0, st.sunAlt) * (1.0 - 0.55 * SkyLight.smooth(20.0, 70.0, st.sunAlt))).toFloat(), t, SUN, squash(st.sunAlt))
-        if (st.moonAlt > -1.5 && st.night > 0.05) reflectBody(g, st.moonX, st.moonY, mr * 0.6f, rgb(st.moonCol, 0.85, 0.92, 1.0),
-            (st.illum * st.night * 0.8).toFloat(), t, MOON, squash(st.moonAlt))
+        if (st.moonAlt > -1.5 && st.night > 0.05 && mv > 0.01f) reflectBody(g, st.moonX, st.moonY, mr * 0.6f, rgb(st.moonCol, 0.85, 0.92, 1.0),
+            (st.illum * st.night * 0.8 * mv).toFloat(), t, MOON, squash(st.moonAlt))
 
         for (ly in pack.layers) if (ly.kind != "near" && ly.reflect) drawLayer(g, ly, par, true)
 
