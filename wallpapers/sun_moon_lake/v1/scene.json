@@ -1,0 +1,12 @@
+{
+  "horizon": 0.62,
+  "sunSize": 0.042,
+  "moonSize": 0.06,
+  "moon": "moon.jpg",
+  "stars": "stars.csv",
+  "layers": [
+    {"id": "far", "file": "far.png", "kind": "haze", "width": 1.25, "bottom": 0.622, "height": 0.024, "parallax": 0.03},
+    {"id": "mid", "file": "mid.webp", "kind": "lit", "width": 1.25, "bottom": 0.623, "parallax": 0.05, "haze": 0.22, "reflect": true},
+    {"id": "near", "file": "near.webp", "kind": "near", "width": 1.25, "bottom": 1.0, "parallax": 0.10}
+  ]
+}

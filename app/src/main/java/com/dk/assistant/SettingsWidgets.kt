@@ -74,6 +74,7 @@ internal fun settingsIcon(id: String): Int = when (id) {
     "update" -> R.drawable.ic_s_update
     "debug" -> R.drawable.ic_s_debug
     "about" -> R.drawable.ic_s_about
+    "livewall" -> R.drawable.ic_s_wallpaper
     else -> if ('_' in id) settingsIcon(id.substringBefore('_')) else R.drawable.ic_s_debug
 }
 
@@ -100,6 +101,7 @@ internal fun settingsTint(id: String): Int = when (id) {
     "computer", "connectors", "lang", "brain_pc" -> 0xFF38BDF8.toInt()
     "update", "story", "social", "license" -> 0xFFFBBF24.toInt()
     "debug" -> 0xFFF87171.toInt()
+    "livewall" -> 0xFFF59E0B.toInt()
     else -> if ('_' in id && !id.startsWith("cat_")) settingsTint(id.substringBefore('_')) else 0xFF94A3B8.toInt()
 }
 

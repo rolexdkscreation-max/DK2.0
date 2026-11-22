@@ -56,6 +56,8 @@
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
     <!-- 21 नवंबर 2026: ऐप लॉक - फ़ोन का अपना फ़िंगरप्रिंट / फ़ेस (BiometricPrompt) -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- 22 नवंबर 2026: लाइव वॉलपेपर - "होम + लॉक" चुना हो तो लॉक स्क्रीन की अलग फ़ोटो हटाना -->
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
 
     <!-- Phone ke saare launcher apps ki list dekhne ke liye (open_app के लिए) -->
     <queries>
@@ -129,6 +131,20 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- 22 नवंबर 2026 (मालिक): DK लाइव वॉलपेपर (सेटिंग › DK लाइव › लाइव वॉलपेपर) -->
+        <service
+            android:name="com.dk.assistant.livewall.LiveWallpaperService"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_WALLPAPER"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/dk_livewall" />
+        </service>
 
         <service
             android:name="com.dk.assistant.DKVoiceInteractionService"
