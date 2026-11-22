@@ -74,8 +74,20 @@ object Lang {
         return "$MARK - it overrides every other language instruction above): $how " +
             "This is only about the natural-language text meant for the user. If the instructions above require an exact format, " +
             "fixed words, codes, tags, file names, commands or JSON keys, keep those exactly as required. " +
-            "If the user clearly asks for a different language for a reply, use that for that reply."
+            if (LangLock.locked(code)) LOCK else "If the user clearly asks for a different language for a reply, use that for that reply."
     }
+
+    /**
+     * 22 नवंबर 2026 (मालिक): हिंदी / Hinglish / English चुनी हो तो DK सिर्फ़ हिंदी-इंग्लिश में. दूसरी भाषा = दो बार बोले /
+     * माँगे तब एक बार पूछो, "हाँ" पर ही बदलो (कोड का पहरा: [LangLock]).
+     */
+    const val LOCK = "LANGUAGE LOCK: talk only in the language chosen above (Hindi, English or the Hindi-English mix; moving between " +
+        "Hindi and English when the user clearly asks is fine). Never switch to any other language or dialect (Marathi, Bhojpuri, Urdu, " +
+        "Bengali, Punjabi, Gujarati, Tamil, Telugu ...) on your own - not when the user has an accent, not when their words sound or are " +
+        "transcribed like another language, not for a single word or name; keep replying in the chosen language. Only when the user speaks " +
+        "or asks for the SAME other language in two turns, ask once, briefly in Hindi: \"क्या आप <भाषा> में बात करना चाहते हैं?\" " +
+        "Switch to it only after a clear yes (हाँ); on no or no answer stay in the chosen language. Once switched, go back to the chosen " +
+        "language as soon as the user asks."
 
     /** system prompt + भाषा का नियम (एक ही बार) */
     fun sys(system: String, code: String = current): String =
