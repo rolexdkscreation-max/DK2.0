@@ -181,6 +181,9 @@ internal fun GeminiLive.scheduleFast() {
         }
         // v3.46: वही बात दोबारा router में नहीं (हर ठहराव/शोर पर वही caption दोबारा जाता था)
         if (!routeDedupe.fresh(b, System.currentTimeMillis())) return@launch
+        // 22 नवंबर 2026 (मालिक): कई काम एक साथ = बोले गए क्रम में तुरंत नहीं (गाना पहले चला तो अगला काम उसे बंद कर देता) -
+        // Gemini का phone_task पूरी बात की कतार बनाएगा ([MultiGate], [TaskQueue.plan])
+        if (MultiGate.isMulti(b)) { log("${MultiGate.FAST_SKIP_LOG}: \"${b.take(40)}\""); return@launch }
         val tc = System.nanoTime()
         val q = LiveFast.pick(b, Prefs.wakeWords(svc), svc.currentPackage(), fast = true)
         val classMs = (System.nanoTime() - tc) / 1_000_000

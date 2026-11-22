@@ -394,9 +394,22 @@ object TaskQueue {
             item.domain in QUICK -> 0
             item.domain == "maps" -> 1
             item.domain == "call" || (item.domain == "whatsapp" && item.kind != Kind.WHATSAPP_SEND && WaCall.parse(t) != null) -> 3
-            item.domain == "youtube" -> 4
+            // 22 नवंबर 2026 (मालिक: "जो काम बाद में होगा, वह बाद में"): गाना / वीडियो पीछे नहीं चलता = सबसे आख़िर;
+            // सिर्फ़ "X खोलो" / कैमरा = स्क्रीन पर रहना है, अगला काम उसे बंद कर देता - इसलिए गाने से ठीक पहले
+            item.domain == "youtube" -> 5
+            openOnly(item) -> 4
             else -> 2
         }
+    }
+
+    /** सिर्फ़ ऐप / कैमरा खोलना (कुछ देखना, भेजना, मिटाना नहीं) - खुला रहना ही काम है */
+    fun openOnly(item: Item): Boolean {
+        if (item.domain == "camera") return true
+        val fg = item.domain.startsWith("app:") || item.domain in setOf("instagram", "facebook", "gallery") ||
+            (item.domain == "whatsapp" && item.kind == Kind.NORMAL && WaCall.parse(item.text) == null)
+        val t = item.text
+        return fg && item.kind == Kind.NORMAL && OPEN.containsMatchIn(t) && !CHECK.containsMatchIn(t) && !SEND.containsMatchIn(t) &&
+            !Regex("(सर्च|search|ढूँढ|ढूंढ|खोज|चला|play|डाल|cart|ऑर्डर|order|पोस्ट|post|अपलोड|upload)", RegexOption.IGNORE_CASE).containsMatchIn(t)
     }
 
     /**

@@ -424,7 +424,9 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
         val fc = calls.optJSONObject(i) ?: continue
         val id = fc.optString("id"); val callName = fc.optString("name")
         // नवंबर 2026 (Live जाँच #2): dk_agent(tool=..., args_json=...) = वही पुराना tool. जवाब असली call के नाम (callName) से
-        val (name, args) = LiveToolSlim.unwrap(callName, fc.optJSONObject("args") ?: JSONObject())
+        val (rawName, rawArgs) = LiveToolSlim.unwrap(callName, fc.optJSONObject("args") ?: JSONObject())
+        // 22 नवंबर 2026 (मालिक): आपकी बात में कई काम = पूरी बात की एक कतार (समझदार क्रम), उसी बात की बाक़ी calls दोबारा नहीं
+        val (name, args) = multiRoute(rawName, rawArgs)
         if (callName != name) log("dk_agent -> $name")
         if (!toolDedup.firstTime(id)) { log("tool: $name - यही call (id) पहले आ चुका, दोबारा नहीं"); continue }
         // DK AI Part 12: caption / संदेश / कॉन्टैक्ट log में नहीं
@@ -458,6 +460,7 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 ?: com.dk.assistant.plus.tools.PlusTools.runOrNull(svc, name, args)
                 ?: when (name) {
                 "phone_task" -> phoneTask(args.optString("request"))
+                MultiGate.DUP_TOOL -> MultiGate.dupNote()
                 "task_status" -> TaskStatus.summary()
                 "look_screen" -> ScreenLook.liveTool(svc, args.optString("question").ifBlank { DKState.lastUser.trimEnd('…') })
                 "app_studio" -> com.dk.assistant.studio.StudioLink.liveTool(svc, args.optString("action"), args.optString("text"))
