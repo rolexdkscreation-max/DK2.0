@@ -95,6 +95,13 @@ object NameRule {
                 else -> "$lead$core$end"
             }
         }
+        // 22 नवंबर 2026 (मालिक का उदाहरण): वाक्य के बीच का "बताइए जी boss, आपके लिए…" = "बताइए, आपके लिए…"
+        val mid = Regex("(?i)([\\p{L}\\p{M}\\p{N}])\\s+जी\\s+($alt)\\s*,\\s*(?=[\\p{L}\\p{M}\\p{N}])")
+        t = mid.replace(t) { m ->
+            val start = maxOf(t.lastIndexOfAny(charArrayOf('।', '.', '!', '?', '\n'), m.range.first) + 1, 0)
+            val before = (t.substring(start, m.range.first) + m.groupValues[1]).trim()
+            if (OPENERS.containsMatchIn(before) && before.split(Regex("\\s+")).size <= 2) m.value else m.groupValues[1] + ", "
+        }
         return t
     }
 

@@ -224,9 +224,11 @@ class BrainManager(private val ctx: Context) {
         }
         // 20 नवंबर 2026: चिप का चुना मॉडल सबसे पहले (अकेला); न चले = बताकर नीचे वाली पुरानी सूची
         val chip = chipPick()
+        val chatSmall = SearchPolicy.smallTalk(note.removePrefix("USER SAYS:").trim())
         var chainKeysSet = false
         val cands = listOfNotNull(chip?.let { it.p to it.client }) + (rankedForChat().mapNotNull { p -> clientFor(p)?.let { p to it } } + chatSpares()).map { (p, c) ->
-            if (c is GeminiClient) { c.fast = true; c.groundChat = true; c.lane = OneKeyLanes.Lane.TALK     // 13 नवंबर 2026: चैट = googleSearch चालू
+            // 22 नवंबर 2026 (मालिक: "और क्या कर रहे हो" पर ख़बरें खोजकर बता रहा था): हाल-चाल वाली बात = googleSearch बंद
+            if (c is GeminiClient) { c.fast = true; c.groundChat = true; if (chatSmall) c.groundChat = false; c.lane = OneKeyLanes.Lane.TALK     // 13 नवंबर 2026: चैट = googleSearch चालू
                 // 21 नवंबर 2026 (मालिक): पक्का क्रम 3.5 → 3.1 Flash-Lite → Gemma, हर key पर; पहली Gemini को Key 1/2/3 (Live से = Live की keys पहले)
                 c.chatChain = true
                 if (!chainKeysSet) { chainKeysSet = true; c.chainKeys = Prefs.textChatKeys(ctx, fromLive) } }
@@ -639,7 +641,7 @@ class BrainManager(private val ctx: Context) {
                     ?.takeIf { it.isNotBlank() } ?: quickText(sys, input)
             }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
-        val ans = WebCite.sanitize((made?.takeIf { it.isNotBlank() } ?: WebCite.extractive(srcs)).replace(Regex("[*#`]"), "").trim(),
+        val ans = WebCite.sanitize((made?.let { ReplyShape.unwrap(it) }?.takeIf { it.isNotBlank() } ?: WebCite.extractive(srcs)).replace(Regex("[*#`]"), "").trim(),
             srcs.map { it.id }.toSet())
         if (ans.isBlank()) return SearchResult("इस बारे में ठोस खबर नहीं मिली।", sources, g)
         return SearchResult(ans, sources, g)
@@ -716,7 +718,7 @@ class BrainManager(private val ctx: Context) {
                 }
             }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { DKLog.d("लाइव खोज मिलाना fail: ${e.message}"); null }
-        val ans = WebCite.sanitize((merged?.takeIf { it.isNotBlank() } ?: marked.first().second).replace(Regex("[*#`]"), "").trim(),
+        val ans = WebCite.sanitize((merged?.let { ReplyShape.unwrap(it) }?.takeIf { it.isNotBlank() } ?: ReplyShape.unwrap(marked.first().second)).replace(Regex("[*#`]"), "").trim(),
             allSrcs.map { it.id }.toSet())
         // 13 नवंबर 2026: हर खोज का groundingMetadata (चिप + स्रोत) - एक ही खोज = वाक्य के अंत में चिप; मिलाया जवाब = चिप नीचे कतार में
         val ground0 = good.map { it.second.g }.fold(null as GroundCite.G?) { a, b -> GroundCite.merge(a, b) }

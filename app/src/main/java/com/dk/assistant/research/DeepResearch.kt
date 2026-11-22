@@ -66,6 +66,7 @@ object DeepResearch {
         if (t.isEmpty()) return false
         if (asked(t)) return true
         if (!auto) return false
+        if (com.dk.assistant.SearchPolicy.smallTalk(t)) return false   // 22 नवंबर 2026: हाल-चाल पर कभी रिसर्च नहीं
         val l = " " + t.lowercase() + " "
         return t.length >= 25 && AUTO.any { l.contains(it) }
     }
