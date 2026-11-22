@@ -159,6 +159,11 @@ class DKNotifListener : NotificationListenerService() {
                 fresh
             }
             if (push && isNew && DKState.live) DKAccessibilityService.instance?.gemLive?.pushNotif(app, title.trim(), text.trim())
+            // 22 नवंबर 2026 (मालिक): Live बंद हो तब भी नया notification बोलकर (सेटिंग → आवाज़; शुरू में बंद)
+            if (push && isNew && !DKState.live) {
+                val isMsg = n.category == Notification.CATEGORY_MESSAGE || msgs != null || r != null
+                NotifSpeak.onPosted(this, sbn.packageName, app, title.trim(), text.trim(), isMsg)
+            }
         } catch (e: Exception) { Quiet.note(e) }
     }
 }

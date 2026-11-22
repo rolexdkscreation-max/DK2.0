@@ -130,6 +130,28 @@ internal fun SettingsActivity.secVoice() {
     }
 
 
+    // 22 नवंबर 2026 (मालिक): DK लाइव बंद हो तब भी नया notification बोलकर बताए
+    card("Notification बोलकर बताओ (DK लाइव बंद हो तब भी)", "DK लाइव जुड़ा न हो तब भी नया मैसेज / notification आते ही DK बोलकर बताए — शुरू में बंद") { box ->
+        fun sw(t: String, key: String, def: Boolean) =
+            switch(box, t, Prefs.bool(this, key, def)).setOnCheckedChangeListener { _, on -> Prefs.edit(this) { putBoolean(key, on) } }
+        switch(box, "Live बंद हो तब भी notification बोलकर बताओ", NotifSpeak.on(this)).setOnCheckedChangeListener { _, on ->
+            Prefs.edit(this) { putBoolean(NotifSpeakRules.PREF_ON, on) }
+            if (on && !DKNotifListener.enabled(this)) { toast("पहले DK को Notification access दीजिए"); DKNotifListener.openSettings(this) }
+            else toast(if (on) "चालू — Live बंद होने पर भी DK notification बोलकर बताएगी" else "बंद")
+        }
+        sw("सिर्फ़ मैसेज / चैट वाले (WhatsApp, SMS, Telegram, Instagram…)", NotifSpeakRules.PREF_MSG_ONLY, true)
+        sw("मैसेज के शब्द भी पढ़ो (बंद = सिर्फ़ किसका आया)", NotifSpeakRules.PREF_READ_TEXT, true)
+        sw("फ़ोन साइलेंट / वाइब्रेट / Do Not Disturb पर चुप रहो", NotifSpeakRules.PREF_RESPECT_SILENT, true)
+        sw("रात 11 से सुबह 7 तक चुप रहो", NotifSpeakRules.PREF_NIGHT_QUIET, true)
+        row(box, button("सुनकर देखें") {
+            val t = NotifSpeakRules.speech(listOf(NotifSpeakRules.Item("WhatsApp", "राहुल", "कब मिलोगे?")), NotifSpeak.readText(this))
+            lifecycleScope.launch { try { sp().speak(t) } catch (e: Exception) { Quiet.note(e) } }
+        }, button("Notification access") { DKNotifListener.openSettings(this) })
+        hint(box, "DK लाइव चालू हो तो पहले जैसा — Live में DK खुद बताती है। Live बंद हो तो यह सेटिंग DK की आवाज़ में बताती है, जैसे \"राहुल का WhatsApp पर मैसेज आया है — कब मिलोगे?\" " +
+            "OTP / पासवर्ड / बैंक कोड कभी ज़ोर से नहीं पढ़ती। कॉल चल रही हो, DK पहले से बोल रही हो, या DK Privacy में छिपाया ऐप हो तो नहीं बोलती। " +
+            "एक ही आदमी के लगातार मैसेज पर 30 सेकंड में एक ही बार। इसके लिए DK की Accessibility और Notification access चालू होनी चाहिए.")
+    }
+
     // ---- Listening
     card("सुनना (माइक)", "लगातार सुनना — बिना बीप की आवाज़") { box ->
         rgListen = radios(box, listOf(
