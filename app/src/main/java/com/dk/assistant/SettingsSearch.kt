@@ -36,7 +36,9 @@ object SettingsSearch {
         // 20 नवंबर 2026 (मालिक): "मेरा DK" = प्रोफ़ाइल • नया DK लाइव पैनल • आवाज़ दिमाग से अलग
         "persona" to "DK का स्वभाव और मोड", "memory" to "याददाश्त और सच्चा दोस्त",
         "cat_dk" to "प्रोफ़ाइल", "cat_live" to "DK लाइव", "cat_voice" to "आवाज़", "cat_brain" to "AI दिमाग", "cat_auto" to "ऑटोमेशन",
-        "cat_security" to "सुरक्षा", "cat_social" to "सोशल और कहानी", "cat_data" to "डेटा और ऐप"
+        "cat_security" to "सुरक्षा", "cat_social" to "सोशल और कहानी", "cat_data" to "डेटा और ऐप",
+        // 22 नवंबर 2026 (मालिक): DK लाइव के अंदर लाइव वॉलपेपर
+        "livewall" to "लाइव वॉलपेपर"
     )
 
     /** नवंबर 2026: Control Center का मुख्य पेज = ये 6 कार्ड (id, नाम, छोटा विवरण, अंदर की पुरानी पंक्तियाँ - इसी क्रम में).
@@ -87,10 +89,15 @@ object SettingsSearch {
         "license" to "license लाइसेंस की key चाबी premium प्रीमियम basic बेसिक free मुफ़्त whatsapp व्हाट्सएप login लॉगिन google गूगल admin मालिक",
         "debug" to "debug log लॉग गलती error",
         "about" to "about privacy निजता version",
+        "livewall" to "live wallpaper लाइव वॉलपेपर wallpaper वॉलपेपर वालपेपर background बैकग्राउंड होम स्क्रीन लॉक स्क्रीन lock screen home sunrise sunset सूर्योदय सूर्यास्त सूरज चाँद चांद moon तारे stars आसमान sky",
         "st3" to "supertonic सुपरटोनिक आवाज़ें voices महिला female offline ऑफ़लाइन फ़ोन पर tts डाउनलोड download f1 टेस्ट वाक्य"
     )
 
     val ENTRIES: List<E> = SECTIONS.keys.map { E(it, "", "", SECTION_WORDS[it].orEmpty()) } + listOf(
+        E("livewall", "लाइव वॉलपेपर • देखें और लगाएँ", "असली समय और जगह से सूरज, चाँद, तारे • डाउनलोड • लगाएँ (होम + लॉक)", "wallpaper वॉलपेपर download डाउनलोड apply लगाएँ preview"),
+        E("livewall", "कहाँ लगाना है", "होम स्क्रीन + लॉक स्क्रीन दोनों, या सिर्फ़ होम", "lock लॉक home होम screen स्क्रीन"),
+        E("livewall", "जगह (सूरज-चाँद का सही समय)", "आपके शहर का सूर्योदय-सूर्यास्त • मेरी जगह लें", "location जगह शहर city gps"),
+        E("livewall", "लाइव वॉलपेपर कैसे काम करता है", "असली खगोल गणना • भौतिकी से आसमान • बैटरी", "battery बैटरी nasa"),
         E("autoreply", "ऑटो रिप्लाई कैसे काम करता है", "मैसेज आए तो DK आपकी ओर से, आपके ही ढंग में, सिर्फ़ उसी बात का जवाब"),
         E("autoreply", "ऑटो रिप्लाई चालू / बंद", "एक मुख्य स्विच — बंद = किसी भी ऐप में अपने-आप जवाब नहीं"),
         E("autoreply", "किन ऐप पर ऑटो रिप्लाई", "फ़ोन में मिले मैसेज वाले ऐप — हर एक का अपना स्विच (शुरू में बंद)"),

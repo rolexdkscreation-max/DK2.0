@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">DK AI</string>
     <string name="accessibility_desc">DK AI आपकी आवाज़ से फ़ोन कंट्रोल करता है: स्क्रीन पढ़ना, क्लिक, टाइप, स्क्रॉल और ऐप खोलना।</string>
+    <string name="livewall_desc">DK लाइव वॉलपेपर: असली समय और जगह के हिसाब से सूरज, चाँद और तारे - झील और पेड़ों के साथ।</string>
 </resources>

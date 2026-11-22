@@ -124,6 +124,8 @@ class SettingsActivity : AppCompatActivity() {
             "voice" -> { title.text = "आवाज़"; secVoice(); secTalk(); st3Entry(); voiceGuardianCard(); voiceFamilyCard() }
             "persona" -> { title.text = "DK का स्वभाव और मोड"; secDkLive() }
             "memory" -> { title.text = "याददाश्त और सच्चा दोस्त"; secDkMemory() }
+            // 22 नवंबर 2026 (मालिक): DK लाइव के अंदर लाइव वॉलपेपर (होम + लॉक स्क्रीन, इंटरनेट से डाउनलोड)
+            "livewall" -> { title.text = "लाइव वॉलपेपर"; secLiveWall() }
             "st3" -> { title.text = "आवाज़ें (Supertonic 3)"; secSt3() }
             "orb" -> { title.text = "ओर्ब और चेहरा"; secOrb(); secIsland() }
             "ui" -> { title.text = "दिखावट"; secUi() }
@@ -199,6 +201,8 @@ class SettingsActivity : AppCompatActivity() {
         }
         val ids = SettingsSearch.CATEGORIES.firstOrNull { it.first.first == cat }?.second.orEmpty()
         items.filter { it.first in ids }.sortedBy { ids.indexOf(it.first) }.forEach { (id, t, sub) -> menuRow(id, t, sub) }
+        // 22 नवंबर 2026 (मालिक: "जो डीके लाइव है ना, उसी के अंदर इसको सेट करने का ऑप्शन"): लाइव वॉलपेपर
+        if (cat == "cat_live") menuRow("livewall", "लाइव वॉलपेपर", "सूर्योदय-सूर्यास्त • असली सूरज, चाँद, तारे • होम + लॉक स्क्रीन")
     }
 
     /** मेनू की एक पंक्ति (icon + नाम + विवरण + ›) - दबाने पर वह section */
