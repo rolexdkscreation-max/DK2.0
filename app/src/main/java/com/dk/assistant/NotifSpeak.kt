@@ -122,7 +122,12 @@ object NotifSpeak {
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
         val why = NotifSpeakRules.skipWhy(true, DKState.live, call, msgOnly(c), isMsg,
             silentPhone(c), respectSilent(c), NotifSpeakRules.night(hour), nightQuiet(c), hidden)
-        if (why != null) { if (why != "मैसेज वाला नहीं") DKLog.d("🔔 बोलकर नहीं बताया ($why): [$app]"); return }
+        if (why != null) {
+            if (why != "मैसेज वाला नहीं") {
+                DKLog.d("🔔 बोलकर नहीं बताया ($why): [$app]")
+            }
+            return
+        }
         val now = System.currentTimeMillis()
         synchronized(queue) {
             if (NotifSpeakRules.recentlySaid(app, title, now, said)) return
