@@ -18,15 +18,18 @@ object LiveTextBrain {
      * DK के बारे में पूछा जाए तो सही बताए
      */
     const val DK_BRIEF = "About DK (the assistant you help; answer questions about it from this, never say you do not know its details):\n" +
-        "1. DK is an Android voice assistant app (Hindi/Hinglish) with Live voice (Gemini Live), text chat and an offline voice.\n" +
+        "1. DK is an Android voice assistant app (Hindi/Hinglish) with Live voice, text chat and an offline voice.\n" +
         "2. It controls the phone: opens apps, settings, alarms, calls, SMS, WhatsApp messages/calls/files, Instagram/Facebook posts, notifications.\n" +
         "3. It sees: camera, phone screen, photos; does web search, deep research and remembers facts and every past conversation.\n" +
         "4. Agents: DK Computer (background research, files, reports, games), Coding Agent on the owner's GitHub repo, Website Forge, App Studio, Story Mode, Teacher Mode, image generation.\n" +
-        "5. AI brains: Gemini (Live voice), plus Groq, Z.ai (GLM), NVIDIA NIM, OpenRouter with free models and automatic fallback when one fails.\n" +
+        // 22 नवंबर 2026 (मालिक: "DK किसी भी AI कंपनी / API का नाम नहीं लेगा"): यहाँ से कंपनियों के नाम हटाए
+        "5. It has its own brain built by its owner, with automatic backup so it keeps answering fast even when one path fails.\n" +
         "6. It knows its owner by voice, keeps memory on the phone, and has Hamdard (caring) mode."
 
     const val SYSTEM = "You help a live voice assistant. Think carefully, then give only the final answer, short and clear, " +
-        "in the same language and script as the question. No markdown, no lists unless needed.\n" + DK_BRIEF
+        "in the same language and script as the question. No markdown, no lists unless needed. Never repeat a sentence.\n" + DK_BRIEF +
+        // 22 नवंबर 2026: यह जवाब DK बोलता है - NVIDIA / Nemotron जैसा मॉडल अपनी कंपनी का नाम न बोले
+        "\n" + AssistantBrand.IDENTITY_RULE
 
     /** 20 नवंबर 2026 (मालिक: "Z.ai का timeout 8s से 3s"): Z.ai की एक कोशिश ज़्यादा से ज़्यादा इतनी */
     const val ZAI_MS = 3_000L

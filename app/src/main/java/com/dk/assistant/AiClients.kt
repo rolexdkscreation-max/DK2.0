@@ -11,6 +11,9 @@ import java.util.concurrent.TimeUnit
 
 data class Turn(val role: String, val text: String)   // role = "user" ya "model"
 
+/** 22 नवंबर 2026: पुराने जवाब में loop / AI कंपनी वाली पहचान हो तो वह हटाकर भेजो (नहीं तो मॉडल उसी की नकल करता) - [AnswerGuard] */
+internal fun guardHist(h: List<Turn>): List<Turn> = h.map { if (it.role == "user") it else Turn(it.role, AnswerGuard.clean(it.text)) }
+
 /** Internet search ka jawab + sources (title, link) */
 data class SearchResult(val text: String, val sources: List<Pair<String, String>>,
                         /** 13 नवंबर 2026: Gemini googleSearch का groundingMetadata (वाक्य-वाले चिप) - और खोज सेवाओं में null */
@@ -273,7 +276,11 @@ class GeminiClient(key: String, private val model: String) : AiClient {
         val THINK_MODELS = listOf(HYDROGEN, "gemini-4-argon", "gemini-3.1-pro-preview", "gemini-3.8-flash")
     }
 
-    override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
+    // 22 नवंबर 2026 (मालिक): हर जवाब [AnswerGuard] से - दोहराव का loop और AI कंपनी वाली पहचान नहीं
+    override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String =
+        AnswerGuard.clean(completeRaw(system, guardHist(history), prompt, imageB64))
+
+    private fun completeRaw(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
         if (chatChain && !only) return completeChain(system, history, prompt, imageB64)
         val models = if (only) listOf(model) else laned(GeminiModels.order(model, backups))
         var last: AiException? = null
@@ -306,7 +313,10 @@ class GeminiClient(key: String, private val model: String) : AiClient {
         private set
     @Volatile private var streamMeta: JSONObject? = null
 
-    override fun stream(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
+    override fun stream(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String =
+        AnswerGuard.stream(onDelta) { d -> streamGemini(system, guardHist(history), prompt, d) }
+
+    private fun streamGemini(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
         lastGround = null
         val full = streamModels(system, history, prompt, onDelta)
         lastGround = GroundCite.parse(streamMeta, full)
@@ -580,7 +590,11 @@ class OpenAiCompatClient(
         if (e.code == 410) Cooldown.block(mKey(m), 24 * 60 * 60 * 1000L)
     }
 
-    override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
+    // 22 नवंबर 2026 (मालिक: NVIDIA वाला जवाब वही लाइनें बार-बार): हर जवाब [AnswerGuard] से
+    override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String =
+        AnswerGuard.clean(completeRaw(system, guardHist(history), prompt, imageB64))
+
+    private fun completeRaw(system: String, history: List<Turn>, prompt: String, imageB64: String?): String {
         var last: AiException? = null
         for (m in models()) {
             try { return completeOnce(m, system, history, prompt, imageB64).also { usedModel = m } } catch (e: AiException) {
@@ -630,7 +644,10 @@ class OpenAiCompatClient(
         return text.replace(Regex("(?s)<think>.*?</think>"), "").trim()
     }
 
-    override fun stream(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
+    override fun stream(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String =
+        AnswerGuard.stream(onDelta) { d -> streamRaw(system, guardHist(history), prompt, d) }
+
+    private fun streamRaw(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String {
         var last: AiException? = null
         for (m in models()) {
             var sent = false
