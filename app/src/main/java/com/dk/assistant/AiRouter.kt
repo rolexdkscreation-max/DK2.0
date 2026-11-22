@@ -170,9 +170,14 @@ class BackendAiClient(private val c: Context, private val task: String) : AiClie
         return BackendWire.chatBody(system, history.map { it.role to it.text }, prompt, task, mode, ticket)
     }
 
+    /** 22 नवंबर 2026: बातचीत वाले काम = [AnswerGuard] (loop / AI कंपनी वाली पहचान नहीं). कोडिंग / कंप्यूटर = बिना छेड़े */
+    private val talk = task == AiRouter.Task.CHAT || task == AiRouter.Task.VOICE || task == AiRouter.Task.LIVE
+
     override fun complete(system: String, history: List<Turn>, prompt: String, imageB64: String?): String =
-        BackendApi.chat(c, body(system, history, prompt))
+        if (!talk) BackendApi.chat(c, body(system, history, prompt))
+        else AnswerGuard.clean(BackendApi.chat(c, body(system, guardHist(history), prompt)))
 
     override fun stream(system: String, history: List<Turn>, prompt: String, onDelta: (String) -> Unit): String =
-        BackendApi.chatStream(c, body(system, history, prompt), onDelta)
+        if (!talk) BackendApi.chatStream(c, body(system, history, prompt), onDelta)
+        else AnswerGuard.stream(onDelta) { d -> BackendApi.chatStream(c, body(system, guardHist(history), prompt), d) }
 }
