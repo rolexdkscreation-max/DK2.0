@@ -115,10 +115,10 @@ class FaceLivenessTest {
 
     @Test fun alarmScreen_needsLivenessBeforeDisarm() {
         val a = src("GuardAlarmActivity.kt")
-        assertTrue(a.contains("private val liveness = FaceLiveness()"))
-        assertTrue(a.contains("val live = liveness.update(det, now)"))
-        assertTrue(a.contains("if (owner && live && front)"))
-        assertTrue(a.contains("if (s != null && s < TURNED_MIN) liveness.reset()"))
+        // 22 नवंबर 2026 (मालिक): सिर घुमाने की जगह रंगीन लाइव जाँच - सायरन बंद सिर्फ़ गेट के PASS पर (रंगीन जाँच के बाद ही)
+        assertTrue(a.contains("@Volatile private var gate = QuickFaceGate(allowTurn = false)"))
+        assertTrue(a.contains("if (face && !authorized && now >= pauseUntil) faceStep(copy, dets, det, now)"))
+        assertFalse(a.contains("liveness.update("))
         // पुराना ज़रा-से-हिलना वाला तरीका अब सायरन बंद करने में अकेला नहीं
         assertFalse(a.contains("livenessTracker.processFrame"))
         assertNotNull(FaceLiveness().hint())

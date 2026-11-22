@@ -23,7 +23,7 @@ import kotlin.math.hypot
  *    स्क्रीन की random रंगीन रोशनी ([FlashLive], ~1.5 s). उसका जवाब सिर्फ़ सामने खड़ा असली चेहरा देता है, वीडियो / फ़ोटो नहीं.
  *    बीच में चेहरा हटा / बदला / दूसरा आया = FAIL.
  */
-class QuickFaceGate(private val side: Int = FaceLiveness.randomSide()) {
+class QuickFaceGate(private val side: Int = FaceLiveness.randomSide(), private val allowTurn: Boolean = true) {
     data class Frame(
         val at: Long, val faces: Int, val cx: Float = 0f, val cy: Float = 0f, val w: Float = 0f,
         val yaw: Float? = null, val score: Float? = null, val otherBest: Float? = null, val real: Float? = null,
@@ -40,6 +40,9 @@ class QuickFaceGate(private val side: Int = FaceLiveness.randomSide()) {
     @Volatile var lastFlash: FlashLive.Result? = null
         private set
     val flashing get() = flash != null
+    /** आख़िरी सख़्त मिलान (0-1) */
+    @Volatile var lastScore = 0f
+        private set
 
     private val votes = ArrayDeque<Float>()
     private var hits = 0
@@ -99,7 +102,10 @@ class QuickFaceGate(private val side: Int = FaceLiveness.randomSide()) {
         hits++
         if (matchAt == 0L) matchAt = f.at
         val pct = (s * 100).toInt()
+        lastScore = s
         if (hits >= HITS && fastReal()) return startFlash(pct)
+        // 22 नवंबर 2026 (टच मोड, मालिक: "सिर घुमाना हटा दो"): AI पुरानी सख़्त शर्त पर पक्का = सीधे रंगीन जाँच, घुमाना कभी नहीं
+        if (!allowTurn) return if (hits >= HITS && sureReal()) startFlash(pct) else Verdict(State.WAIT, "✓ चेहरा मिला — AI लाइव जाँच (${votes.size}/${FaceSpoof.SURE_FRAMES})… सीधे देखते रहिए", 2)
         if (!turnAsked && f.at - matchAt >= UNSURE_MS) turnAsked = true
         if (turnAsked) {
             if (turned && hits >= HITS && sureReal()) return startFlash(pct)

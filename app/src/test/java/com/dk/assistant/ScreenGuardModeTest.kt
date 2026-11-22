@@ -137,7 +137,8 @@ class ScreenGuardModeTest {
     @Test fun alarmScreen_recognisesOwner() {
         val a = src("GuardAlarmActivity.kt")
         assertTrue(a.contains("GuardRules.faceCheck(") && a.contains("GuardRules.faceWhyNot("))
-        assertTrue(a.contains("ownerHits >= GuardRules.OWNER_HITS") && a.contains("Guard.disarm(this, \"मालिक का चेहरा पहचाना"))
+        assertTrue(a.contains("QuickFaceGate.State.PASS -> {") && a.contains("Guard.disarm(this, \"मालिक का चेहरा पहचाना"))
+        assertTrue(a.indexOf("Guard.disarm(this, \"मालिक का चेहरा पहचाना") > a.indexOf("QuickFaceGate.State.PASS -> {"))
     }
 
     @Test fun preciseLocation_andRepeat_wired() {

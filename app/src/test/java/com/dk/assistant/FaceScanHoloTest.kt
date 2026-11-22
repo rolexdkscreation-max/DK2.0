@@ -100,7 +100,8 @@ class FaceScanHoloTest {
         assertTrue(FaceAI.SPOOF_V2.urls.all { it.startsWith("https://") && it.contains("584d4421d7ac42c59e640796f46e886b0095367a") })
         assertTrue(FaceAI.ALL.containsAll(listOf(FaceAI.DETECTOR, FaceAI.RECOGNIZER, FaceAI.SPOOF_V2, FaceAI.SPOOF_V1SE)))
         val g = src("GuardAlarmActivity.kt")
-        assertTrue(g.contains("spoof.real()")); assertTrue(g.contains("spoof.fake()")); assertTrue(g.contains("liveness.challenge(FaceLiveness.randomSide())"))
+        // 22 नवंबर 2026 (मालिक): टच मोड में सिर घुमाना हटा - AI anti-spoof (ज़रूरी) + रंगीन लाइव जाँच वाला गेट
+        assertTrue(g.contains("FaceAI.realness(this, b, det, force = true)")); assertTrue(g.contains("QuickFaceGate(allowTurn = false)"))
         assertTrue(g.contains("HoloScanView.AUTHORIZED")); assertTrue(g.contains("HoloScanView.DECLINED"))
         assertTrue(src("GuardFaceSetup.kt").contains("FaceAI.ALL.sumOf"))
     }

@@ -153,7 +153,8 @@ class TouchModeLiveKeysTest {
         assertTrue(l.idNow(true))
         assertFalse(l.idNow(false))
         val a = src("GuardAlarmActivity.kt")
-        assertTrue(a.contains("liveness.idNow(front)"))
-        assertTrue(a.contains("FaceLiveness.GUIDE"))
+        // 22 नवंबर 2026 (मालिक: "टच मोड से सिर घुमाना हटा दो"): पहचान हर सीधे फ़्रेम पर, कोई घुमाने वाला क्रम नहीं
+        assertTrue(a.contains("val e = if (one && det != null && nearFront && !flashing) FaceAI.embed(this, b, det) else null"))
+        assertFalse(a.contains("FaceLiveness.GUIDE"))
     }
 }
