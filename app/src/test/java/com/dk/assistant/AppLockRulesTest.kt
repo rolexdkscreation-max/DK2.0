@@ -140,7 +140,7 @@ class AppLockRulesTest {
         val alarm = src("GuardAlarmActivity.kt")
         assertTrue(alarm.contains("DK सीक्रेट PIN डालें") && alarm.contains("Guard.pinDisarm("))
         val act = src("AppLockActivity.kt")
-        assertTrue(act.contains("BiometricPrompt") && act.contains("BossGate()") && act.contains("FLAG_SECURE"))
+        assertTrue(act.contains("BiometricPrompt") && act.contains("QuickFaceGate()") && act.contains("FLAG_SECURE"))
         assertTrue(act.contains("NeonPinPad") && act.contains("NeonPattern"))
         assertTrue(src("SettingsActivity.kt").contains("\"applock\" -> { title.text = \"ऐप लॉक\"; secAppLock() }"))
         // PIN कभी सीधा सेव नहीं

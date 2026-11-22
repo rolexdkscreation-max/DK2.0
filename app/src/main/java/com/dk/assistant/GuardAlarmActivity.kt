@@ -277,9 +277,11 @@ class GuardAlarmActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
             setBackgroundColor(0xFF050A18.toInt()); val p = (16 * d).toInt(); setPadding(p, p, p, p)
         }
-        val msg = TextView(this).apply { text = UiLang.s("DK सीक्रेट PIN डालें, फिर OK"); setTextColor(0xFFB8E9FF.toInt()); textSize = 15f; gravity = Gravity.CENTER }
+        // 22 नवंबर 2026: सही PIN पूरा होते ही अपने-आप (OK नहीं) - लंबाई पता हो तो ([AppLockStore.pinLen])
+        val auto = AppLockStore.pinLen(this)
+        val msg = TextView(this).apply { text = UiLang.s(if (auto > 0) AppLockActivity.PIN_AUTO_HINT else "DK सीक्रेट PIN डालें, फिर OK"); setTextColor(0xFFB8E9FF.toInt()); textSize = 15f; gravity = Gravity.CENTER }
         box.addView(msg)
-        val pad = NeonPinPad(this)
+        val pad = NeonPinPad(this, autoLen = auto)
         box.addView(pad, LinearLayout.LayoutParams((280 * d).toInt(), LinearLayout.LayoutParams.WRAP_CONTENT))
         val dlg = androidx.appcompat.app.AlertDialog.Builder(this).setView(box).setNegativeButton(UiLang.s("रहने दें"), null).create()
         pad.onDone = { pin ->
@@ -287,7 +289,7 @@ class GuardAlarmActivity : AppCompatActivity() {
             when {
                 wait > 0 -> msg.text = UiLang.s("बहुत बार गलत — ${AppLockRules.waitLabel(wait)} बाद")
                 Guard.pinDisarm(this, pin) -> { dlg.dismiss(); finish() }
-                else -> { msg.text = UiLang.s("✗ गलत PIN"); pad.tone = HoloScanView.BAD; pad.postDelayed({ pad.tone = HoloScanView.SCAN }, 600) }
+                else -> { msg.text = UiLang.s("✗ गलत PIN"); pad.reject() }
             }
         }
         dlg.show()

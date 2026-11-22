@@ -32,6 +32,9 @@ object AppLockRules {
         companion object { fun of(id: String?) = values().firstOrNull { it.id == id } ?: PIN }
     }
 
+    /** पैड कितने अंक पर ख़ुद जाँचे (0 = OK से). सेव लंबाई बेतुकी / PIN नहीं = 0 */
+    fun autoLen(saved: Int, hasPin: Boolean): Int = if (hasPin && saved in PIN_MIN..PIN_MAX) saved else 0
+
     fun pinOk(p: String) = p.length in PIN_MIN..PIN_MAX && p.all { it in '0'..'9' }
 
     /** बहुत आसान PIN (1111, 1234, 4321) - मना */

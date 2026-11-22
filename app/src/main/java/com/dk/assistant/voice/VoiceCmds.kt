@@ -32,7 +32,12 @@ object VoiceCmds {
     }
 
     fun trained(c: Context, cmd: Cmd) = file(c, cmd).exists()
-    fun on(c: Context, cmd: Cmd) = trained(c, cmd) && Prefs.voiceCmdOn(c, cmd.id)
+    /**
+     * 22 नवंबर 2026 (मालिक: "Settings में पुरानी आवाज़ वाली रिकॉर्डिंग भी पूरी तरह बंद कर दो"): हर कमांड की अलग
+     * रिकॉर्डिंग से पहचान बंद - सुनना आम वाक्य से, आवाज़ सिर्फ़ वॉइस गार्डियन से. रिकॉर्डिंग फ़ोन में पड़ी रहें तब भी नहीं चलतीं.
+     */
+    const val ENABLED = false
+    fun on(c: Context, cmd: Cmd) = ENABLED && trained(c, cmd) && Prefs.voiceCmdOn(c, cmd.id)
     fun anyOn(c: Context) = Cmd.values().any { on(c, it) }
     fun setOn(c: Context, cmd: Cmd, on: Boolean) = Prefs.edit(c) { putBoolean("voice_cmd_on_${cmd.id}", on) }
 

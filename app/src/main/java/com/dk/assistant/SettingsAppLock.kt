@@ -158,14 +158,14 @@ private fun SettingsActivity.appPicker(box: LinearLayout, changed: () -> Unit) {
 }
 
 /** PIN पैड वाला dialog (● बिंदु) */
-private fun SettingsActivity.pinDialog(title: String, onPin: (String, AlertDialog, TextView, NeonPinPad) -> Unit) {
+private fun SettingsActivity.pinDialog(title: String, autoLen: Int = 0, onPin: (String, AlertDialog, TextView, NeonPinPad) -> Unit) {
     val box = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
         setBackgroundColor(0xFF050A18.toInt()); val p = (16 * dp).toInt(); setPadding(p, p, p, p)
     }
     val msg = TextView(this).apply { text = UiLang.s(title); setTextColor(0xFFB8E9FF.toInt()); textSize = 15f; gravity = Gravity.CENTER }
     box.addView(msg)
-    val pad = NeonPinPad(this)
+    val pad = NeonPinPad(this, autoLen = autoLen)
     box.addView(pad, LinearLayout.LayoutParams((280 * dp).toInt(), -2))
     val dlg = AlertDialog.Builder(this).setView(box).setNegativeButton(UiLang.s("रद्द करें"), null).create()
     pad.onDone = { p -> onPin(p, dlg, msg, pad) }
@@ -175,12 +175,12 @@ private fun SettingsActivity.pinDialog(title: String, onPin: (String, AlertDialo
 /** पुराना PIN पक्का करो (गलत कोशिशों की सीमा वही) */
 private fun SettingsActivity.askOldPin(title: String, ok: () -> Unit) {
     if (!AppLockStore.hasPin(this)) { ok(); return }
-    pinDialog(title) { p, dlg, msg, pad ->
+    pinDialog(title, autoLen = AppLockStore.pinLen(this)) { p, dlg, msg, pad ->
         val w = AppLockStore.waitLeft(this)
         when {
             w > 0 -> msg.text = UiLang.s("बहुत बार गलत — ${AppLockRules.waitLabel(w)} बाद")
             AppLockStore.checkPin(this, p) -> { dlg.dismiss(); ok() }
-            else -> { msg.text = UiLang.s("✗ गलत PIN"); pad.tone = HoloScanView.BAD; pad.postDelayed({ pad.tone = HoloScanView.SCAN }, 600) }
+            else -> { msg.text = UiLang.s("✗ गलत PIN"); pad.reject() }
         }
     }
 }
