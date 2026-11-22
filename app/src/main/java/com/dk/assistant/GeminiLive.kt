@@ -324,6 +324,9 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var userDone = false
     /** Is baari ka jawab (awaaz) shuru ho chuka - ginti dobara shuru nahi karni */
     @Volatile internal var replyStarted = false
+    /** 22 नवंबर 2026: हर नए जवाब पर +1 (आधी आवाज़ वाली जाँच पुराने जवाब पर ही रहे) / बैकअप आवाज़ न होने की सूचना कब */
+    @Volatile internal var replySeq = 0
+    @Volatile internal var noVoiceHintAt = 0L
     /** Gemini abhi jawab bana raha hai (turnComplete nahi aaya) */
     @Volatile internal var generating = false
     /** DK bol raha hai aur user sach me bol raha hai (mic asli awaaz bhej raha hai) */
@@ -1565,6 +1568,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                             genStalls++
                             log("जवाब बन रहा था पर server ${(now - lastServerAt) / 1000}s से चुप (turnComplete नहीं आया) - turn बंद, फिर सुन रहा हूँ • ${timeline.summary()}")
                             dropOld = false; timeline.done(now)
+                            // 22 नवंबर 2026 (मालिक: "टेक्स्ट आता है, आवाज़ नहीं"): turnComplete खोया तब भी लिखा जवाब बिना आवाज़ न रहे
+                            offlineTextOnly(false, leakMute)
                             finishTurn(); setMode(Mode.LISTENING)
                         }
                         delay(100)
