@@ -31,16 +31,16 @@ import java.util.concurrent.Executors
  */
 class GuardAlarmActivity : AppCompatActivity() {
     private var cam: FaceCam? = null
-    /** नवंबर 2026: फ़ोटो से सायरन न रुके - सिर घुमाकर 3D जाँच ([FaceLiveness]) */
-    private val liveness = FaceLiveness()
-    /** 15 नवंबर 2026: AI anti-spoof ([FaceSpoof]) - कई फ़्रेम का औसत (फ़ोटो / वीडियो / स्क्रीन वाला चेहरा) */
-    private val spoof = FaceSpoof.Vote()
     /**
-     * 22 नवंबर 2026 (मालिक: "सिर घुमाता रिकॉर्ड किया वीडियो दिखाया तो टच मोड बंद हो गया"): सिर घुमाना + AI के बाद भी आख़िरी ताला -
-     * स्क्रीन की random रंगीन रोशनी ([FlashLive]). वीडियो / फ़ोटो इसका जवाब नहीं दे सकते. मालिक का चेहरा मिलने के बाद ही चलता है.
+     * 22 नवंबर 2026 (मालिक: "टच मोड से सिर घुमाना हटा दो, सिर्फ़ रंगीन लाइव जाँच रखो"): सिर घुमाना नहीं.
+     * ऐप लॉक वाला ही तेज़ गेट ([QuickFaceGate], allowTurn = false): एक ही चेहरा + सख़्त मिलान + AI anti-spoof (ज़रूरी),
+     * फिर आख़िरी ताला स्क्रीन की random रंगीन रोशनी ([FlashLive]). वीडियो / फ़ोटो इसका जवाब नहीं दे सकते.
      */
+    @Volatile private var gate = QuickFaceGate(allowTurn = false)
     private val flashScr by lazy { FlashScreen(this) }
-    @Volatile private var flash: FlashLive? = null
+    @Volatile private var pauseUntil = 0L
+    @Volatile private var lastStep = 0
+    @Volatile private var lastHint = ""
     /** futuristic स्कैनर ([HoloScanView]) */
     private var holo: HoloScanView? = null
     @Volatile private var declinedUntil = 0L
@@ -52,7 +52,6 @@ class GuardAlarmActivity : AppCompatActivity() {
     @Volatile private var snapping = false
     @Volatile private var snapFailed = false
     @Volatile private var dueSince = 0L
-    @Volatile private var ownerHits = 0
     private var startedAt = 0L
     private var blinkOn = false
     private lateinit var root: LinearLayout
@@ -113,7 +112,7 @@ class GuardAlarmActivity : AppCompatActivity() {
             text = UiLang.s("DK सीक्रेट PIN डालें")
             setOnClickListener { askPin() }
         })
-        root.addView(tv("मालिक: फ़ोन खोलें, चेहरा कैमरे के सामने करके सिर धीरे से दाएँ-बाएँ घुमाएँ, या गुप्त शब्द बोलें", 13f, 0xCCFFFFFF.toInt()))
+        root.addView(tv("मालिक: फ़ोन खोलें, या चेहरा सीधे कैमरे के सामने करें (स्क्रीन के रंग बदलेंगे), या गुप्त शब्द बोलें", 13f, 0xCCFFFFFF.toInt()))
         faceTv = tv("", 13f, 0xEEFFFFFF.toInt()).also { root.addView(it) }
         setContentView(root)
         blink()
@@ -143,7 +142,7 @@ class GuardAlarmActivity : AppCompatActivity() {
         val why = GuardRules.faceWhyNot(faceOn, enrolled, ready, camOk)
         if (why != null && faceOn) { Guard.note(this, "चेहरे से सायरन बंद नहीं होगा: $why"); faceUi("चेहरा पहचान बंद: $why") }
         // 15 नवंबर 2026: हर बार नया क्रम (पहले बाएँ / पहले दाएँ) - रिकॉर्ड किया वीडियो नहीं जानता
-        else if (face) { liveness.challenge(FaceLiveness.randomSide()); faceUi("मालिक का चेहरा देख रहा हूँ…\n" + (if (liveness.first == 0) FaceLiveness.GUIDE else liveness.guide())) }
+        else if (face) faceUi("मालिक का चेहरा देख रहा हूँ… सीधे कैमरे में देखिए (सिर घुमाने की ज़रूरत नहीं)")
         // 22 नवंबर 2026: AI anti-spoof अब ज़रूरी (Settings में बंद हो तब भी) - मॉडल न हो तो चेहरे से बंद नहीं, पहले डाउनलोड
         if (face && !FaceAI.hasSpoof(this)) Guard.note(this, "AI anti-spoof मॉडल अभी फ़ोन में नहीं - डाउनलोड होने तक चेहरे से सायरन बंद नहीं (PIN / फ़ोन का लॉक चलेगा)")
         if (face && !FaceAI.hasSpoof(this)) Thread { FaceAI.downloadSpoof(applicationContext) }.apply { isDaemon = true }.start()
@@ -165,7 +164,8 @@ class GuardAlarmActivity : AppCompatActivity() {
         work.execute {
             try {
                 val now = System.currentTimeMillis()
-                val det = if (face || photo) try { FaceAI.detect(this, copy) } catch (_: Throwable) { null } else null
+                val dets = if (face) try { FaceAI.detectAll(this, copy, minScore = 0.6f) } catch (_: Throwable) { emptyList() } else emptyList()
+                val det = if (face) dets.maxByOrNull { it.w * it.h } else if (photo) try { FaceAI.detect(this, copy) } catch (_: Throwable) { null } else null
                 // फ़ोटो: चेहरा दिखे तो तुरंत, वरना 1.5 s बाद एक; हर अलार्म में ज़्यादा से ज़्यादा 3
                 if (photo && !snapping && shots < GuardModes.photoMax(mode) && now - lastShot > GuardModes.photoGapMs(mode) && (det != null || (shots == 0 && now - startedAt > 1_500))) {
                     // 15 नवंबर 2026: अच्छी फ़ोटो - हिलता/धुँधला फ़्रेम छोड़ो (2 s तक), फिर असली कैमरा फ़ोटो (पूरा resolution)
@@ -186,121 +186,72 @@ class GuardAlarmActivity : AppCompatActivity() {
                         } else if (Guard.savePhoto(this, copy) != null) { shots++; lastShot = now; dueSince = 0L }
                     }
                 }
-                if (face && flash != null) { flashStep(copy, det, now); return@execute }
-                if (face) {
-                    // असली इंसान? (फ़ोटो / फ़ोन की स्क्रीन वाली फ़ोटो सिर घुमाने पर नहीं बदलती) - चेहरा न हो तब भी गिनती चले
-                    val live = liveness.update(det, now)
-                    if (det == null) { ownerHits = 0; spoof.reset(); if (now > declinedUntil && !authorized) holo?.show(HoloScanView.Mode.SEARCH, emptyList()); return@execute }
-                    // 15 नवंबर 2026: AI से असली त्वचा या फ़ोटो/स्क्रीन (हर फ़्रेम, ~10 ms)
-                    val spoofOn = FaceAI.ready(this) && FaceAI.hasSpoof(this)
-                    // घूमे चेहरे पर मॉडल कम भरोसेमंद - सिर्फ़ लगभग सीधे चेहरे के फ़्रेम गिनो
-                    val nearFront = FaceLiveness.yaw(det.kps)?.let { kotlin.math.abs(it) <= FaceLiveness.TURN } == true
-                    if (spoofOn && nearFront) FaceAI.realness(this, copy, det, force = true)?.let { spoof.add(it) }
-                    if (spoofOn && spoof.fake()) {
-                        ownerHits = 0; liveness.reset(); spoof.reset()
-                        declined(copy, det, "फ़ोटो / वीडियो / स्क्रीन पकड़ी गई — असली इंसान नहीं")
-                        Guard.note(this, "टच मोड: किसी ने फ़ोटो/वीडियो/स्क्रीन दिखाकर खोलने की कोशिश की (AI anti-spoof ने रोका)")
-                        return@execute
-                    }
-                    val front = FaceLiveness.yaw(det.kps)?.let { kotlin.math.abs(it) <= FaceLiveness.CENTER } == true
-                    // 14 नवंबर 2026: सिर घुमाते समय पहचान (धीमी) नहीं - सिर्फ़ शुरू के सीधे चेहरे पर और आख़िरी कदम पर (तेज़)
-                    if (!liveness.idNow(front)) {
-                        ownerHits = 0
-                        scan(copy, det, null)
-                        if (now - lastFaceUi > UI_MS) { lastFaceUi = now; faceUi("${"●".repeat(liveness.done())}${"○".repeat(3 - liveness.done())}  ${liveness.hint()}") }
-                        return@execute
-                    }
-                    val e = FaceAI.embed(this, copy, det)
-                    val s = e?.let { FaceAI.score(this, it) }
-                    val owner = s != null && FaceMath.decide(s, Prefs.faceStrict(this)) == MatchResult.ACCESS_GRANTED
-                    // किसी और का चेहरा (मालिक से बिल्कुल नहीं मिलता) = जाँच फिर से - किसी और का सिर घुमाना + फिर मालिक की फ़ोटो नहीं चलेगा
-                    if (s != null && s < TURNED_MIN) liveness.reset()
-                    if (owner && live && front) {
-                        // 15 नवंबर 2026: AI anti-spoof मॉडल हो तो वह भी "असली" बोले (सिर घुमाता वीडियो भी न चले)
-                        // 15 नवंबर 2026: सख़्त - कई फ़्रेम, औसत ऊँचा, एक भी "नकली" फ़्रेम नहीं ([FaceSpoof.Vote.sure])
-                        if (!spoofOn) {
-                            ownerHits = 0; scan(copy, det, s)
-                            faceUi("मालिक का चेहरा मिला — पर AI anti-spoof मॉडल अभी नहीं आया (डाउनलोड हो रहा है), तब तक PIN / फ़ोन का लॉक")
-                            return@execute
-                        }
-                        if (spoofOn && !(spoof.real() && spoof.sure())) {
-                            ownerHits = 0; scan(copy, det, s)
-                            faceUi("मालिक का चेहरा मिला — AI पूरी जाँच कर रहा है: असली इंसान है या फ़ोटो / वीडियो / स्क्रीन (${spoof.count()}/${FaceSpoof.SURE_FRAMES})… सीधे देखते रहिए")
-                            return@execute
-                        }
-                        ownerHits++
-                        faceUi("✓ मालिक पहचाने गए (${(s!! * 100).toInt()}%) — असली इंसान")
-                        scan(copy, det, s)
-                        if (ownerHits >= GuardRules.OWNER_HITS) {
-                            // अभी नहीं खोलते - पहले रंगीन रोशनी वाली लाइव जाँच ([flashStep])
-                            val fl = FlashLive().also { flash = it; flashScr.box = floatArrayOf(det.x, det.y, det.w, det.h) }
-                            pendingScore = s; flashAskedAt = now
-                            faceUi("✓ मालिक का चेहरा मिला — आख़िरी लाइव जाँच: रंग बदलेंगे, सीधे देखते रहिए")
-                            runOnUiThread { if (flash === fl) flashScr.begin(fl) }
-                        }
-                    } else {
-                        ownerHits = 0
-                        if (s != null && !owner && s < FaceMath.MATCH * 0.8f && liveness.step == FaceLiveness.Step.TURN_ONE) declined(copy, det, "यह चेहरा Boss का नहीं (${(s * 100).toInt()}%)")
-                        else scan(copy, det, s)
-                        if (s != null && now - lastFaceUi > UI_MS) {
-                            lastFaceUi = now
-                            faceUi(when {
-                                !owner && liveness.step == FaceLiveness.Step.TURN_ONE -> "✗ यह चेहरा मालिक का नहीं (${(s * 100).toInt()}%)"
-                                // बहुत देर सिर्फ़ सीधा, कोई घुमाव नहीं = शायद फ़ोटो/स्क्रीन
-                                liveness.step == FaceLiveness.Step.TURN_ONE && liveness.flatCount() >= FLAT_WARN ->
-                                    "✗ असली चेहरा नहीं (2D फ़ोटो?) — फ़ोटो से सायरन बंद नहीं होगा। असली इंसान सिर दाएँ-बाएँ घुमाए"
-                                else -> "चेहरा मिला (${(s * 100).toInt()}%) — ${liveness.hint()}"
-                            })
-                        }
-                    }
-                }
+                if (face && !authorized && now >= pauseUntil) faceStep(copy, dets, det, now)
             } catch (_: Throwable) {
             } finally { copy.recycle(); busy = false }
         }
     }
 
-    @Volatile private var pendingScore = 0f
-    @Volatile private var flashAskedAt = 0L
-
-    /** रंगीन रोशनी चल रही है: वही लगातार चेहरा? खत्म होने पर फ़ैसला */
-    private fun flashStep(b: Bitmap, det: FaceMath.Det?, now: Long) {
-        val fl = flash ?: return
+    /** एक फ़्रेम की चेहरा-जाँच ([QuickFaceGate]) - सही = सायरन बंद */
+    private fun faceStep(b: Bitmap, dets: List<FaceMath.Det>, det: FaceMath.Det?, now: Long) {
+        val g = gate
+        val one = det != null && dets.size == 1
         flashScr.box = det?.let { floatArrayOf(it.x, it.y, it.w, it.h) }
-        val ok = fl.track(now, if (det == null) 0 else 1, det?.let { it.x + it.w / 2f } ?: 0f, det?.let { it.y + it.h / 2f } ?: 0f, det?.w ?: 0f)
-        if (!fl.started && now - flashAskedAt > QuickFaceGate.FLASH_START_MS) { flashFail(b, det, "लाइव जाँच शुरू नहीं हुई"); return }
-        if (!ok) { flashFail(b, det, "लाइव जाँच बीच में टूटी (${fl.broken})"); return }
-        if (!fl.done(now)) return
-        val r = fl.result()
-        DKLog.d("टच मोड ${r.log()}")
-        if (!r.live) { flashFail(b, det, QuickFaceGate.FLASH_FAIL); return }
-        flash = null
-        val s = pendingScore
-        authorized = true
-        if (det != null) holo?.let { h -> h.place(det, b.width, b.height, true, tone = HoloScanView.OK)?.let { f ->
-            h.show(HoloScanView.Mode.AUTHORIZED, listOf(f), 3, bars(s), HoloScanView.AUTHORIZED, "स्वागत है, ${Prefs.userName(this).trim().ifBlank { "Boss" }}") } }
-        Guard.disarm(this, "मालिक का चेहरा पहचाना (${(s * 100).toInt()}%, सिर घुमाकर + AI anti-spoof + स्क्रीन की रंगीन रोशनी से असली इंसान जाँचा)")
-        runOnUiThread { root.postDelayed({ finish() }, AUTH_SHOW_MS) }
-    }
-
-    private fun flashFail(b: Bitmap, det: FaceMath.Det?, why: String) {
-        flash = null; flashScr.cancel()
-        ownerHits = 0; liveness.challenge(FaceLiveness.randomSide()); spoof.reset()
-        Guard.note(this, "टच मोड: लाइव जाँच फ़ेल - $why")
-        if (det != null) declined(b, det, why) else faceUi("✗ $why")
+        // AI anti-spoof ज़रूरी - मॉडल न हो तो चेहरे से बंद नहीं (PIN / फ़ोन लॉक)
+        val spoofOn = FaceAI.ready(this) && FaceAI.hasSpoof(this)
+        if (!spoofOn) {
+            if (det != null && now - lastFaceUi > UI_MS) { lastFaceUi = now; faceUi("AI anti-spoof मॉडल अभी नहीं आया (डाउनलोड हो रहा है) — तब तक PIN / फ़ोन का लॉक") }
+            return
+        }
+        val yaw = det?.let { FaceLiveness.yaw(it.kps) }
+        val nearFront = yaw != null && kotlin.math.abs(yaw) <= FaceLiveness.TURN
+        // रंगीन रोशनी के बीच AI / पहचान नहीं (रंग से गड़बड़ाते हैं) - सिर्फ़ वही लगातार चेहरा
+        val flashing = g.flashing
+        val real = if (one && det != null && !flashing) FaceAI.realness(this, b, det, force = true) else null
+        val e = if (one && det != null && nearFront && !flashing) FaceAI.embed(this, b, det) else null
+        val s = e?.let { FaceAI.score(this, it) }
+        val other = e?.let { x -> FacePeople.all(this).maxOfOrNull { FaceMatch.cosineSimilarity(it.print, x) } }
+        val v = g.feed(QuickFaceGate.Frame(now, dets.size, det?.let { it.x + it.w / 2f } ?: 0f, det?.let { it.y + it.h / 2f } ?: 0f,
+            det?.w ?: 0f, yaw, s, other, real, true))
+        lastStep = v.step; lastHint = v.why
+        if (v.flash) runOnUiThread { g.flash?.let { flashScr.begin(it) } }
+        g.lastFlash?.let { if (v.state != QuickFaceGate.State.WAIT) DKLog.d("टच मोड ${it.log()}") }
+        when (v.state) {
+            QuickFaceGate.State.PASS -> {
+                authorized = true
+                val pct = ((s ?: g.lastScore) * 100).toInt()
+                if (det != null) holo?.let { h -> h.place(det, b.width, b.height, true, tone = HoloScanView.OK)?.let { f ->
+                    h.show(HoloScanView.Mode.AUTHORIZED, listOf(f), 3, bars(s), HoloScanView.AUTHORIZED, "स्वागत है, ${Prefs.userName(this).trim().ifBlank { "Boss" }}") } }
+                faceUi("✓ मालिक पहचाने गए — असली इंसान (लाइव)")
+                Guard.disarm(this, "मालिक का चेहरा पहचाना ($pct%, AI anti-spoof + स्क्रीन की रंगीन रोशनी से असली इंसान जाँचा)")
+                runOnUiThread { root.postDelayed({ finish() }, AUTH_SHOW_MS) }
+            }
+            QuickFaceGate.State.FAIL -> {
+                flashScr.cancel()
+                Guard.note(this, "टच मोड: चेहरे से बंद नहीं - ${v.why}")
+                if (det != null) declined(b, det, v.why) else faceUi("✗ ${v.why}")
+                pauseUntil = now + RETRY_MS
+                gate = QuickFaceGate(allowTurn = false)
+            }
+            QuickFaceGate.State.WAIT -> {
+                if (det == null) { if (now > declinedUntil) holo?.show(HoloScanView.Mode.SEARCH, emptyList()) } else scan(b, det, s)
+                if (now - lastFaceUi > UI_MS || v.flash) { lastFaceUi = now; faceUi(v.why) }
+            }
+        }
     }
 
     private fun bars(s: Float?): List<Pair<String, Float>> = buildList {
         if (s != null) add("MATCH" to s)
-        add("LIVENESS" to liveness.done() / 3f)
-        if (FaceAI.spoofReady(this@GuardAlarmActivity) && spoof.count() > 0) add("AI ANTI-SPOOF" to spoof.mean())
+        add("LIVE" to lastStep / 3f)
+        if (gate.count() > 0) add("AI ANTI-SPOOF" to gate.mean())
     }
 
     /** स्कैन चल रहा है (नीला) */
     private fun scan(b: Bitmap, det: FaceMath.Det, s: Float?) {
         if (authorized || System.currentTimeMillis() < declinedUntil) return
         val h = holo ?: return
-        val f = h.place(det, b.width, b.height, true, "SCANNING", liveness.hint()) ?: return
-        h.show(HoloScanView.Mode.SCAN, listOf(f), liveness.done(), bars(s))
+        val f = h.place(det, b.width, b.height, true, "SCANNING", lastHint) ?: return
+        h.show(HoloScanView.Mode.SCAN, listOf(f), lastStep, bars(s))
     }
 
     /** बॉस नहीं / नकली = लाल DECLINED (कुछ देर) */
@@ -310,7 +261,7 @@ class GuardAlarmActivity : AppCompatActivity() {
         faceUi("✗ $why")
         val h = holo ?: return
         val f = h.place(det, b.width, b.height, true, tone = HoloScanView.BAD)
-        h.show(HoloScanView.Mode.DECLINED, listOfNotNull(f), liveness.done(), bars(null), HoloScanView.DECLINED, why)
+        h.show(HoloScanView.Mode.DECLINED, listOfNotNull(f), lastStep, bars(null), HoloScanView.DECLINED, why)
     }
 
     /** 21 नवंबर 2026: DK सीक्रेट PIN ([AppLockStore]) - ● बिंदु, अंक कभी नहीं दिखते. सही = टच मोड बंद ([Guard.pinDisarm]) */
@@ -363,6 +314,7 @@ class GuardAlarmActivity : AppCompatActivity() {
     override fun onDestroy() {
         shown = false
         try { cam?.stop() } catch (e: Exception) { Quiet.note(e) }
+        flashScr.cancel()
         work.shutdown()
         if (current?.get() === this) current = null
         super.onDestroy()
@@ -370,10 +322,8 @@ class GuardAlarmActivity : AppCompatActivity() {
 
     companion object {
         const val SHARP_BOX = 256
-        /** घूमे चेहरे का मालिक से कम-से-कम इतना मिलना (वरना कोई और) */
-        const val TURNED_MIN = 0.20f
-        /** इतने फ़्रेम सिर्फ़ सीधा चेहरा (कोई घुमाव नहीं) = फ़ोटो की चेतावनी */
-        const val FLAT_WARN = 12
+        /** गलत / नकली के बाद इतनी देर बाद नई जाँच */
+        const val RETRY_MS = 1_000L
         /** 14 नवंबर 2026: स्क्रीन पर अगला कदम जल्दी दिखे (पहले 1 s) */
         const val UI_MS = 400L
         /** हरा "BOSS AUTHORIZED" इतनी देर दिखे, फिर स्क्रीन बंद */

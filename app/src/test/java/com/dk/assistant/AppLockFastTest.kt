@@ -134,6 +134,23 @@ class AppLockFastTest {
         assertEquals(QuickFaceGate.State.PASS, flash(g, live = true).state)
     }
 
+    @Test fun touchModeGateNeverAsksTurnAndNeedsFlash() {
+        val g = QuickFaceGate(side = 1, allowTurn = false)
+        // AI पुरानी सख़्त शर्त पर पक्का (0.7) - सिर घुमाने को कभी नहीं, सीधे रंगीन जाँच
+        val v = run(g, 40) { fr(real = 0.7f) }
+        assertFalse(v.turn)
+        assertTrue(v.flash)
+        assertEquals(QuickFaceGate.State.PASS, flash(g, live = true).state)
+        // वीडियो (AI ने असली माना) = रंगीन जाँच पर फ़ेल
+        val h = QuickFaceGate(side = 1, allowTurn = false)
+        run(h, 40) { fr(real = 0.9f) }
+        assertEquals(QuickFaceGate.State.FAIL, flash(h, live = false).state)
+        // AI पक्का नहीं (0.6) = कितनी भी देर, न घुमाना न खुलना
+        val k = QuickFaceGate(side = 1, allowTurn = false)
+        val w = run(k, 80) { fr(real = 0.6f) }
+        assertEquals(QuickFaceGate.State.WAIT, w.state); assertFalse(w.turn); assertFalse(k.flashing)
+    }
+
     @Test fun flatPhotoYawNeverCountsAsTurn() {
         val g = QuickFaceGate(side = 1)
         val v = run(g, 80) { fr(real = 0.7f, yaw = 0.02f) }
@@ -172,12 +189,14 @@ class AppLockFastTest {
     @Test fun touchModeNeedsFlashAndForcedAntiSpoof() {
         val a = src("GuardAlarmActivity.kt")
         assertTrue(a.contains("val spoofOn = FaceAI.ready(this) && FaceAI.hasSpoof(this)"))
-        assertTrue(a.contains("FaceAI.realness(this, copy, det, force = true)"))
-        assertTrue(a.contains("if (face && flash != null) { flashStep(copy, det, now); return@execute }"))
-        assertTrue(a.contains("if (!r.live) { flashFail(b, det, QuickFaceGate.FLASH_FAIL); return }"))
-        // disarm सिर्फ़ रंगीन जाँच के बाद (flashStep के अंदर)
+        assertTrue(a.contains("FaceAI.realness(this, b, det, force = true)"))
+        assertTrue(a.contains("if (v.flash) runOnUiThread { g.flash?.let { flashScr.begin(it) } }"))
+        // disarm सिर्फ़ गेट के PASS पर - और गेट PASS सिर्फ़ रंगीन जाँच ([QuickFaceGate.flashStep]) से
         val disarmAt = a.indexOf("Guard.disarm(this, \"मालिक का चेहरा पहचाना")
-        assertTrue(disarmAt > a.indexOf("private fun flashStep("))
+        assertTrue(disarmAt > a.indexOf("QuickFaceGate.State.PASS -> {"))
+        val q = src("QuickFaceGate.kt")
+        assertEquals(1, Regex("State\\.PASS,").findAll(q).count())
+        assertTrue(q.indexOf("State.PASS,") > q.indexOf("private fun flashStep("))
         assertTrue(src("FaceCam.kt").contains("now - last < gapMs"))
     }
 }

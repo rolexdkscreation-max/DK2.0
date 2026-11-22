@@ -78,7 +78,9 @@ class FaceEnrollPhotoTest {
 
     @Test fun alarm_needsSureVote() {
         val a = src("GuardAlarmActivity.kt")
-        assertTrue(a.contains("spoof.real() && spoof.sure()"))
+        // 22 नवंबर 2026: वही सख़्त वोट अब [QuickFaceGate] में (FaceSpoof.SURE_*), टच मोड उसी से
+        assertTrue(a.contains("g.feed(QuickFaceGate.Frame("))
+        assertTrue(src("QuickFaceGate.kt").contains("votes.size >= FaceSpoof.SURE_FRAMES && mean() >= FaceSpoof.SURE_MEAN && votes.min() >= FaceSpoof.SURE_FLOOR"))
         assertTrue(src("GuardFaceSetup.kt").contains("FaceEnroll()"))
     }
 
