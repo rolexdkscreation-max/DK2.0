@@ -8,9 +8,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.Handler
-import android.content.Intent
-import android.content.IntentFilter
-import android.os.BatteryManager
 import android.os.HandlerThread
 import android.os.PowerManager
 import android.os.SystemClock
@@ -53,7 +50,12 @@ class LiveWallpaperService : WallpaperService() {
                 val now = SystemClock.elapsedRealtime()
                 val d = delayNow(now)
                 val moving = d < LiveWallPower.STILL_MS
-                if (moving) { if (lastAnimAt > 0) animT += (now - lastAnimAt).coerceIn(0L, 200L) / 1000.0; lastAnimAt = now } else lastAnimAt = 0L
+                if (moving) {
+                    if (lastAnimAt > 0) animT += (now - lastAnimAt).coerceIn(0L, 200L) / 1000.0
+                    lastAnimAt = now
+                } else {
+                    lastAnimAt = 0L
+                }
                 nextDelay = d
                 lastDrawAt = now
                 drawFrame()
