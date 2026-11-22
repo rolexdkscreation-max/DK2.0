@@ -407,7 +407,10 @@ object Guard {
 
     /** accessibility event: लॉक स्क्रीन पर PIN का खाना / पावर मेनू / ऊपर का पैनल */
     fun onEvent(svc: DKAccessibilityService, e: AccessibilityEvent) {
-        if (!armed && !alarming) { if (sentry != null && !arming) sentinelEvent(svc, e); return }
+        if (!armed && !alarming) {
+            if (sentry != null && !arming) sentinelEvent(svc, e)
+            return
+        }
         val type = e.eventType
         if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
             type != AccessibilityEvent.TYPE_ANNOUNCEMENT) return

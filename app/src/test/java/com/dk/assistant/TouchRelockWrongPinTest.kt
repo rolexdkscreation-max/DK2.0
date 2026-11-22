@@ -59,7 +59,7 @@ class TouchRelockWrongPinTest {
         assertFalse(GuardRules.sentinelOn(on = false, secure = true))
         val g = src("Guard.kt")
         assertTrue(g.contains("fun wrongAlwaysOn(c: Context) = Prefs.bool(c, P_WRONG_ALWAYS, false)"))  // बाय डिफ़ॉल्ट बंद
-        assertTrue(g.contains("if (!armed && !alarming) { if (sentry != null && !arming) sentinelEvent(svc, e); return }"))
+        assertTrue(g.contains("if (!armed && !alarming) {\n            if (sentry != null && !arming) sentinelEvent(svc, e)\n            return\n        }"))
         // गलत PIN → बिना गिनती पहरा + तुरंत अलार्म (अलार्म = सायरन + फ़ोटो + लोकेशन SMS)
         val arm = g.substring(g.indexOf("private fun armNow("))
         assertTrue(arm.indexOf("startWatch(svc, 0L)") in 1 until arm.indexOf("trigger(app, why)"))
