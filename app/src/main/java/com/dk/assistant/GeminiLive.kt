@@ -829,6 +829,10 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var lastGuardAt = 0L
     /** v3.51: आखिरी बात (user / DK) - "मैं चेक करता हूँ" पर Live खुला रहे */
     @Volatile internal var lastUserLine = ""
+    /** 22 नवंबर 2026: किस बात पर कई कामों की कतार बनी ([MultiGate]) - उसी बात की दोबारा call नहीं */
+    internal val multiLock = Any()
+    internal var multiUser = ""
+    internal var multiAt = 0L
     @Volatile internal var lastDkLine = ""
     @Volatile internal var modelCache: Triple<Int, Long, List<String>>? = null
 

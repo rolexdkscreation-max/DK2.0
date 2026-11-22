@@ -33,6 +33,29 @@ internal suspend fun GeminiLive.phoneTask(req: String): String {
     return phoneTaskOne(req)
 }
 
+/**
+ * 22 नवंबर 2026 (मालिक: "जो काम पहले हो सकता है वही पहले, बाक़ी बाद में; जितना बोला उतना ही"): [MultiGate] का फ़ैसला.
+ * runTools में call शुरू होने से पहले (साथ-साथ आई calls भी एक ही बार कतार बनाएँ).
+ */
+internal fun GeminiLive.multiRoute(name: String, args: JSONObject): Pair<String, JSONObject> {
+    if (!MultiGate.work(name, args.optString("action"))) return name to args
+    val user = turnUser.trim().ifBlank { lastUserLine.trim() }
+    val now = System.currentTimeMillis()
+    val p = synchronized(multiLock) {
+        MultiGate.decide(name, args.optString("action"), args.optString("request"), user, multiUser, multiAt, now).also {
+            if (it.act == MultiGate.Act.LEAD) { multiUser = user; multiAt = now }
+        }
+    }
+    return when (p.act) {
+        MultiGate.Act.PASS -> name to args
+        MultiGate.Act.DUP -> { log("कतार: $name उसी बात का काम - पहले से कतार में, दोबारा नहीं"); MultiGate.DUP_TOOL to JSONObject() }
+        MultiGate.Act.LEAD -> {
+            if (name != "phone_task" || p.request != args.optString("request").trim()) log("कतार: Gemini ने \"${args.optString("request").ifBlank { args.optString("action") }.take(30)}\" भेजा - आपकी पूरी बात (${MultiGate.userItems(user).size} काम) समझदार क्रम से")
+            "phone_task" to JSONObject().put("request", p.request)
+        }
+    }
+}
+
 internal fun GeminiLive.startQueue(items: List<TaskQueue.Item>): String {
     val startedAt = System.currentTimeMillis()
     val q = TaskRunQueue(
