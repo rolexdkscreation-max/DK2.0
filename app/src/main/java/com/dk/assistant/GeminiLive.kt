@@ -858,6 +858,11 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     // ================================================================ v3.40: फ़ोन कॉल + स्क्रीन/कैमरा
     /** Live जुड़ा है और अभी बोल-सुन सकता है */
     fun canTalk() = !stopped && ready && ws != null
+    /**
+     * 22 नवंबर 2026: DK सुन रहा है? = जुड़ा, या चुपचाप दूसरे connection पर बदलते समय (थामा - आवाज़ फ़ोन में जमा, कुछ छूटता नहीं).
+     * सिर्फ़ बैज / घड़ी के लिए - थामे समय CONNECTING न चमके
+     */
+    fun hearing() = canTalk() || (!stopped && ws != null && rotFreezeAt > 0L)
     @Volatile internal var micMuted = false
     /** फ़ोन की अपनी आवाज़ (speakQuick) से कुछ बोलते समय वह आवाज़ Gemini को न जाए */
     fun muteMic(on: Boolean) { micMuted = on }

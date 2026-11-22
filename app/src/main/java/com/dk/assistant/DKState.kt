@@ -59,8 +59,11 @@ object DKState {
     fun shownMode(): Mode = if (mode == Mode.THINKING && live && !working()) Mode.LISTENING else mode
     fun setLive(on: Boolean) {
         // 21 नवंबर 2026 (मालिक): लाइव कितनी देर चली - चालू होते ही घड़ी, ख़त्म होते ही "X मिनट चली" (स्क्रीन + छोटा संदेश)
-        val ended = LiveClock.onLive(on, System.currentTimeMillis())
-        live = on; emit()
+        // 22 नवंबर 2026 (मालिक: "टाइमर तभी शुरू हो जब LISTENING हो, CONNECTING से नहीं"): चालू होते समय घड़ी
+        // तभी जब DK सच में सुन रहा हो; वरना जुड़ते ही [linkChanged] से
+        live = on
+        val ended = if (on && !earUpNow()) null else LiveClock.onLive(on, System.currentTimeMillis())
+        emit()
         if (ended != null) {
             DKLog.d(LiveClock.endLine(ended))
             appCtx?.let { c -> main.post { try { android.widget.Toast.makeText(c, LiveClock.endLine(ended), android.widget.Toast.LENGTH_LONG).show() } catch (e: Exception) { DKLog.d("लाइव समय का संदेश नहीं दिखा: ${e.message}") } } }
@@ -227,7 +230,13 @@ object DKState {
     }
 
     /** 21 नवंबर 2026: Live जुड़ा / टूटा, या अलग तरीका शुरू / बंद - बैज (CONNECTING / LISTENING) फिर से बने */
-    fun linkChanged() = emit()
+    fun linkChanged() {
+        if (live && earUpNow()) LiveClock.onLive(true, System.currentTimeMillis())   // जुड़ा = घड़ी अभी से (दोबारा = वही घड़ी)
+        emit()
+    }
+    /** DK सच में सुन रहा है? (सेवा भरती है: Live जुड़ा / अलग तरीका / बैकअप / पुराना कान) - घड़ी इसी से शुरू */
+    @Volatile var earUp: () -> Boolean = { true }
+    private fun earUpNow(): Boolean = try { earUp() } catch (_: Exception) { true }
 
     fun listen(l: () -> Unit) { synchronized(listeners) { listeners.add(l) } }
     fun unlisten(l: () -> Unit) { synchronized(listeners) { listeners.remove(l) } }

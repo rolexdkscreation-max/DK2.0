@@ -51,6 +51,7 @@ internal suspend fun DKAccessibilityService.enterBackup(kind: LiveFailWhy.Kind, 
     val now = System.currentTimeMillis()
     quotaStrikes = LiveHealth.strikesAfter(backupKind, kind, quotaStrikes)
     backupMode = true; backupKind = kind; backupAt = now
+    DKState.linkChanged()   // 22 नवंबर 2026: बैकअप भी सुनता है - बैज LISTENING, घड़ी शुरू
     liveOffSoft = false
     // नवंबर 2026: आख़िरी सीमा (जाँच न चले तब भी) - लिमिट में कभी 60s से पहले नहीं (429 का चक्कर नहीं)
     val cap = LiveHealth.capMs(kind, quotaStrikes)
@@ -106,6 +107,7 @@ internal fun DKAccessibilityService.startHealthCheck() {
 internal fun DKAccessibilityService.exitBackup(why: String) {
     if (!backupMode) return
     backupMode = false; backupKind = null
+    DKState.linkChanged()
     healthJob?.cancel(); healthJob = null
     speaker.localOnly = false
     ModeTrack.switchTo(ModeTrack.Ch.LIVE, why)

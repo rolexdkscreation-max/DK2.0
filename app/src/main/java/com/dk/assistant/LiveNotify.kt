@@ -41,7 +41,8 @@ object LiveNotify {
         if (!LiveNotifyRules.wanted(DKState.live, AppVisible.visible)) { cancel(c); return }
         val muted = DKState.micMuted
         val mode = DKState.shownMode()
-        val sig = "$muted|${if (muted) "" else mode.name}"
+        // 22 नवंबर 2026: घड़ी अब जुड़ने पर शुरू होती है - तब notification की घड़ी भी नई बने
+        val sig = "$muted|${if (muted) "" else mode.name}|${LiveClock.startedAt}"
         if (sig == shown) return
         shown = sig
         show(c, muted, mode)
