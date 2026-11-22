@@ -122,7 +122,9 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         const val LEAK_ID = "dk-leak-"
         const val LEAK_DEDUP_MS = 20_000L
         /** v3.80: इनका नतीजा = यूज़र को जवाब बोलना ज़रूरी */
-        internal val ANSWER_TOOLS = setOf("web_search", "deep_research", "look_photo", "deep_think", "current_time", "local_info", "connector_task", "task_status", "dk_features", "look_screen", "app_studio")
+        internal val ANSWER_TOOLS = setOf("web_search", "deep_research", "look_photo", "deep_think", "current_time", "local_info", "connector_task", "task_status", "dk_features", "look_screen", "app_studio",
+            // 22 नवंबर 2026 (मालिक: "YouTube खोला, सोच रहा हूँ, जवाब नहीं"): फ़ोन का काम हुआ पर Gemini चुप = 8 s में याद दिलाओ
+            "phone_task")
         /**
          * Jawab "ban raha" (generating) tha par itni der server se ek bhi sandesh nahi aur awaaz bhi nahi baj rahi =
          * turnComplete kho gaya / stream atak gaya. Tab turn band (stream ya connection nahi kaata - aage kuch aaye to
@@ -958,6 +960,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
 
     @Volatile internal var promiseJob: Job? = null
     @Volatile internal var promiseFixAt = 0L
+    /** 22 नवंबर 2026 (मालिक): भाषा-ताला - हिंदी/इंग्लिश सेट हो तो बिना "हाँ" के दूसरी भाषा नहीं ([LangLock]) */
+    internal val langLock = LangLock.State()
 
     /**
      * नवंबर 2026: बीच बातचीत text सिर्फ़ तब जब Gemini चुप हो और कोई turn न चल रहा हो (1011 की जड़: बोलते/सोचते समय text).

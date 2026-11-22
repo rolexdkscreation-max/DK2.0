@@ -1285,7 +1285,14 @@ class DKAccessibilityService : AccessibilityService() {
                     val full = a.optBoolean("full", false) || ex?.full == true || YtAssist.wantsFull(DKState.lastUser)
                     val id = kotlinx.coroutines.withContext(Dispatchers.IO) { AppLauncher.youtubeFirstVideo(q) }
                     val r = verifyYoutube(AppLauncher.youtubePlay(this, q, id))
-                    if (r.startsWith("PLAYING") || r.startsWith("VIDEO_OPENED")) r + ytAfterPlay(full) else r
+                    // 22 नवंबर 2026 (मालिक: "YouTube चला जाता है, 'सोच रहा हूँ' लिखा रहता है, जवाब नहीं आता"): जड़ - ऐड / फुल स्क्रीन
+                    // वाला काम (ऐड का इंतज़ार 3 बार x 9 s + बिना स्किप वाले ऐड पर 20 s) पूरा होने तक DK लाइव को tool का जवाब
+                    // नहीं जाता था = 30-60 s "सोच रहा हूँ", बीच में connection बदला तो जवाब ही गुम. अब ज़्यादा से ज़्यादा
+                    // [YtAssist.REPLY_WAIT_MS] रुककर जवाब; ऐड स्किप / फुल स्क्रीन पीछे चलता रहता है.
+                    if (r.startsWith("PLAYING") || r.startsWith("VIDEO_OPENED")) {
+                        val after = scope.async { r + ytAfterPlay(full) }
+                        withTimeoutOrNull(YtAssist.REPLY_WAIT_MS) { after.await() } ?: (r + YtAssist.pending(full))
+                    } else r
                 }
                 LensCmd.TYPE -> openLens(a.optBoolean("on", true), a.optBoolean("front", false))
                 "yt_full" -> if (ytFullscreen()) "SAID: वीडियो फुल स्क्रीन कर दिया।" else "STEP_FAILED: फुल स्क्रीन का बटन नहीं मिला।"

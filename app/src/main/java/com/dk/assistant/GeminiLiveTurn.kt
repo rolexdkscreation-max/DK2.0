@@ -182,6 +182,11 @@ internal fun GeminiLive.finishTurn(close: Boolean = true) {
     if (u.isNotBlank()) DKState.user(u)
     if (u.isNotBlank()) lastUserLine = u
     if (r.isNotBlank()) { lastDkLine = r; checkHonest(r) }
+    // 22 नवंबर 2026 (मालिक): DK बिना पूछे दूसरी भाषा में चला गया / दो बार दूसरी भाषा = पूछो ([LangLock])
+    if (close && (u.isNotBlank() || r.isNotBlank())) LangLock.turn(langLock, Lang.current, u, r)?.let { n ->
+        log("भाषा-ताला: ${if (n.contains("in Hindi only: ") || n.contains("Say briefly in Hindi")) "दूसरी भाषा दो बार - DK पूछेगा" else "DK दूसरी भाषा में चला गया था - वापस चुनी भाषा"}")
+        visionNote(n, evidence = false)
+    }
     // 14 नवंबर 2026 (मालिक): DK लाइव की आम बातचीत से भी DK का अपना दिमाग सीखे ([DkMind]) - खोज वाली / फ़ोन के काम
     // वाली बारी नहीं (वह ताज़ा / काम है, याद से पक्की नहीं)
     val searched = synchronized(turnLock) { turnSources.isNotEmpty() || turnGround != null || toolSources.isNotEmpty() || toolGround != null }

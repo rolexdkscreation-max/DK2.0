@@ -123,6 +123,18 @@ object YtAssist {
     const val SKIP_WAIT_MS = 9_000L
     /** वीडियो खुलने के बाद ऐड दिखने का इतना इंतज़ार */
     const val AD_LOOK_MS = 2_500L
+    /**
+     * 22 नवंबर 2026: वीडियो चलने के बाद DK लाइव को जवाब देने से पहले ज़्यादा से ज़्यादा इतना (ऐड दिखा या नहीं देखने भर का).
+     * इससे ज़्यादा = ऐड / फुल स्क्रीन पीछे से, जवाब अभी (वरना "सोच रहा हूँ" पर अटका दिखता था).
+     */
+    const val REPLY_WAIT_MS = 3_500L
+
+    /** काम अभी पीछे चल रहा (ऐड / फुल स्क्रीन) - Live यही सच बोले, "हो गया" का दावा नहीं */
+    fun pending(full: Boolean): String = buildList {
+        add("an ad may be playing - DK keeps watching and skips it by itself (ऐड आया तो अपने-आप स्किप कर दूँगा)")
+        if (full) add("full screen will be turned on right after (फुल स्क्रीन भी कर दूँगा)")
+    }.joinToString("; ", prefix = " • ")
+
     /** बाद में आने वाले दूसरे ऐड पर पीछे से नज़र */
     const val WATCH_MS = 60_000L
 }
