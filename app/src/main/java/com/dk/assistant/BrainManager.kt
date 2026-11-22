@@ -1092,8 +1092,8 @@ class BrainManager(private val ctx: Context) {
             if (Prefs.dkOnly(ctx)) append(DkOnly.PROMPT)
             if (SideTalk.on(ctx)) append(SideTalk.PROMPT)
             append(awarenessBlock())
+            append(NameRule.placementShort(Prefs.userName(ctx)))   // छोटे निर्देश: छोटा नियम, TAIL सबसे आख़िर में ही
             append(LivePromptLite.TAIL)
-            append(NameRule.placement(Prefs.userName(ctx)))
         }
     }
 

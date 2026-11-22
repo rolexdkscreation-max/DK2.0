@@ -118,6 +118,12 @@ object NameRule {
             "\"जी $b\" alone is only the reply when he calls you. Use the name at most once per reply, only where it sounds natural."
     }
 
+    /** छोटे Live निर्देशों के लिए वही नियम, कम शब्दों में */
+    fun placementShort(userName: String): String {
+        val b = bare(userName).ifBlank { "बॉस" }
+        return "\nNAME RULE: say $b / बॉस / सर only at the START of a sentence (\"$b, हो गया\"), never mid or end; \"हेलो $b\", never \"हेलो जी\"."
+    }
+
     /** 15 नवंबर 2026: अभी के स्वभाव का पहला संबोधन ("बाबू" / "सर" / "बॉस"); "" = पुराना "जी <नाम>". DKApp जोड़ता है, JVM test में "" */
     @Volatile var personaCall: () -> String = { "" }
 }
