@@ -137,6 +137,7 @@ object SettingsSearch {
         E("persona", "JARVIS मोड", "JARVIS जैसी आवाज़ और अंदाज़ — काम सारे वही जो DK करता है. बोलें: \"जार्विस मोड ऑन करो\" / \"डीके मोड ऑन करो\""),
         E("persona", "DK का स्वभाव", "दोस्ताना / नटखट शरारती / गर्लफ्रेंड / प्रोफ़ेशनल / शांत — मूड समझकर बात, बगल की बातचीत (सुनेगी, जवाब नहीं)", "persona natkhat naughty professional girlfriend mood side talk personality स्वभाव मूड"),
         E("voice", "बोलने वाला इंजन (DK Live)", "DK लाइव (Direct Gemini Live Voice, डिफ़ॉल्ट) • Gemini TTS (बैकअप) — एक समय में एक"),
+        E("voice", "Notification बोलकर बताओ (DK लाइव बंद हो तब भी)", "DK लाइव जुड़ा न हो तब भी नया मैसेज / notification आते ही DK बोलकर बताए — शुरू में बंद", "notification नोटिफिकेशन सूचना बोलकर बताओ पढ़ो announce read aloud message मैसेज whatsapp live बंद"),
         E("voice", "सुनना (माइक)", "लगातार सुनना — बिना बीप की आवाज़"),
         E("voice", "वेक वर्ड: हे डीके / हेलो डीके (फ़ोन के अंदर)", "ऐप बंद या फ़ोन लॉक हो तब भी \"हे डीके\" (Hey DK) या \"हेलो डीके\" (Hello DK) बोलिए — तुरंत DK लाइव. वेक वर्ड से पहले कुछ भी इंटरनेट पर नहीं जाता"),
         E("voice", "WhatsApp संदेश", "\"राहुल को WhatsApp पर लिखो …\" कहने पर DK खुद भेजता है और भेजने के बाद ही \"भेज दिया\" बोलता है"),
