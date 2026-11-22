@@ -62,7 +62,10 @@ class FlashLive(val seq: IntArray = randomSeq(), private val slotMs: Long = SLOT
         if (broken != null) return false
         if (!started) return true
         if (faces > 1) { broken = "एक से ज़्यादा चेहरे"; return false }
-        if (faces == 0) { if (now - lastSeen > GAP_MS) broken = "चेहरा हट गया"; return broken == null }
+        if (faces == 0) {
+            if (now - lastSeen > GAP_MS) broken = "चेहरा हट गया"
+            return broken == null
+        }
         if (lastW > 0f) {
             val jump = hypot(cx - lastCx, cy - lastCy) > FaceLiveness.JUMP * lastW
             val resize = w / lastW > FaceLiveness.RESIZE || lastW / w > FaceLiveness.RESIZE
