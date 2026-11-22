@@ -2,6 +2,7 @@ package com.dk.assistant.voice
 
 import android.content.Context
 import com.dk.assistant.DKLog
+import kotlinx.coroutines.async
 
 /**
  * 16 नवंबर 2026: आवाज़ से अनलॉक का पहरेदार (नियम [UnlockRules] में). PIN डालने से ठीक पहले [allow] पूछा जाता है.
@@ -62,22 +63,75 @@ object UnlockGuard {
      * बात अभी चल रही हो (Live caption ने बीच में पकड़ा) तो खत्म होने का थोड़ा इंतज़ार.
      */
     suspend fun allow(c: Context): String? {
+        // 22 नवंबर 2026: अनलॉक शुरू होते ही [prefetch] ने जाँच साथ-साथ शुरू कर दी हो तो उसी का नतीजा (दोबारा इंतज़ार नहीं)
+        val p = pending; pending = null
+        if (p != null) return try { p.await() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
+            DKLog.d("आवाज़ से अनलॉक: जाँच नहीं चली (${e.message})"); UnlockRules.reason(UnlockRules.Verdict.NO_VOICE)
+        }
+        return allow(c, ownerOnly = true)
+    }
+
+    @Volatile private var pending: kotlinx.coroutines.Deferred<String?>? = null
+
+    /**
+     * 22 नवंबर 2026 (मालिक: "अनलॉक बोलते ही तुरंत"): पहले स्क्रीन जगना + PIN वाला हिस्सा आना (1-2s), उसके *बाद* आवाज़ की जाँच.
+     * अब दोनों साथ-साथ: जाँच यहाँ शुरू, PIN डालने से ठीक पहले [allow] इसका नतीजा लेता है.
+     */
+    fun prefetch(c: Context, ownerOnly: Boolean, scope: kotlinx.coroutines.CoroutineScope) {
+        pending?.cancel()
+        pending = scope.async(kotlinx.coroutines.Dispatchers.Default) { allow(c, ownerOnly) }
+    }
+
+    /** फ़ोन PIN के बिना ही खुल गया - साथ वाली जाँच की ज़रूरत नहीं */
+    fun dropPending() { pending?.cancel(); pending = null }
+
+    /**
+     * 22 नवंबर 2026 (मालिक: "सिर्फ़ मालिक की आवाज़" वाला switch): ownerOnly = false = कोई भी बोले तो PIN -
+     * पर फ़ोन के अपने सुनने ने अनलॉक कहा हो ([intent]) यह तब भी ज़रूरी (AI / बाहर की लिखावट अपने-आप PIN नहीं डलवा सकती).
+     */
+    suspend fun allow(c: Context, ownerOnly: Boolean): String? {
         val now = System.currentTimeMillis()
-        if (strikes.paused(now)) return UnlockRules.reason(UnlockRules.Verdict.PAUSED).also { log(UnlockRules.Verdict.PAUSED, null) }
+        if (ownerOnly && strikes.paused(now)) return UnlockRules.reason(UnlockRules.Verdict.PAUSED).also { log(UnlockRules.Verdict.PAUSED, null) }
         if (now - grantAt <= UnlockRules.INTENT_MS) { grantAt = 0L; intentAt = 0L; return null }
         val asked = intentAt
         if (asked <= 0 || now - asked > UnlockRules.INTENT_MS) return UnlockRules.reason(UnlockRules.Verdict.NO_INTENT).also { log(UnlockRules.Verdict.NO_INTENT, null) }
-        var u = last
-        val waitEnd = now + UnlockRules.UTTER_WAIT_MS
-        while ((u == null || !UnlockRules.utterFits(u.at, asked)) && System.currentTimeMillis() < waitEnd) {
-            kotlinx.coroutines.delay(120); u = last
-        }
-        if (u == null || !UnlockRules.utterFits(u.at, asked)) return UnlockRules.reason(UnlockRules.Verdict.NO_VOICE).also { log(UnlockRules.Verdict.NO_VOICE, null) }
-        val v = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { verify(c, u.pcm, System.currentTimeMillis()) }
+        if (!ownerOnly) { intentAt = 0L; DKLog.d("आवाज़ से अनलॉक: मालिक-आवाज़ वाली जाँच बंद (Settings) - कोई भी बोले"); return null }
+        val v = ownerSaid(c, asked)
+        if (v == UnlockRules.Verdict.NO_VOICE) return UnlockRules.reason(v)   // पहले जैसा: बात न मिली = इरादा बना रहे
         intentAt = 0L
         if (v.ok) { last = null; return null }
         return UnlockRules.reason(v)
     }
+
+    /**
+     * 22 नवंबर 2026: आवाज़ से फ़ोन लॉक - switch चालू और वॉइस गार्डियन सिखाया हुआ हो तो इसी बात की आवाज़ मालिक की हो.
+     * null = लॉक करो; वरना कारण. वॉइस गार्डियन सिखाया ही नहीं = पहले जैसा लॉक (लॉक करने से कुछ खुलता नहीं).
+     */
+    suspend fun lockAllow(c: Context, ownerOnly: Boolean): String? {
+        if (!ownerOnly) return null
+        val ready = try { voice.ready(c) } catch (_: Throwable) { false }
+        if (!ready) return null
+        val v = ownerSaid(c, System.currentTimeMillis())
+        if (v.ok) { last = null; return null }
+        return lockReason(v)
+    }
+
+    /** लॉक न करने का बोला जाने वाला कारण (PIN वाली बात नहीं) */
+    fun lockReason(v: UnlockRules.Verdict): String = "बॉस, सुरक्षा: ${v.hi}, इसलिए फ़ोन लॉक नहीं किया।"
+
+    /** अभी कही बात (asked के आसपास की) की आवाज़ मालिक की? बात अभी चल रही हो तो थोड़ा इंतज़ार */
+    private suspend fun ownerSaid(c: Context, asked: Long): UnlockRules.Verdict {
+        var u = last
+        val waitEnd = System.currentTimeMillis() + UnlockRules.UTTER_WAIT_MS
+        while ((u == null || !UnlockRules.utterFits(u.at, asked)) && System.currentTimeMillis() < waitEnd) {
+            kotlinx.coroutines.delay(UTTER_POLL_MS); u = last
+        }
+        if (u == null || !UnlockRules.utterFits(u.at, asked)) return UnlockRules.Verdict.NO_VOICE.also { log(it, null) }
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { verify(c, u.pcm, System.currentTimeMillis()) }
+    }
+
+    /** 22 नवंबर 2026: बात आने की जाँच हर 60 ms (पहले 120) - आवाज़ आते ही फ़ैसला */
+    private const val UTTER_POLL_MS = 60L
 
     private fun verify(c: Context, pcm: ByteArray, now: Long): UnlockRules.Verdict {
         if (strikes.paused(now)) return UnlockRules.Verdict.PAUSED.also { log(it, null) }
@@ -103,5 +157,5 @@ object UnlockGuard {
     }
 
     /** नया PIN सेव / आवाज़ दोबारा सिखाई = रोक हटाओ */
-    fun reset() { strikes.reset(); grantAt = 0L; intentAt = 0L; last = null }
+    fun reset() { strikes.reset(); grantAt = 0L; intentAt = 0L; last = null; dropPending() }
 }

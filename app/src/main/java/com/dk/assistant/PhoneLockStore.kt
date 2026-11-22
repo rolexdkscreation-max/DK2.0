@@ -18,6 +18,8 @@ object PhoneLockStore {
     const val K_KIND = "plock_kind"
     const val K_SECRET = "plock_secret"      // SecretNames में भी (राज़)
     const val K_FAILS = "plock_fails"
+    /** 22 नवंबर 2026 (मालिक): चालू = सिर्फ़ मालिक की आवाज़ (वॉइस गार्डियन) से लॉक / अनलॉक; बंद = कोई भी बोले */
+    const val K_OWNER_ONLY = "plock_owner_only"
 
     /** लगातार इतनी बार गलत = DK PIN डालना रोक दे (फ़ोन लंबे समय के लिए न अटके) - नया PIN सेव करने पर फिर चालू */
     const val MAX_FAILS = 2
@@ -35,6 +37,9 @@ object PhoneLockStore {
     fun kind(c: Context): PhoneLockVoice.Kind? = PhoneLockVoice.Kind.of(raw(c).getString(K_KIND, null))
     fun hasSecret(c: Context) = kind(c) != null && SecretNames.isSealed(raw(c).getString(K_SECRET, null))
     fun fails(c: Context) = raw(c).getInt(K_FAILS, 0)
+    /** default चालू (पहले जैसा सुरक्षित) */
+    fun ownerOnly(c: Context) = raw(c).getBoolean(K_OWNER_ONLY, true)
+    fun setOwnerOnly(c: Context, on: Boolean) { raw(c).edit().putBoolean(K_OWNER_ONLY, on).commit() }
 
     fun saveSettings(c: Context, lockOn: Boolean, unlockOn: Boolean, names: String, lockWords: String, unlockWords: String) {
         raw(c).edit().putBoolean(K_LOCK_ON, lockOn).putBoolean(K_UNLOCK_ON, unlockOn && hasSecret(c))

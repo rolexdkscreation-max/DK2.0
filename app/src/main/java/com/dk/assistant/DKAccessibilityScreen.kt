@@ -309,18 +309,22 @@ private suspend fun DKAccessibilityService.unlockNow(): String {
     // नवंबर 2026: पहले स्क्रीन जगाकर अंदाज़े से swipe (700ms + 700ms रुककर) - Android 14 पर कई फ़ोन में स्क्रीन जगती ही नहीं थी,
     // अंधेरी स्क्रीन पर swipe बेकार और PIN वाला हिस्सा कभी नहीं खुलता। अब छोटी पारदर्शी स्क्रीन: स्क्रीन तुरंत जगे और
     // Android खुद PIN वाला हिस्सा खोले (requestDismissKeyguard); swipe सिर्फ़ अगर यह न चले
-    val asked = UnlockWakeActivity.open(this)
-    waitScreenOn(pm, 1200)
+    // 22 नवंबर 2026 (मालिक: "फोन अनलॉक करो बोलते ही तुरंत स्क्रीन ऑन और PIN वाला हिस्सा"): जड़ - पहले स्क्रीन जगने का
+    // इंतज़ार (1.2s तक) + 350 ms रुकना + swipe, और उसके *बाद* आवाज़ की जाँच (3s तक) - सब एक के बाद एक.
+    // अब: जगाने वाली स्क्रीन (पहले से खुली हो - [preWakeUnlock] - तो दोबारा नहीं), और आवाज़ की जाँच उसी पल साथ-साथ.
+    val asked = if (UnlockPreWake.fresh(System.currentTimeMillis())) true else UnlockWakeActivity.open(this)
     val canPin = km.isKeyguardSecure && PhoneLockStore.unlockOn(this) && PhoneLockStore.hasSecret(this)
+    // आवाज़ की जाँच अभी से, साथ-साथ (नीचे UnlockGuard.allow उसी का नतीजा लेता है). switch बंद = कोई भी बोले
+    if (canPin) com.dk.assistant.voice.UnlockGuard.prefetch(this, PhoneLockStore.ownerOnly(this), scope)
+    waitScreenOn(pm, 1200)
     // v4.8 मालिक: "पहले स्क्रीन ऑन करेगा, फिर स्वाइप अप करेगा, जैसे ही PIN / पैटर्न डालने का ऑप्शन आएगा, डालना शुरू".
-    // पहले swipe सिर्फ़ तब होती थी जब Android वाला तरीका (asked) न चले - कई फ़ोन पर घड़ी वाली स्क्रीन ही रह जाती थी।
-    // अब: स्क्रीन जगी -> थोड़ा रुको -> PIN वाला हिस्सा पहले से न दिखे तो ऊपर swipe (हर हाल में)
+    // स्क्रीन जगी -> PIN वाला हिस्सा पहले से न दिखे तो ऊपर swipe (हर हाल में). रुकना अब छोटा: PIN दिखते ही आगे
     if (km.isKeyguardLocked) {
-        delay(if (asked) 350 else 150)
+        waitBouncer(this, if (asked) UnlockPreWake.BOUNCER_WAIT_MS else UnlockPreWake.BOUNCER_WAIT_SHORT_MS)
         if (km.isKeyguardLocked && !PhoneUnlocker.bouncerUp(this)) {
             val dm = resources.displayMetrics
             swipe(dm.widthPixels / 2f, dm.heightPixels * 0.88f, dm.widthPixels / 2f, dm.heightPixels * 0.3f, 300)
-            delay(400)
+            delay(UnlockPreWake.AFTER_SWIPE_MS)
         }
     }
     if (!km.isKeyguardSecure && km.isKeyguardLocked) {
@@ -334,10 +338,10 @@ private suspend fun DKAccessibilityService.unlockNow(): String {
         }
     }
     val r = when {
-        !km.isKeyguardLocked -> "phone unlock ho gaya"
+        !km.isKeyguardLocked -> "phone unlock ho gaya".also { com.dk.assistant.voice.UnlockGuard.dropPending() }
         // नवंबर 2026: मालिक ने Settings → फ़ोन लॉक / अनलॉक में PIN / पैटर्न सेव किया हो तभी DK खुद डालता है
         // (गलत की गिनती पूरी हो तो enter खुद बताता है कि क्यों रुका - PIN नहीं डालता)
-        // 16 नवंबर 2026 (ऑडिट G1): PIN सिर्फ़ तब जब मालिक ने खुद अनलॉक कहा और उसी बात की आवाज़ पक्की मालिक की
+        // 16 नवंबर 2026 (ऑडिट G1): PIN सिर्फ़ तब जब मालिक ने खुद अनलॉक कहा और (switch चालू हो तो) उसी बात की आवाज़ पक्की मालिक की
         // (वॉइस गार्डियन, कड़ी सीमा, पुरानी रिकॉर्डिंग नहीं). AI / बाहर की लिखावट / किसी और की आवाज़ = PIN नहीं, बस स्क्रीन जगी.
         canPin -> com.dk.assistant.voice.UnlockGuard.allow(this) ?: PhoneUnlocker.enter(this, km, asked)
         // v3.151: पहले यह "हो गया" गिना जाता था (LiveFast.ok) - DK चुप या "खुल गया" बोलता, फ़ोन बंद ही रहता।
@@ -346,8 +350,41 @@ private suspend fun DKAccessibilityService.unlockNow(): String {
         // v4.8: swipe के बाद भी बंद = साफ़ बताओ (पहले "khuli" मान लिया जाता था)
         else -> "${PhoneLockVoice.UNLOCK_FAIL} ऊपर स्वाइप करने पर भी लॉक स्क्रीन नहीं हटी। फ़ोन खुद खोलिए।"
     }
-    DKLog.d("फ़ोन अनलॉक: ${r.take(50)} (${System.currentTimeMillis() - t0} ms, स्क्रीन ${if (wasOff) "बंद थी" else "चालू थी"}, PIN हिस्सा माँगा=$asked)")
+    logUnlock(r, t0, wasOff, asked)
+    UnlockPreWake.clear()
     return r
+}
+
+private fun logUnlock(r: String, t0: Long, wasOff: Boolean, asked: Boolean) {
+    DKLog.d("फ़ोन अनलॉक: ${r.take(50)} (${System.currentTimeMillis() - t0} ms, स्क्रीन ${if (wasOff) "बंद थी" else "चालू थी"}, PIN हिस्सा माँगा=$asked)")
+}
+
+/** PIN वाला हिस्सा दिखते ही लौटो (पहले हर बार पूरे 350 ms रुकना) */
+private suspend fun waitBouncer(svc: DKAccessibilityService, maxMs: Long) {
+    val km = svc.getSystemService(android.app.KeyguardManager::class.java) ?: return
+    val until = System.currentTimeMillis() + maxMs
+    while (km.isKeyguardLocked && !PhoneUnlocker.bouncerUp(svc) && System.currentTimeMillis() < until) delay(UnlockPreWake.POLL_MS)
+}
+
+/**
+ * 22 नवंबर 2026 (मालिक: "जैसे ही बोला जाए फोन अनलॉक करो, तुरंत स्क्रीन ऑन हो और पिन वाला हिस्सा तुरंत आए"):
+ * बात अभी पूरी भी न हुई हो (caption में "...फोन अनलॉक" आया) - स्क्रीन जगाओ और Android से PIN वाला हिस्सा माँग लो.
+ * PIN यहाँ कभी नहीं डलता (वह [unlock] में, पूरी बात + आवाज़ की जाँच के बाद). इंटरनेट / AI नहीं.
+ */
+internal fun DKAccessibilityService.preWakeUnlock(why: String) {
+    try {
+        if (Guard.blocksUnlock() != null) return
+        val km = getSystemService(android.app.KeyguardManager::class.java) ?: return
+        if (!km.isKeyguardLocked || !UnlockPreWake.begin(System.currentTimeMillis())) return
+        val pm = getSystemService(android.os.PowerManager::class.java)
+        if (pm != null && !pm.isInteractive) {
+            @Suppress("DEPRECATION")
+            val wl = pm.newWakeLock(android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP, "dk:prewake")
+            wl.acquire(4000)
+        }
+        if (!UnlockWakeActivity.open(this)) UnlockPreWake.clear()
+        DKLog.d("फ़ोन अनलॉक: बात पूरी होने से पहले ही स्क्रीन जगाई, PIN वाला हिस्सा माँगा ($why)")
+    } catch (e: Exception) { DKLog.d("pre-wake: ${e.message}") }
 }
 
 private suspend fun waitScreenOn(pm: android.os.PowerManager?, maxMs: Long) {
