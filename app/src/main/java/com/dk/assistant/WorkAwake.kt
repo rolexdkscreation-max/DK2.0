@@ -103,7 +103,12 @@ class WorkAwake(private val svc: DKAccessibilityService) {
     }
 
     private var agentStart = 0L
-    private fun agentSince(): Long { if (agentStart == 0L) agentStart = System.currentTimeMillis(); return agentStart }
+    private fun agentSince(): Long {
+        if (agentStart == 0L) {
+            agentStart = System.currentTimeMillis()
+        }
+        return agentStart
+    }
     private fun setAgent(a: Agent?) {
         if (a == null) agentStart = 0L
         val old = agent
