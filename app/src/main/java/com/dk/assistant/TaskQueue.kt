@@ -27,7 +27,7 @@ object TaskQueue {
     )
 
     /** एक काम का नतीजा */
-    data class Result(val item: Item, val ok: Boolean, val why: String = "")
+    data class Result(val item: Item, val ok: Boolean, val why: String = "", val detail: String = "")
 
     /** काम से पहले एक छोटा सवाल (सिर्फ़ ख़तरे वाले काम में, और सिर्फ़ जब बात साफ़ न हो) */
     enum class Field { CONTACT, MESSAGE, WHICH_PHOTO, CHOICE }
@@ -45,6 +45,13 @@ object TaskQueue {
 
     private val DOMAINS: List<Pair<String, List<String>>> = listOf(
         "whatsapp" to listOf("व्हाट्सऐप", "व्हाट्सएप", "व्हाट्सअप", "वॉट्सऐप", "वॉट्सएप", "वाट्सएप", "वाट्सऐप", "व्हाट्सप", "whatsapp", "watsapp", "whats app"),
+        // 22 नवंबर 2026 (मालिक): "Instagram खोलो, followers देखो", "लास्ट रील की insight" = एक ही Instagram काम
+        "instagram" to listOf("इंस्टाग्राम", "इंस्टा", "instagram", "insta ", "रील", "reel", "फॉलोअर्स", "फॉलोवर्स", "फ़ॉलोअर्स", "followers"),
+        "facebook" to listOf("फेसबुक", "फ़ेसबुक", "facebook"),
+        // फ़ोन की बैटरी पूछना ("बैटरी कितनी है"); "बैटरी कैसे काम करती है" जैसी पढ़ाई वाली बात नहीं
+        "battery" to listOf("बैटरी कितनी", "बैटरी कितना", "बैटरी बता", "बैटरी चेक", "बैटरी परसेंट", "बैटरी प्रतिशत", "बैटरी लेवल", "बैटरी %",
+            "फोन की बैटरी", "फ़ोन की बैटरी", "battery kitni", "battery percent", "battery level", "battery %", "battery check", "battery bata",
+            "कितना चार्ज", "चार्ज कितना", "kitna charge", "charge kitna"),
         "sms" to listOf("एसएमएस", "sms"),
         "message" to listOf("मैसेज", "मेसेज", "संदेश", "message", "msg"),
         "call" to listOf("कॉल", "काल कर", "call", "फोन लगा", "फ़ोन लगा", "फोन करो", "फ़ोन करो"),
@@ -252,18 +259,34 @@ object TaskQueue {
 
     // ---------------- नतीजा पहचानना (फ़ोन के जवाब से) ----------------
 
-    data class Outcome(val ok: Boolean, val needsUser: String? = null, val why: String = "")
+    data class Outcome(val ok: Boolean, val needsUser: String? = null, val why: String = "", val detail: String = "")
 
     fun outcome(r: String): Outcome {
         val s = r.trim()
         return when {
             s.startsWith("NEEDS USER CHOICE") -> Outcome(false, needsUser = s.substringAfter(":").substringBefore(". Ask the user").trim().ifBlank { "किसे चुनूँ, सर?" })
-            s.startsWith("DONE") || s.startsWith("ALREADY DONE") || s.startsWith("FINISHED. Result") || s.startsWith("QUEUE_OK") -> Outcome(true)
+            s.startsWith("DONE") || s.startsWith("ALREADY DONE") || s.startsWith("FINISHED. Result") || s.startsWith("QUEUE_OK") -> Outcome(true, detail = detailOf(s))
             s.startsWith("FAILED") || s.startsWith("STILL RUNNING") || s.startsWith("FINISHED the steps") || s.startsWith("not_done") || s.startsWith("ERROR") -> Outcome(false, why = whyHindi(s))
             s.contains("\"status\":\"error\"") -> Outcome(false, why = whyHindi(s))
             else -> Outcome(false, why = whyHindi(s))
         }
     }
+
+    /**
+     * 22 नवंबर 2026 (मालिक: "हर काम का रिज़ल्ट बताओ"): फ़ोन / एजेंट ने जो असली जवाब दिया (बैटरी 78%, 1,234 followers,
+     * रील की reach…) - आख़िरी सार में वही. अंग्रेज़ी वाले अंदरूनी शब्द ("torch on") नहीं, तब खाली = [doneLine]
+     */
+    fun detailOf(r: String): String {
+        val s = r.trim()
+        Regex("Phone says: \\\"([^\\\"]+)\\\"").find(s)?.let { return it.groupValues[1].trim().take(DETAIL_MAX) }
+        if (s.startsWith("FINISHED. Result:")) return s.removePrefix("FINISHED. Result:").substringBefore(" (report only").trim().take(DETAIL_MAX)
+        if (s.startsWith("DONE: ")) {
+            val x = s.removePrefix("DONE: ").substringBefore(" Tell the user").trim().trimEnd('.')
+            if (x.any { it in '\u0900'..'\u097F' }) return x.take(DETAIL_MAX)
+        }
+        return ""
+    }
+    private const val DETAIL_MAX = 180
 
     private fun whyHindi(s: String): String {
         val l = s.lowercase()
@@ -303,6 +326,9 @@ object TaskQueue {
         "wifi" -> "वाई-फ़ाई"
         "bluetooth" -> "ब्लूटूथ"
         "hotspot" -> "हॉटस्पॉट"
+        "battery" -> "बैटरी"
+        "instagram" -> "इंस्टाग्राम"
+        "facebook" -> "फेसबुक"
         else -> if (item.kind == Kind.DELETE) "डिलीट" else item.text.take(30)
     }
 
@@ -326,6 +352,9 @@ object TaskQueue {
             "wifi" -> if (off) "वाई-फ़ाई बंद हो गया" else "वाई-फ़ाई चालू हो गया"
             "bluetooth" -> if (off) "ब्लूटूथ बंद हो गया" else "ब्लूटूथ चालू हो गया"
             "hotspot" -> if (off) "हॉटस्पॉट बंद हो गया" else "हॉटस्पॉट चालू हो गया"
+            "battery" -> "बैटरी देख ली"
+            "instagram" -> if (CHECK.containsMatchIn(t)) "इंस्टाग्राम में देख लिया" else "इंस्टाग्राम खुल गया"
+            "facebook" -> if (CHECK.containsMatchIn(t)) "फेसबुक में देख लिया" else "फेसबुक खुल गया"
             else -> if (item.kind == Kind.DELETE) "डिलीट हो गया" else "${item.text.take(40)} - हो गया"
         }
     }
@@ -341,6 +370,92 @@ object TaskQueue {
         if (sb.isEmpty()) sb.append("कोई काम नहीं हुआ")
         return sb.toString().trim().trimEnd('।') + "।"
     }
+
+    // ---------------- क्रम: पहले क्या, बाद में क्या (22 नवंबर 2026, मालिक) ----------------
+    // "बैटरी बताओ, गाना चलाओ, राहुल को मैसेज करो, नासिक का नेविगेशन लगाओ" = तुरंत वाले (बैटरी / टॉर्च / अलार्म) पहले,
+    // फिर नेविगेशन (पीछे चलता रहता है), फिर स्क्रीन वाले (मैसेज / Instagram…), फिर कॉल, गाना / वीडियो सबसे आख़िर
+    // (गाना पहले चलाया तो अगले काम में ऐप बदलते ही रुक जाता). मालिक ने ख़ुद "पहले / आख़िर में" बोला = वही.
+
+    private val FIRST = Regex("(सबसे\\s*पहले|sabse\\s*pehle|sabse\\s*pahle|first\\s+of\\s+all|^पहले\\s|^pehle\\s|^pahle\\s|^first\\s)", RegexOption.IGNORE_CASE)
+    private val LAST = Regex("((सबसे|sabse)\\s*(बाद|baad)(\\s*(में|मे|me|mein))?|(आख़िर|आखिर|आखरी|लास्ट|last|अंत|aakhir)\\s*(में|मे|me|mein)(?=\\s|$|[,।.!?])|at\\s+the\\s+end|in\\s+the\\s+end)", RegexOption.IGNORE_CASE)
+    /** "इसी क्रम में करो" = जैसा बोला वैसा ही */
+    private val KEEP_ORDER = Regex("(इसी\\s*(क्रम|ऑर्डर|order|तरह\\s*से\\s*क्रम)|जैसे\\s*बोला\\s*वैसे|same\\s*order|in\\s*this\\s*order|in\\s*the\\s*same\\s*order|isi\\s*order|isi\\s*kram)", RegexOption.IGNORE_CASE)
+    /** पिछले काम से जुड़ा ("वो फ़ोटो राहुल को भेजो") = उसके ठीक बाद ही */
+    private val FOLLOW = Regex("^(उसे|उसको|उसका|उसकी|उसके|उस|वो|वह|इसे|इसको|इसका|इसकी|ये|यह|it|that|this)\\s", RegexOption.IGNORE_CASE)
+    private val CHECK = Regex("(बता|चेक|check|देख|कितन|tell|how\\s*many|reach|रीच|insight|इनसाइट|followers|फॉलोअर|फ़ॉलोअर|views|व्यूज़|व्यूज|likes|लाइक)", RegexOption.IGNORE_CASE)
+    private val QUICK = setOf("battery", "torch", "volume", "brightness", "wifi", "bluetooth", "hotspot", "alarm", "timer", "reminder", "settings")
+
+    /** छोटा = पहले. -1 = मालिक ने "सबसे पहले" कहा, 9 = "आख़िर में" */
+    fun tier(item: Item): Int {
+        val t = item.text
+        return when {
+            FIRST.containsMatchIn(t.trim()) -> -1
+            LAST.containsMatchIn(t) -> 9
+            item.domain in QUICK -> 0
+            item.domain == "maps" -> 1
+            item.domain == "call" || (item.domain == "whatsapp" && item.kind != Kind.WHATSAPP_SEND && WaCall.parse(t) != null) -> 3
+            item.domain == "youtube" -> 4
+            else -> 2
+        }
+    }
+
+    /**
+     * कामों का समझदार क्रम (बराबर वाले = बोले गए क्रम में ही). [raw] में "इसी क्रम में" = कुछ नहीं बदलता.
+     * "वो / उसे …" वाला काम पिछले से चिपका रहता है.
+     */
+    fun plan(items: List<Item>, raw: String = ""): List<Item> {
+        if (items.size < 2 || KEEP_ORDER.containsMatchIn(raw)) return items
+        val chains = mutableListOf<MutableList<Item>>()
+        for (it in items) if (chains.isNotEmpty() && FOLLOW.containsMatchIn(it.text.trim())) chains.last() += it else chains += mutableListOf(it)
+        fun chainTier(c: List<Item>): Int = c.map { tier(it) }.let { ts -> ts.firstOrNull { it == -1 || it == 9 } ?: ts.first() }
+        return chains.withIndex().sortedWith(compareBy({ chainTier(it.value) }, { it.index })).flatMap { it.value }
+    }
+
+    /** काम ख़त्म होने पर होम पर लौटें? - देखने / बताने वाला स्क्रीन का काम हाँ; सिर्फ़ "X खोलो", गाना, नेविगेशन, कॉल, कैमरा नहीं */
+    fun homeAfter(item: Item): Boolean {
+        val screen = item.domain in setOf("instagram", "facebook", "gallery", "settings", "other", "whatsapp", "sms", "battery") || item.domain.startsWith("app:")
+        if (!screen || tier(item) == 3) return false
+        if (item.domain == "battery") return false
+        if (item.kind == Kind.WHATSAPP_SEND || item.kind == Kind.DELETE) return true
+        return CHECK.containsMatchIn(item.text)
+    }
+
+    /** island / notification में चलता काम: "2/5 • Instagram खोलो और followers चेक करो" */
+    fun stepLine(n: Int, total: Int, item: Item): String = "$n/$total • ${item.text.replace(Regex("\\s+"), " ").trim().take(90)}"
+
+    const val STATUS_KEY = "queue"
+
+    /**
+     * 22 नवंबर 2026 (मालिक: "नाम से बोलो - आपने जो-जो काम बोला, मैंने पूरा कर दिया", और हर काम का नतीजा).
+     * [name] = प्रोफ़ाइल का नाम (खाली = "बॉस").
+     */
+    fun report(results: List<Result>, name: String, stopped: Boolean = false, left: Int = 0): String {
+        val who = name.trim().ifBlank { "बॉस" }
+        val ok = results.count { it.ok }
+        val head = when {
+            results.isEmpty() -> "$who, कोई काम नहीं हो पाया"
+            ok == results.size && !stopped -> "$who, आपने जो-जो काम बोला था, मैंने एक-एक करके सब पूरा कर दिया"
+            ok == 0 -> "$who, माफ़ कीजिए, इनमें से कोई काम पूरा नहीं हो पाया"
+            else -> "$who, आपके ${results.size} में से $ok काम पूरे हो गए"
+        }
+        val lines = results.mapIndexed { i, r ->
+            "${i + 1}) " + when {
+                !r.ok -> "${label(r.item)} नहीं हो पाया (${r.why.ifBlank { "पूरा नहीं हुआ" }})"
+                r.detail.isNotBlank() -> "${label(r.item)}: ${r.detail.trim().trimEnd('।', '.')}"
+                else -> doneLine(r.item)
+            }
+        }
+        val sb = StringBuilder(head).append("।")
+        if (lines.isNotEmpty()) sb.append(" ").append(lines.joinToString("। ")).append("।")
+        if (stopped) sb.append(" आपके कहने पर बाक़ी ${if (left > 0) "$left " else ""}काम रोक दिए।")
+        return sb.toString()
+    }
+
+    /** एजेंट को: यह कतार का एक काम है - सिर्फ़ इतना ही, इधर-उधर कुछ नहीं */
+    const val FOCUS_NOTE = "THIS IS ONE TASK FROM A LIST the user gave. Do ONLY exactly this task, nothing extra. " +
+        "If it asks to check / tell something (followers, reach, views, insights of the last reel / post, battery, a count), open only the screen that shows it, " +
+        "read the exact value and finish with that value in your final reply in Hindi (e.g. \"आपके 1,245 followers हैं\"). " +
+        "Do not open other sections, posts, profiles or settings; do not like, follow, comment, share or scroll more than needed. Stop as soon as it is done."
 
     // ---------------- Gemini के लिए छोटे संदेश ----------------
 
@@ -358,7 +473,8 @@ object TaskQueue {
             "The phone takes their answer itself - after they answer, do NOT call any tool and say nothing (or just \"ठीक है\")."
 
     fun summaryNote(s: String): String =
-        "SYSTEM NOTE (this is not the user speaking): ALL tasks of the list are finished. Say exactly this short summary in your usual voice, nothing else: \"$s\""
+        "SYSTEM NOTE (this is not the user speaking): ALL tasks of the list are finished. Say exactly this summary in your usual voice, nothing else " +
+            "(keep every number / result exactly as written; do not add or drop any task): \"$s\""
 
     fun stoppedNote(): String = "STOPPED: the task list was stopped at once because the user said stop. Say only \"ठीक है, रोक दिया।\""
 }
@@ -374,7 +490,9 @@ class TaskRunQueue(
     private val prepare: suspend (prev: TaskQueue.Item, next: TaskQueue.Item, prevOk: Boolean) -> Unit,
     /** यूज़र से एक छोटा सवाल; जवाब (या null = जवाब नहीं आया) */
     private val ask: suspend (String) -> String?,
-    private val log: (String) -> Unit = {}
+    private val log: (String) -> Unit = {},
+    /** 22 नवंबर 2026: अभी कौन-सा काम (n / कुल) - island में दिखाने को */
+    private val onStep: (n: Int, total: Int, item: TaskQueue.Item) -> Unit = { _, _, _ -> }
 ) {
     private val pending = ArrayDeque<TaskQueue.Item>()
     val results = mutableListOf<TaskQueue.Result>()
@@ -428,6 +546,7 @@ class TaskRunQueue(
                     }
                 }
                 log("कतार: ${results.size + 1}. \"${item.text.take(50)}\"")
+                try { onStep(results.size + 1, results.size + 1 + left(), item) } catch (e: Exception) { log("कतार onStep: ${e.message}") }
                 var o = TaskQueue.outcome(try { runOne(item) } catch (e: kotlinx.coroutines.CancellationException) { if (stopped) "FAILED: cancel" else throw e } catch (e: Exception) { "FAILED: ${e.message}" })
                 if (o.needsUser != null && !stopped) {
                     val a = askOnce(o.needsUser!!)
@@ -436,7 +555,7 @@ class TaskRunQueue(
                     else { item = fixed; TaskQueue.outcome(try { runOne(item) } catch (e: Exception) { "FAILED: ${e.message}" }).let { if (it.needsUser != null) TaskQueue.Outcome(false, why = "साफ़ नहीं हो पाया") else it } }
                 }
                 if (stopped && !o.ok) break
-                results += TaskQueue.Result(item, o.ok, o.why)
+                results += TaskQueue.Result(item, o.ok, o.why, o.detail)
                 prev = item; prevOk = o.ok
                 delay(150)
             }
