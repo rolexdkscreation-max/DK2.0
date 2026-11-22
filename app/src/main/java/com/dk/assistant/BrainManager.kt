@@ -844,6 +844,7 @@ class BrainManager(private val ctx: Context) {
             if (JarvisMode.on(ctx)) append(JarvisMode.block(Prefs.userName(ctx))) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(Prefs.userName(ctx)))).append(SpeakingStyle.block(Prefs.userName(ctx))).append(DkPersona.finalBlock(ctx, Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - हमेशा
             append(AssistantPersona.block(ctx))   // 15 नवंबर 2026: FRIDAY / VENOM (चालू न हो = कुछ नहीं)
             append(WorkChatMode.block(live = false)).append(TeacherBoard.block()).append(LocalMemory.promptBlock(ctx)).append(NetProbe.refresh(ctx).let { NetSpeed.promptNote() })   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + टीचर बोर्ड (स्वभाव वही)
+            append(NameRule.placement(Prefs.userName(ctx)))   // 22 नवंबर 2026 (मालिक): नाम सिर्फ़ वाक्य की शुरुआत में - आख़िर में ताकि यही चले
         }
     }
 
@@ -872,6 +873,7 @@ class BrainManager(private val ctx: Context) {
             if (JarvisMode.on(ctx)) append(JarvisMode.block(Prefs.userName(ctx))) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(Prefs.userName(ctx)))).append(SpeakingStyle.block(Prefs.userName(ctx))).append(DkPersona.finalBlock(ctx, Prefs.userName(ctx)))   // v3.76: मालिक का तय स्वभाव - classic आवाज़ में भी
             append(AssistantPersona.block(ctx))   // 15 नवंबर 2026: FRIDAY / VENOM (चालू न हो = कुछ नहीं)
             append(WorkChatMode.block(live = false)).append(TeacherBoard.block()).append(LocalMemory.promptBlock(ctx)).append(NetProbe.refresh(ctx).let { NetSpeed.promptNote() })   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + टीचर बोर्ड (स्वभाव वही)
+            append(NameRule.placement(Prefs.userName(ctx)))   // 22 नवंबर 2026 (मालिक): नाम सिर्फ़ वाक्य की शुरुआत में - आख़िर में ताकि यही चले
         }
     }
 
@@ -1060,6 +1062,7 @@ class BrainManager(private val ctx: Context) {
             if (SideTalk.on(ctx)) append(SideTalk.PROMPT)   // नवंबर 2026: बॉस किसी और से बात करे = DK सुने, जवाब नहीं
             append(awarenessBlock())   // 21 नवंबर 2026: अवेयरनेस मोड (बंद = कुछ नहीं)
             append(TaskFirst.prompt(f))   // v3.7 (मालिक): फ़ोन का काम = पहले काम (चुप), फिर "हो गया सर" + "और कुछ?" - आख़िर में ताकि यही चले   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + कई काम की कतार + टीचर बोर्ड (स्वभाव वही)
+            append(NameRule.placement(Prefs.userName(ctx)))   // 22 नवंबर 2026 (मालिक): नाम सिर्फ़ वाक्य की शुरुआत में ("और कुछ करना है सर?" वाले उदाहरण से भी ऊपर)
         }
     }
 
@@ -1088,6 +1091,7 @@ class BrainManager(private val ctx: Context) {
             if (SideTalk.on(ctx)) append(SideTalk.PROMPT)
             append(awarenessBlock())
             append(LivePromptLite.TAIL)
+            append(NameRule.placement(Prefs.userName(ctx)))
         }
     }
 

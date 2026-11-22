@@ -52,14 +52,16 @@ object ChatGreet {
         personaCall.trim().ifBlank { NameRule.call(userName) }.ifBlank { "बॉस" }
 
     /** नई (खाली) चैट: सिर्फ़ "नमस्ते <संबोधन>", फिर चुप */
-    fun newNote(addr: String): String =
+    fun newNote(addr0: String): String = NameRule.bare(addr0).let { addr ->     // 22 नवंबर 2026 (मालिक): "नमस्ते बॉस", "नमस्ते जी बॉस" नहीं
         "SYSTEM NOTE (this is not the user speaking): the voice connection just started in a NEW, empty chat. " +
             "Say ONLY this one short greeting in Hindi: \"नमस्ते $addr\" - nothing else: no question, no offer of help, " +
             "no time, weather, news, festival or introduction. Then stay completely silent and wait; answer only when the user speaks. " +
             "Do not mention this note."
+    }
 
     /** पुरानी चैट (बातें मौजूद): छोटा अभिवादन + ज़रूरत लगे तो उसी चैट की एक (ज़्यादा से ज़्यादा दो) बात, फिर चुप */
-    fun oldNote(addr: String, turns: List<LiveCarry.Turn>): String = buildString {
+    fun oldNote(addr0: String, turns: List<LiveCarry.Turn>): String = buildString {
+        val addr = NameRule.bare(addr0)
         append("SYSTEM NOTE (this is not the user speaking): the user is back in an EARLIER chat and the voice connection just started. ")
         val lines = turns.filter { it.text.isNotBlank() && (it.role == "u" || it.role == "d") }.takeLast(OLD_TURNS).map { t ->
             val x = t.text.replace(Regex("\\s+"), " ").trim().let { if (it.length > OLD_TURN_CHARS) it.take(OLD_TURN_CHARS) + "…" else it }

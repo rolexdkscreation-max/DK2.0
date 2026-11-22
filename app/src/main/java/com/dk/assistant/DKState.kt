@@ -164,7 +164,7 @@ object DKState {
     fun hint(t: String) { hintText = t; emit() }
     fun reply(t0: String, sources: List<Pair<String, String>> = emptyList(), g: GroundCite.G? = null) {
         // 14 नवंबर 2026 (मालिक): पहले से लिखी लाइन का "बॉस" = "जी <प्रोफ़ाइल का नाम>"
-        val t = appCtx?.let { NameRule.swap(t0, Prefs.userName(it)) } ?: t0
+        val t = appCtx?.let { NameRule.tidy(NameRule.swap(t0, Prefs.userName(it)), NameRule.names(Prefs.userName(it))) } ?: t0   // 22 नवंबर 2026: संबोधन वाक्य की शुरुआत में
         val src = if (g != null) (GroundCite.unique(g) + sources).distinctBy { it.second } else sources
         lastReply = t; liveReply = ""; hintText = ""; lastSources = src; lastGround = g
         TeacherBoard.onReply(WebCite.strip(t), final = true)   // v3.87: पढ़ाई का जवाब टीचर के पन्ने पर (बिना [n] निशान)
