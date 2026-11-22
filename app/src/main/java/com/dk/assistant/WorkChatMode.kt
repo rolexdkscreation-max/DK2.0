@@ -36,9 +36,9 @@ object WorkChatMode {
         append("When it is done: the result at once, e.g. \"हो गया।\" Do not start how-are-you talk, stories or questions in the middle of a task - ask only what the task truly needs.")
         if (live) {
             append("\n- SEVERAL TASKS in one go (e.g. \"अलार्म लगाओ, फिर राहुल को व्हाट्सऐप करो, फिर गैलरी से फ़ोटो डिलीट करो, फिर यूट्यूब पर गाना सर्च करो, फिर मैप में नेविगेशन शुरू करो\" - 5 or more): ")
-            append("first listen to the WHOLE sentence, then call phone_task ONCE with his full request in his exact words. The phone itself splits it into separate tasks, runs them one by one in the spoken order, ")
+            append("first listen to the WHOLE sentence, then call phone_task ONCE with his full request in his exact words. Any number of tasks (3, 5, 10, 20 or more) - never split them into separate tool calls and never drop one. The phone itself splits it into separate tasks, picks a smart order (quick things like battery / torch / alarm first, navigation next, then messages / app checks, songs last - or exactly his order if he says पहले / आख़िर में / इसी क्रम में), runs them one by one, ")
             append("brings the phone to the right screen between tasks, skips a stuck one and goes on. Do NOT call separate tools for those tasks and do not say anything is done until the SYSTEM NOTE with the summary comes; ")
-            append("then speak that summary in one short line (e.g. \"अलार्म लग गया, मैसेज भेज दिया, फ़ोटो डिलीट हो गई, गाना चल रहा है, नेविगेशन शुरू है।\").")
+            append("then speak that summary as written: it starts with his name and gives the result of every task.")
             append("\n- If he says something new while tasks are running, call phone_task with only the new thing - it goes to the END of the list. If he says \"रुको\" / \"बंद करो\" / stop while tasks are running, call phone_task with request \"रुको\" at once - everything stops immediately.")
         } else {
             append("\n- SEVERAL TASKS in one go: listen to the whole sentence, do them one by one in the spoken order; if one gets stuck, skip it and go on; at the end give ONE short summary of what was done and what was not (and why).")

@@ -26,7 +26,10 @@ internal suspend fun GeminiLive.phoneTask(req: String): String {
     // 21 नवंबर 2026 (मालिक): "DK स्कैन खोलो" Gemini ने phone_task में भेजा = DK लेंस ही (ऐप नहीं खोलना). बिना बोले पीछे वाला
     LensCmd.parse(req)?.let { c -> log("DK स्कैन: phone_task से कैमरा (${LensCmd.facing(c)}, on=${c.on})"); return LiveVision.setCamera(svc, c.on, LensCmd.facing(c)) }
     val items = TaskQueue.split(req)
-    if (items.size >= 2) return startQueue(items)
+    // 22 नवंबर 2026 (मालिक): 3, 5, 10, 20 - कितने भी काम; समझदारी वाला क्रम (तुरंत वाले पहले, गाना आख़िर में)
+    if (items.size >= 2) return startQueue(TaskQueue.plan(items, req).also { p ->
+        if (p != items) log("कतार क्रम बदला: " + p.joinToString(" > ") { it.domain })
+    })
     return phoneTaskOne(req)
 }
 
@@ -36,12 +39,15 @@ internal fun GeminiLive.startQueue(items: List<TaskQueue.Item>): String {
         runOne = { runQueued(it) },
         prepare = { prev, next, prevOk -> queuePrepare(prev, next, prevOk) },
         ask = { queueAsk(it) },
-        log = { log(it) }
+        log = { log(it) },
+        onStep = { n, total, item -> TaskStatus.step(TaskQueue.STATUS_KEY, TaskQueue.stepLine(n, total, item)) }
     )
     q.add(items)
     taskQueue = q
     TeacherBoard.exitBlocked = { taskQueue?.running == true }
     log("कतार शुरू: ${items.size} काम - " + items.joinToString(" | ") { "${it.domain}:${it.text.take(25)}" })
+    TaskStatus.start(TaskQueue.STATUS_KEY, "DK के ${items.size} काम", "DK task list (${items.size} tasks, one by one)",
+        items.mapIndexed { i, it -> "${i + 1}) ${it.text.take(40)}" }.joinToString("  "))
     svc.scope.launch {
         // "रुको / बंद करो" - Gemini के भरोसे नहीं, फ़ोन ख़ुद सुनता है
         val watcher = launch {
@@ -55,9 +61,22 @@ internal fun GeminiLive.startQueue(items: List<TaskQueue.Item>): String {
                 }
             }
         }
-        val summary = try { q.runAll() } catch (e: CancellationException) { TaskQueue.summary(q.results, true, q.left()) }
-            catch (e: Exception) { log("कतार गड़बड़: ${e.message}"); TaskQueue.summary(q.results, q.stopped, q.left()) }
+        var cut = false
+        try { q.runAll() } catch (e: CancellationException) { cut = true; Quiet.note(e) }
+            catch (e: Exception) { log("कतार गड़बड़: ${e.message}") }
             finally { watcher.cancel() }
+        // आख़िरी काम देखने / बताने वाला था (Instagram followers…) = होम पर लौटो; गाना / नेविगेशन / कॉल को नहीं छेड़ना
+        q.results.lastOrNull()?.let { r ->
+            if (!q.stopped && !cut && TaskQueue.homeAfter(r.item)) {
+                try { svc.perform(JSONObject().put("type", "home")) } catch (e: Exception) { Quiet.note(e) }
+                log("कतार: आख़िरी काम के बाद होम")
+            }
+        }
+        val name = try { NameRule.bare(Prefs.userName(svc)).ifBlank { NameRule.bare(com.dk.assistant.dkai.ChatFresh.address(svc)) } } catch (e: Exception) { Quiet.note(e); "" }
+        val halted = q.stopped || cut
+        val summary = TaskQueue.report(q.results, name, halted, q.left())
+        val allOk = q.results.isNotEmpty() && q.results.all { it.ok } && !halted
+        TaskStatus.end(TaskQueue.STATUS_KEY, when { halted -> TaskStatus.State.CANCELLED; allOk -> TaskStatus.State.DONE; else -> TaskStatus.State.NOT_DONE }, summary)
         if (taskQueue === q) taskQueue = null
         log("कतार ख़त्म: $summary")
         if (!waitQuiet(45_000)) { log("Gemini चुप नहीं हुआ (45s) - बीच बातचीत text नहीं भेजा"); return@launch }
@@ -238,6 +257,8 @@ internal suspend fun GeminiLive.phoneTaskOne(req: String, queued: Boolean = fals
     }
     val before = DKState.lastReply
     val failBefore = DKState.failedAt
+    // 22 नवंबर 2026 (मालिक): कतार का काम = सिर्फ़ वही ("followers देखो" = सिर्फ़ followers), इधर-उधर नहीं
+    if (queued) note = (TaskQueue.FOCUS_NOTE + "\n" + note).trim()
     val job = agent.run(req, speak = false, note = note)
     // v3.41: 20s -> 7s. Gemini tool ke jawab tak CHUP rehta hai - 20s chuppi = "sun hi nahi raha". Ab 7s me
     // "kar raha hoon" bolta hai; kaam peeche chalta rehta hai aur poora hote hi lateNote se batata hai.
