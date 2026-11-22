@@ -25,7 +25,9 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.text.TextPaint
 import android.text.TextUtils
+import android.util.TypedValue
 import android.text.InputType
 import android.view.Gravity
 import android.view.KeyEvent
@@ -645,7 +647,8 @@ object DKIsland {
         return when (it.kind) {
             IslandCore.Kind.CALL -> IslandCore.allCalls(sn).getOrNull(it.idx)?.let { c -> openCall(s, c) } ?: false
             IslandCore.Kind.MEDIA -> sn.media?.let { m -> openMediaApp(s, m); true } ?: false
-            IslandCore.Kind.TASK -> (sn.tasks.firstOrNull { t -> t.active } ?: sn.tasks.firstOrNull { t -> IslandCore.justEnded(t, now) })?.let { t -> openTask(s, t); true } ?: false
+            // कतार चलते टैप = DK का ऐप नहीं खुले (स्क्रीन वाला काम बीच में न टूटे) - island फैलकर सब दिखाए
+            IslandCore.Kind.TASK -> IslandCore.shownTask(sn, now)?.let { t -> if (t.active && t.key == IslandCore.QUEUE_KEY) false else { openTask(s, t); true } } ?: false
             IslandCore.Kind.LIVE -> { openDk(s); true }
             IslandCore.Kind.NOTIF -> sn.notifs.firstOrNull()?.let { n -> IslandFeed.open(s, n.key).also { ok -> if (ok) collapse() } } ?: false
             IslandCore.Kind.LOCKED -> sn.locked.singleOrNull()?.let { l -> PrivacyScreen.open(s, l.pkg); collapse(); true } ?: false
@@ -730,6 +733,19 @@ object DKIsland {
         }
         if (first.kind == IslandCore.Kind.CHARGING) return chargeSmall(s, sn, now)
         row.addView(itemIcon(s, sn, first, 24f))
+        // 22 नवंबर 2026 (मालिक): कई काम चल रहे = अभी वाला काम island की चौड़ाई में पानी की तरह बहता रहे
+        if (IslandCore.marquee(sn, now)) {
+            val mq = MarqueeText(s).apply { textSizePx = spPx(s, 13f * k); maxW = px(s, 190f) }
+            row.addView(mq, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = px(s, 8f) })
+            val qr = tv(s, 12f, rightColor(sn, now)).apply { gravity = Gravity.END }
+            row.addView(qr, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = px(s, 10f) })
+            updaters.add { a, t ->
+                mq.text = UiLang.s(IslandCore.compactText(a, t))
+                qr.text = UiLang.s(IslandCore.compactRightWith(a, t, IslandCore.bubble(a, t) != null))
+            }
+            row.contentDescription = UiLang.s("DK Island - टैप = खोलें, दबाकर रखें = पूरा देखें")
+            return row
+        }
         val left = tv(s, 13f, 0xFFFFFFFF.toInt(), bold = true).apply { maxWidth = px(s, 170f) }
         row.addView(left, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = px(s, 8f) })
         val right = tv(s, 12f, rightColor(sn, now)).apply { gravity = Gravity.END }
@@ -1144,7 +1160,13 @@ object DKIsland {
         val txt = LinearLayout(s).apply { orientation = LinearLayout.VERTICAL; setPadding(px(s, 10f), 0, 0, 0) }
         val head = tv(s, 13f, stateColor(t), bold = true)
         val body = tv(s, 12f, 0xCCFFFFFF.toInt(), lines = 4)
-        txt.addView(head); txt.addView(body)
+        txt.addView(head)
+        // 22 नवंबर 2026 (मालिक): कतार का अभी वाला काम = बहती लाइन (पूरी पढ़ी जा सके)
+        if (t.active && t.key == IslandCore.QUEUE_KEY && t.last.isNotBlank()) {
+            txt.addView(MarqueeText(s).apply { textSizePx = spPx(s, 12.5f * k); color = 0xFF93C5FD.toInt(); text = UiLang.s(t.last) },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(s, 3f) })
+        }
+        txt.addView(body)
         updaters.add { _, now -> val (h, b) = IslandCore.taskLine(t.copy(), now); head.text = UiLang.s(h); body.text = b }
         row.addView(txt, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         return row
@@ -1209,6 +1231,68 @@ object DKIsland {
     }
 
     /** बैटरी का चित्र: भरती हुई (चार्जर लगते ही 0 से % तक), चार्जिंग में चमकती लहर + धड़कता ⚡ */
+    private fun spPx(c: Context, sp: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, c.resources.displayMetrics)
+
+    /**
+     * 22 नवंबर 2026 (मालिक: "पानी की तरह बहता रहे"): island की चौड़ाई के अंदर एक लाइन जो लगातार बाएँ बहती है, फिर बिना झटके दोबारा.
+     * Android का अपना marquee overlay में (focus बिना) भरोसे से नहीं चलता - इसलिए अपना छोटा view. लाइन छोटी हो = सीधी, बहती नहीं.
+     */
+    private class MarqueeText(c: Context) : View(c) {
+        private val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); typeface = Typeface.DEFAULT_BOLD }
+        private val d = c.resources.displayMetrics.density
+        private var textW = 0f
+        private var offset = 0f
+        private var lastT = 0L
+        private var asc = 0f
+        private var lineH = 0
+        var maxW = 0
+        var color: Int
+            get() = paint.color
+            set(v) { paint.color = v; invalidate() }
+        var textSizePx: Float = 13f * d
+            set(v) {
+                field = v; paint.textSize = v; textW = paint.measureText(text)
+                val fm = paint.fontMetrics
+                asc = -fm.ascent; lineH = kotlin.math.ceil(fm.descent - fm.ascent).toInt()
+                requestLayout(); invalidate()
+            }
+        var text: String = ""
+            set(v) {
+                if (field == v) return
+                field = v; textW = paint.measureText(v); offset = 0f; lastT = 0L
+                contentDescription = v; requestLayout(); invalidate()
+            }
+
+        init { textSizePx = 13f * d }
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val h = lineH
+            val want = kotlin.math.ceil(textW).toInt().let { if (maxW > 0) minOf(it, maxW) else it }
+            setMeasuredDimension(resolveSize(want, widthMeasureSpec), resolveSize(h, heightMeasureSpec))
+        }
+
+        override fun onDraw(cv: Canvas) {
+            val w = width.toFloat()
+            val y = asc
+            if (!IslandCore.marqueeNeeded(textW, w)) { cv.drawText(text, 0f, y, paint); return }
+            val now = SystemClock.uptimeMillis()
+            val cycle = textW + GAP_DP * d
+            offset = IslandCore.marqueeStep(offset, if (lastT == 0L) 0L else now - lastT, SPEED_DP * d, cycle)
+            lastT = now
+            cv.save()
+            cv.clipRect(0f, 0f, w, height.toFloat())
+            cv.drawText(text, -offset, y, paint)
+            cv.drawText(text, cycle - offset, y, paint)
+            cv.restore()
+            postInvalidateOnAnimation()
+        }
+
+        companion object {
+            const val GAP_DP = 40f
+            const val SPEED_DP = 34f
+        }
+    }
+
     private class BatteryView(c: Context) : View(c) {
         var pct = 0
             set(v) { field = v.coerceIn(0, 100); invalidate() }

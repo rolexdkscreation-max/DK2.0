@@ -68,6 +68,8 @@ object IslandCore {
     fun lead(s: Snap, now: Long): Kind? = when {
         s.call != null -> Kind.CALL
         s.charge?.let { chargePop(it, now) } == true -> Kind.CHARGING
+        // 22 नवंबर 2026 (मालिक): कई काम एक साथ चल रहे = DK लाइव चालू हो तब भी island में अभी वाला काम (लाइव बुलबुले में)
+        queueOn(s) -> Kind.TASK
         s.live != null -> Kind.LIVE
         reelOn(s.reel, now) -> Kind.REEL
         s.tasks.any { it.active } -> Kind.TASK
@@ -130,12 +132,38 @@ object IslandCore {
         return if (s >= 3600) "${s / 3600}:${"%02d".format((s / 60) % 60)}:${"%02d".format(s % 60)}" else "${s / 60}:${"%02d".format(s % 60)}"
     }
 
+    // ------------------------------------------------------------ 22 नवंबर 2026 (मालिक): कामों की कतार island में
+    /** [TaskQueue.STATUS_KEY] - कई काम एक साथ (एक-एक करके) */
+    const val QUEUE_KEY = "queue"
+    fun queueOn(s: Snap) = s.tasks.any { it.active && it.key == QUEUE_KEY }
+
+    /** island में कौन-सा काम दिखे: चलती कतार > कोई चलता काम > अभी-अभी ख़त्म */
+    fun shownTask(s: Snap, now: Long): Task? = s.tasks.firstOrNull { it.active && it.key == QUEUE_KEY }
+        ?: s.tasks.firstOrNull { it.active } ?: s.tasks.firstOrNull { justEnded(it, now) }
+
+    /** छोटी गोली की लाइन पानी की तरह बहे (marquee) - सिर्फ़ चलती कतार में ("2/5 • Instagram पर followers देखो") */
+    fun marquee(s: Snap, now: Long): Boolean = lead(s, now) == Kind.TASK && shownTask(s, now)?.let { it.active && it.key == QUEUE_KEY } == true
+
+    /** कतार की लाइन "2/5 • काम" से "2/5" (दाईं ओर) */
+    fun queueCount(last: String): String = last.substringBefore(" • ", "").trim().takeIf { Regex("\\d+/\\d+").matches(it) }.orEmpty()
+
+    /** बहती लाइन: अगला खिसकाव (px). [cycle] = लाइन + बीच की जगह; पूरा घूमकर फिर शुरू (बिना झटके) */
+    fun marqueeStep(offset: Float, dtMs: Long, pxPerSec: Float, cycle: Float): Float {
+        if (cycle <= 0f || pxPerSec <= 0f) return 0f
+        val dt = dtMs.coerceIn(0L, 100L)    // island पीछे गया / अटका = एक साथ बड़ी छलांग नहीं
+        return (offset + pxPerSec * dt / 1000f) % cycle
+    }
+
+    /** लाइन island में पूरी आ जाए = बहाना नहीं */
+    fun marqueeNeeded(textW: Float, availW: Float) = availW > 0f && textW > availW
+
     /** छोटे island की बाईं ओर की लाइन (छोटी) */
     fun compactText(s: Snap, now: Long): String = when (lead(s, now)) {
         Kind.CALL -> s.call!!.let { (if (it.ringing) "कॉल: " else "") + it.who.ifBlank { "अनजान नंबर" } }
         Kind.LIVE -> s.live!!.let { if (it.muted) "म्यूट" else modeHi(it.mode) }
-        Kind.TASK -> (s.tasks.firstOrNull { it.active } ?: s.tasks.first { justEnded(it, now) }).let { t ->
-            if (t.active) t.who else (if (t.ok) "✓ " else "• ") + t.who
+        Kind.TASK -> shownTask(s, now)!!.let { t ->
+            if (t.active && t.key == QUEUE_KEY) t.last.ifBlank { t.who }
+            else if (t.active) t.who else (if (t.ok) "✓ " else "• ") + t.who
         }
         Kind.MEDIA -> s.media!!.title.ifBlank { s.media.app }
         Kind.LOCKED -> "🔒 ${s.locked.sumOf { it.count }} छिपे"
@@ -149,8 +177,9 @@ object IslandCore {
     fun compactRight(s: Snap, now: Long): String = when (lead(s, now)) {
         Kind.CALL -> s.call!!.let { if (it.ringing) "बज रहा" else timer(now - it.since) }
         Kind.LIVE -> "LIVE"
-        Kind.TASK -> (s.tasks.firstOrNull { it.active } ?: s.tasks.first { justEnded(it, now) }).let { t ->
-            if (t.active) (if (t.steps > 0) "${t.steps} कदम" else timer(now - t.started)) else t.state
+        Kind.TASK -> shownTask(s, now)!!.let { t ->
+            if (t.active && t.key == QUEUE_KEY) queueCount(t.last).ifBlank { timer(now - t.started) }
+            else if (t.active) (if (t.steps > 0) "${t.steps} कदम" else timer(now - t.started)) else t.state
         }
         Kind.MEDIA -> if (s.media!!.playing) "▶" else "❚❚"
         Kind.LOCKED -> ""
@@ -312,10 +341,11 @@ object IslandCore {
         allCalls(s).indices.forEach { out.add(Item(Kind.CALL, it)) }
         val pop = s.charge?.let { chargePop(it, now) } == true
         if (pop) out.add(Item(Kind.CHARGING))
+        if (queueOn(s)) out.add(Item(Kind.TASK))
         if (s.live != null) out.add(Item(Kind.LIVE))
         if (reelOn(s.reel, now)) out.add(Item(Kind.REEL))
         val taskOn = s.tasks.any { it.active } || s.tasks.any { justEnded(it, now) }
-        if (s.tasks.any { it.active }) out.add(Item(Kind.TASK))
+        if (s.tasks.any { it.active } && out.none { it.kind == Kind.TASK }) out.add(Item(Kind.TASK))
         if (s.media?.playing == true) out.add(Item(Kind.MEDIA))
         if (taskOn && out.none { it.kind == Kind.TASK }) out.add(Item(Kind.TASK))
         if (s.locked.isNotEmpty()) out.add(Item(Kind.LOCKED))
