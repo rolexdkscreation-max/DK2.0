@@ -70,6 +70,7 @@ object IslandCore {
         s.charge?.let { chargePop(it, now) } == true -> Kind.CHARGING
         // 22 नवंबर 2026 (मालिक): कई काम एक साथ चल रहे = DK लाइव चालू हो तब भी island में अभी वाला काम (लाइव बुलबुले में)
         queueOn(s) -> Kind.TASK
+        agentOn(s) -> Kind.TASK
         s.live != null -> Kind.LIVE
         reelOn(s.reel, now) -> Kind.REEL
         s.tasks.any { it.active } -> Kind.TASK
@@ -137,12 +138,36 @@ object IslandCore {
     const val QUEUE_KEY = "queue"
     fun queueOn(s: Snap) = s.tasks.any { it.active && it.key == QUEUE_KEY }
 
+    // ------------------------------------------------------------ 22 नवंबर 2026 (मालिक): हर चलता काम island के अंदर
+    /**
+     * मालिक: "island के नीचे वाला अलग बुलबुला हटाओ - जो काम चल रहा है वो island के अंदर दिखे".
+     * DK का सीधा फ़ोन वाला काम ("instagram खोलो") - जिसका कोई TaskStatus काम नहीं - island में यही काम बनकर आता है
+     * (पहले सिर्फ़ island के नीचे की पट्टी में दिखता था). कतार जैसा: DK लाइव से पहले, लाइन बहती है.
+     */
+    const val AGENT_KEY = "agent"
+    fun agentOn(s: Snap) = s.tasks.any { it.active && it.key == AGENT_KEY }
+    /** कतार / सीधा काम = छोटी गोली में असली कदम, बहती लाइन */
+    fun flowing(t: Task) = t.active && (t.key == QUEUE_KEY || t.key == AGENT_KEY)
+
+    /** सीधे काम की लाइन: "क्या कहा • अभी का कदम" (कुछ न हो = "फ़ोन पर काम कर रहा हूँ") */
+    fun agentLine(goal: String, step: String): String {
+        val g = goal.replace(Regex("\\s+"), " ").trim().removeSuffix("…").take(80)
+        val st = step.replace(Regex("\\s+"), " ").trim().take(110)
+        return listOf(g, st).filter { it.isNotBlank() }.distinct().joinToString(" • ").ifBlank { modeHi(Mode.WORKING) }
+    }
+
+    fun agentTask(goal: String, step: String, since: Long): Task {
+        val line = agentLine(goal, step)
+        return Task("$AGENT_KEY:$since", AGENT_KEY, "DK", goal.trim().ifBlank { line }, TaskStatus.State.RUNNING.hi, line, 0, since, 0L, active = true)
+    }
+
     /** island में कौन-सा काम दिखे: चलती कतार > कोई चलता काम > अभी-अभी ख़त्म */
     fun shownTask(s: Snap, now: Long): Task? = s.tasks.firstOrNull { it.active && it.key == QUEUE_KEY }
+        ?: s.tasks.firstOrNull { it.active && it.key == AGENT_KEY }
         ?: s.tasks.firstOrNull { it.active } ?: s.tasks.firstOrNull { justEnded(it, now) }
 
     /** छोटी गोली की लाइन पानी की तरह बहे (marquee) - सिर्फ़ चलती कतार में ("2/5 • Instagram पर followers देखो") */
-    fun marquee(s: Snap, now: Long): Boolean = lead(s, now) == Kind.TASK && shownTask(s, now)?.let { it.active && it.key == QUEUE_KEY } == true
+    fun marquee(s: Snap, now: Long): Boolean = lead(s, now) == Kind.TASK && shownTask(s, now)?.let { flowing(it) } == true
 
     /** कतार की लाइन "2/5 • काम" से "2/5" (दाईं ओर) */
     fun queueCount(last: String): String = last.substringBefore(" • ", "").trim().takeIf { Regex("\\d+/\\d+").matches(it) }.orEmpty()
@@ -163,6 +188,7 @@ object IslandCore {
         Kind.LIVE -> s.live!!.let { if (it.muted) "म्यूट" else modeHi(it.mode) }
         Kind.TASK -> shownTask(s, now)!!.let { t ->
             if (t.active && t.key == QUEUE_KEY) t.last.ifBlank { t.who }
+            else if (t.active && t.key == AGENT_KEY) t.last.ifBlank { modeHi(Mode.WORKING) }
             else if (t.active) t.who else (if (t.ok) "✓ " else "• ") + t.who
         }
         Kind.MEDIA -> s.media!!.title.ifBlank { s.media.app }

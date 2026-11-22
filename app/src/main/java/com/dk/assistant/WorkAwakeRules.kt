@@ -24,4 +24,12 @@ object WorkAwakeRules {
 
     /** DK का अपना ऐप सामने = उसकी अपनी screen पहले से दिखाती है (और ScreenAwake स्क्रीन जगाए रखता है) */
     fun showBanner(working: Boolean, fgPkg: String, ownPkg: String): Boolean = working && fgPkg != ownPkg
+
+    /**
+     * 22 नवंबर 2026 (मालिक: "island के नीचे वाला बुलबुला हटाओ, काम island के अंदर दिखे"):
+     * island दिख सकता है = पट्टी कभी नहीं (काम island में). island बंद हो (Settings / Accessibility) तभी पुरानी पट्टी.
+     * स्क्रीन जगी रखना दोनों हालत में वैसा ही.
+     */
+    fun bannerNeeded(working: Boolean, fgPkg: String, ownPkg: String, islandShows: Boolean): Boolean =
+        showBanner(working, fgPkg, ownPkg) && !islandShows
 }
