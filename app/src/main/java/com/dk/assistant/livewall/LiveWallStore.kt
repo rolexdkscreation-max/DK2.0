@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.location.LocationManager
+import com.dk.assistant.Quiet
 import java.io.File
 import java.security.MessageDigest
 
@@ -47,7 +48,7 @@ object LiveWallStore {
             try {
                 val s = String(get(u, 256 * 1024), Charsets.UTF_8)
                 if (SkyCatalog.parse(s).isNotEmpty()) { p(c).edit().putString(K_CATALOG, s).apply(); return true }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { Quiet.note(e) }
         }
         return false
     }

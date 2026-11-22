@@ -10,6 +10,7 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.service.wallpaper.WallpaperService
 import android.view.SurfaceHolder
+import com.dk.assistant.Quiet
 import java.util.concurrent.Executors
 
 /**
@@ -121,9 +122,10 @@ class LiveWallpaperService : WallpaperService() {
                     s.frame(g, System.currentTimeMillis(), (SystemClock.elapsedRealtime() - t0) / 1000.0, xOff)
                     g.canvas = null
                 }
-            } catch (_: Throwable) {
+            } catch (e: Exception) {
+                Quiet.note(e)
             } finally {
-                try { holder.unlockCanvasAndPost(canvas) } catch (_: Throwable) { }
+                try { holder.unlockCanvasAndPost(canvas) } catch (e: Exception) { Quiet.note(e) }
             }
         }
 

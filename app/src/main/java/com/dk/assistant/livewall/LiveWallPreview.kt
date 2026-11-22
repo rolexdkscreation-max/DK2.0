@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.os.SystemClock
 import android.view.View
+import com.dk.assistant.Quiet
 
 /**
  * सेटिंग के अंदर छोटा, चलता हुआ preview - वही दृश्य जो वॉलपेपर पर दिखेगा.
@@ -67,7 +68,7 @@ class LiveWallPreview(ctx: Context) : View(ctx) {
         g.canvas = c
         try {
             s.frame(g, System.currentTimeMillis() + offsetMin * 60_000L, (SystemClock.elapsedRealtime() - t0) / 1000.0, 0.5f)
-        } catch (_: Throwable) { }
+        } catch (e: Exception) { Quiet.note(e) }
         g.canvas = null
         if (isShown) postInvalidateDelayed(41)
     }
