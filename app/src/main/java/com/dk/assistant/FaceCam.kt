@@ -19,7 +19,12 @@ import java.util.concurrent.Executors
  * v3.91: चेहरा सिखाने/जाँचने का छोटा कैमरा (सेटिंग्स में) - आगे वाला कैमरा, preview + हर ~0.35 सेकंड एक सीधा (घुमाया) फ़्रेम.
  * फ़्रेम सिर्फ़ फ़ोन के अंदर पहचान बनाने में - न सेव, न कहीं भेजा.
  */
-class FaceCam(private val act: AppCompatActivity, private val view: PreviewView, private val capture: Boolean = false, private val onFrame: (Bitmap) -> Unit) {
+class FaceCam(
+    private val act: AppCompatActivity, private val view: PreviewView, private val capture: Boolean = false,
+    /** 22 नवंबर 2026: दो फ़्रेम के बीच कम से कम (पहले हमेशा 350 ms = ~3 फ़्रेम/सेकंड - जाँच धीमी). ताला / टच मोड: [FlashLive.CAM_GAP_MS] */
+    private val gapMs: Long = 350L,
+    private val onFrame: (Bitmap) -> Unit,
+) {
     /**
      * 15 नवंबर 2026 (मालिक: "टच मोड की फ़ोटो अच्छे से क्लिक करके अच्छी फ़ोटो रहे"): [capture] = असली कैमरा फ़ोटो (ImageCapture -
      * पूरा resolution, फ़ोकस/रोशनी कैमरा ख़ुद ठीक करता है). पहले सिर्फ़ 720x960 का पहचान वाला फ़्रेम सेव होता था.
@@ -50,7 +55,7 @@ class FaceCam(private val act: AppCompatActivity, private val view: PreviewView,
                 an.setAnalyzer(exec) { img ->
                     try {
                         val now = System.currentTimeMillis()
-                        if (stopped || now - last < 350) return@setAnalyzer
+                        if (stopped || now - last < gapMs) return@setAnalyzer
                         last = now
                         var b = img.toBitmap()
                         val rot = img.imageInfo.rotationDegrees
