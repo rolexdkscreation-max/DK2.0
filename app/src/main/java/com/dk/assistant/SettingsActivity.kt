@@ -160,7 +160,7 @@ class SettingsActivity : AppCompatActivity() {
         val items = listOf(
             Triple("profile", "प्रोफ़ाइल", "आपका नाम • असिस्टेंट का नाम ($name) • नंबर • गाने • Instagram / Facebook • और जानकारी"),
             Triple("lang", "भाषा / Language", "ऐप: ${if (UiLang.en()) "English" else "हिंदी"} • DK के जवाब: ${Lang.short(Prefs.replyLang(this))}"),
-            Triple("ui", "दिखावट (UI कस्टमाइज़ेशन)", "थीम • मुख्य रंग • काँच की पारदर्शिता • चमक • एनिमेशन"),
+            Triple("ui", "दिखावट (UI कस्टमाइज़ेशन)", "डार्क / लाइट • orb • एनिमेशन • तैरता ORB"),
             Triple("brain", "AI दिमाग", "DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर • एक key से सब"),
             Triple("voice", "आवाज़", "बोलने वाला इंजन (Live • Gemini TTS) • सुनना"),
             Triple("persona", "DK का स्वभाव और मोड", "JARVIS • FRIDAY / VENOM • DK का स्वभाव (${DkPersona.get(this).title}) • रोमांटिक • संबोधन"),

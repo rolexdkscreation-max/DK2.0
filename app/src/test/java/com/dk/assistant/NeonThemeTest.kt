@@ -14,28 +14,31 @@ class NeonThemeTest {
 
     @Test fun defaultsAreDarkNeonBlue() {
         val l = NeonTheme.Look()
-        assertEquals(NeonTheme.THEME_DARK, l.theme)
-        assertEquals(NeonTheme.Accent.BLUE, l.accent)
+        assertEquals(0xFF3D8BFF.toInt(), l.main)      // पहले का शुरुआती "नियॉन नीला" - अब बदलता नहीं
+        assertEquals(0xFF8B5CF6.toInt(), l.partner)
         assertEquals(NeonTheme.MOTION_STANDARD, l.motion)
         assertEquals(NeonTheme.DEF_GLASS, l.glass)
         assertEquals(NeonTheme.DEF_GLOW, l.glow)
     }
 
     @Test fun badSavedValuesFallBackSafely() {
-        val l = NeonTheme.sanitize("light??", "rainbow", 400, -9, "fast")
-        assertEquals(NeonTheme.THEME_DARK, l.theme)
-        assertEquals(NeonTheme.Accent.BLUE, l.accent)
+        val l = NeonTheme.sanitize(400, -9, "fast")
         assertEquals(100, l.glass)
         assertEquals(0, l.glow)
         assertEquals(NeonTheme.MOTION_STANDARD, l.motion)
-        val ok = NeonTheme.sanitize("amoled", "magenta", 30, 70, "reduced")
-        assertEquals(NeonTheme.THEME_AMOLED, ok.theme)
-        assertEquals(NeonTheme.Accent.MAGENTA, ok.accent)
+        val ok = NeonTheme.sanitize(30, 70, "reduced")
+        assertEquals(30, ok.glass)
+        assertEquals(70, ok.glow)
         assertEquals(NeonTheme.MOTION_REDUCED, ok.motion)
     }
 
-    @Test fun allFiveAccentsExist() {
-        assertEquals(listOf("blue", "cyan", "violet", "purple", "magenta"), NeonTheme.Accent.values().map { it.key })
+    /** 23 नवंबर 2026 (मालिक): डार्क नेवी / AMOLED काला और मुख्य रंग (5 accent) हटे - पुराने सेव मान मिटाने वाली सूची में */
+    @Test fun oldThemeAndAccentChoicesRemoved() {
+        val src = File(root(), "app/src/main/java/com/dk/assistant/ui/NeonTheme.kt").readText()
+        for (k in listOf("THEME_AMOLED", "enum class Accent", "val THEMES", "ThemePack")) assertFalse(k, src.contains(k))
+        assertTrue(NeonTheme.LEGACY.containsAll(listOf("ui_theme", "ui_accent", "ui_pack")))
+        assertTrue(NeonTheme.KEYS.containsAll(NeonTheme.LEGACY))
+        assertTrue(File(root(), "app/src/main/java/com/dk/assistant/plus/PlusBoot.kt").readText().contains("NeonTheme.LEGACY_PACK_DIR"))
     }
 
     @Test fun reducedMotionFollowsUserOrPhone() {
@@ -53,22 +56,22 @@ class NeonThemeTest {
 
     /** सबसे पारदर्शी काँच पर भी सफ़ेद अक्षर साफ़ (WCAG 4.5:1) - हर थीम, हर रंग, हर चमक */
     @Test fun whiteTextReadableOnGlassForEveryChoice() {
-        for (theme in listOf(NeonTheme.THEME_DARK, NeonTheme.THEME_AMOLED)) for (ac in NeonTheme.Accent.values()) for (g in listOf(0, 50, 100)) {
-            val l = NeonTheme.Look(theme = theme, accent = ac, glass = g)
-            for (bgc in NeonTheme.bg(l)) {
+        for (g in listOf(0, 50, 100)) {
+            val l = NeonTheme.Look(glass = g)
+            for (bgc in NeonTheme.bg()) {
                 val surface = NeonTheme.over(NeonTheme.glassTop(l), bgc)
-                assertTrue("$theme/$ac/$g", NeonTheme.contrast(WHITE, surface) >= 4.5)
+                assertTrue("$g", NeonTheme.contrast(WHITE, surface) >= 4.5)
             }
         }
     }
 
     /** मुख्य बटन / अपने संदेश (accent gradient) पर सफ़ेद अक्षर साफ़ */
     @Test fun whiteTextReadableOnAccentButtons() {
-        for (ac in NeonTheme.Accent.values()) {
-            val l = NeonTheme.Look(accent = ac)
+        run {
+            val l = NeonTheme.Look()
             for (c in listOf(NeonTheme.accentTop(l), NeonTheme.accentBottom(l))) {
-                val surface = NeonTheme.over(c, NeonTheme.bg(l)[1])
-                assertTrue("$ac", NeonTheme.contrast(WHITE, surface) >= 4.5)
+                val surface = NeonTheme.over(c, NeonTheme.bg()[1])
+                assertTrue(NeonTheme.contrast(WHITE, surface) >= 4.5)
             }
         }
     }

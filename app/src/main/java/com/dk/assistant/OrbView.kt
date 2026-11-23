@@ -347,7 +347,7 @@ class OrbView @JvmOverloads constructor(
     private fun neonColors(m: Mode): Pair<Int, Int> {
         val l = com.dk.assistant.ui.NeonTheme.look
         return when (m) {
-            Mode.IDLE -> if (l.pack.id == com.dk.assistant.ui.ThemePacks.DEFAULT_ID) l.main to l.partner else l.pack.orbA to l.pack.orbB
+            Mode.IDLE -> l.main to l.partner
             Mode.LISTENING -> com.dk.assistant.ui.NeonTheme.CYAN to l.main
             // v3.88: सोचते समय अलग रंग (सुनहरा-नारंगी), बोलते समय गुलाबी - तीनों साफ़ अलग
             Mode.THINKING, Mode.WORKING -> THINK_A to THINK_B
