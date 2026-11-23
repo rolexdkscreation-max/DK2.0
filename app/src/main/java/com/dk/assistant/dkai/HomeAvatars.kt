@@ -16,7 +16,14 @@ import java.io.File
  *  - चुनाव pref [PREF] में ("orb" या "avatar:<id>") - ऐप दोबारा खोलने पर भी वही.
  */
 object HomeAvatars {
-    data class Avatar(val id: String, val name: String, val gender: String, val file: String)
+    /**
+     * [res] = ऐप के अंदर (res/drawable-nodpi) वाली तस्वीर का नाम - null = इंटरनेट वाली.
+     * [orb] = ऑर्ब वाला आर्टवर्क (आवाज़ के साथ धड़के). [badge] = बीच में लिखा छोटा नाम (जैसे तितली ऑर्ब पर "DK").
+     * [subject] = तस्वीर में कैरेक्टर / ऑर्ब का हिस्सा (0..1: बायाँ, ऊपर, दायाँ, नीचे) - यह कभी नहीं कटता.
+     */
+    data class Avatar(val id: String, val name: String, val gender: String, val file: String,
+                      val res: String? = null, val orb: Boolean = false, val badge: String? = null,
+                      val subject: List<Float> = FULL_SUBJECT)
 
     const val PREF = "home_center"
     const val ORB = "orb"
@@ -26,8 +33,39 @@ object HomeAvatars {
     /** इससे बड़ी फ़ाइल नहीं (गलत / नुकसान वाली फ़ाइल से बचाव) */
     const val MAX_BYTES = 6 * 1024 * 1024
 
-    /** नेट न हो तब भी Settings में कम से कम यह एक (मालिक की दी हुई तस्वीर) */
-    val DEFAULTS = listOf(Avatar("dk_girl", "DK गर्ल", "girl", "dk_avatar_girl.png"))
+    val FULL_SUBJECT: List<Float> = listOf(0f, 0f, 1f, 1f)
+    /** तितली ऑर्ब में गोले का बीच (ऊपर से, तस्वीर की ऊँचाई का हिस्सा) - "DK" यहीं (होम और Settings प्रीव्यू दोनों) */
+    const val BADGE_Y = 0.47f
+
+    /**
+     * 23 नवंबर 2026 (मालिक का कोलाज): ऐप के अंदर आने वाले आर्टवर्क - कोलाज से बिना resize / compress काटे, res/drawable-nodpi में.
+     * पहले 8 कैरेक्टर, फिर 3 ऑर्ब. डाउनलोड की ज़रूरत नहीं, इंटरनेट के बिना भी.
+     */
+    val BUNDLED = listOf(
+        Avatar("dk_art_hearts", "दिल वाली", "girl", "dk_art_hearts.png", "dk_art_hearts", subject = listOf(0.22f, 0f, 0.82f, 1f)),
+        Avatar("dk_art_headphone_orb", "हेडफ़ोन", "girl", "dk_art_headphone_orb.png", "dk_art_headphone_orb", subject = listOf(0.14f, 0f, 0.86f, 1f)),
+        Avatar("dk_art_glasses_bun", "चश्मा", "girl", "dk_art_glasses_bun.png", "dk_art_glasses_bun", subject = listOf(0.2f, 0.05f, 0.85f, 1f)),
+        Avatar("dk_art_cat_ears", "बिल्ली-कान", "girl", "dk_art_cat_ears.png", "dk_art_cat_ears", subject = listOf(0.15f, 0f, 0.85f, 1f)),
+        Avatar("dk_art_glasses_dark", "चश्मा (काली)", "girl", "dk_art_glasses_dark.png", "dk_art_glasses_dark", subject = listOf(0.12f, 0f, 0.92f, 1f)),
+        Avatar("dk_art_butterfly_headphones", "तितली + हेडफ़ोन", "girl", "dk_art_butterfly_headphones.png", "dk_art_butterfly_headphones", subject = listOf(0.2f, 0f, 0.86f, 1f)),
+        Avatar("dk_art_sleepy", "नींद वाली", "girl", "dk_art_sleepy.png", "dk_art_sleepy", subject = listOf(0.2f, 0f, 0.92f, 1f)),
+        Avatar("dk_art_butterfly_girl", "तितली वाली", "girl", "dk_art_butterfly_girl.png", "dk_art_butterfly_girl", subject = listOf(0.15f, 0f, 0.85f, 1f)),
+        Avatar("orb_art_butterfly", "तितली ऑर्ब (DK)", "orb", "orb_art_butterfly.png", "orb_art_butterfly", orb = true, badge = "DK",
+            subject = listOf(0.02f, 0f, 0.7f, 1f)),
+        Avatar("orb_art_wave_rings", "वेव ऑर्ब (छल्ले)", "orb", "orb_art_wave_rings.png", "orb_art_wave_rings", orb = true,
+            subject = listOf(0.08f, 0.05f, 0.94f, 1f)),
+        Avatar("orb_art_dk_wave", "DK वेव ऑर्ब", "orb", "orb_art_dk_wave.png", "orb_art_dk_wave", orb = true,
+            subject = listOf(0.12f, 0.18f, 0.88f, 0.86f)),
+    )
+
+    /** पहले से चुना (कुछ न चुना हो तो): DK के लोगो और साउंड-वेव वाला बड़ा ऑर्ब */
+    const val DEFAULT_ID = "orb_art_dk_wave"
+
+    /** मालिक ने हटवाया (पहले वाला अवतार) - इंटरनेट की सूची में हो तब भी नहीं दिखता; चुना हुआ था = अब डिफ़ॉल्ट */
+    val REMOVED = setOf("dk_girl")
+
+    /** नेट न हो तब भी Settings में ये सब (ऐप के अंदर वाले) */
+    val DEFAULTS = BUNDLED
 
     // ------------------------------------------------------------------ pure (JVM test)
     /** फ़ाइल का नाम सुरक्षित: सिर्फ़ a-z 0-9 _ - और .png (कोई / या .. नहीं) */
@@ -51,8 +89,14 @@ object HomeAvatars {
         } catch (_: Exception) { emptyList() }
     }
 
-    /** डाउनलोड वाली सूची + DEFAULTS (एक id एक बार, डाउनलोड वाली पहले) */
-    fun merge(net: List<Avatar>): List<Avatar> = (net + DEFAULTS).distinctBy { it.id }
+    /** ऐप के अंदर वाले पहले, फिर डाउनलोड वाले नए (एक id एक बार; हटाए गए कभी नहीं) */
+    fun merge(net: List<Avatar>): List<Avatar> = (DEFAULTS + net).filter { it.id !in REMOVED }.distinctBy { it.id }
+
+    /** pref का मान -> दिखने वाला id: कुछ न चुना = डिफ़ॉल्ट ऑर्ब; हटाया गया अवतार = डिफ़ॉल्ट; ORB = null */
+    fun shownId(pref: String?): String? = when {
+        pref == null -> DEFAULT_ID
+        else -> idOf(pref)?.let { if (it in REMOVED) DEFAULT_ID else it }
+    }
 
     /** pref का मान -> अवतार id (ORB = null) */
     fun idOf(pref: String?): String? = pref?.takeIf { it.startsWith(AV) }?.removePrefix(AV)?.takeIf { safeId(it) }
@@ -67,8 +111,11 @@ object HomeAvatars {
     private fun sp(c: Context) = c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE)
     fun dir(c: Context): File = File(c.filesDir, "avatars").apply { mkdirs() }
 
-    fun choice(c: Context): String = try { sp(c).getString(PREF, ORB) ?: ORB } catch (_: Exception) { ORB }
-    fun chosenId(c: Context): String? = idOf(choice(c))
+    fun choice(c: Context): String = choiceOf(try { sp(c).getString(PREF, null) } catch (_: Exception) { null })
+
+    /** pure: रखा pref -> Settings में चुना दिखने वाला मान (कुछ नहीं / हटाया गया = डिफ़ॉल्ट ऑर्ब) */
+    fun choiceOf(pref: String?): String = shownId(pref)?.let { prefFor(it) } ?: ORB
+    fun chosenId(c: Context): String? = shownId(try { sp(c).getString(PREF, null) } catch (_: Exception) { null })
     fun chooseOrb(c: Context) { sp(c).edit().putString(PREF, ORB).apply(); version++ }
     fun chooseAvatar(c: Context, id: String) { sp(c).edit().putString(PREF, prefFor(id)).apply(); version++ }
 
@@ -101,6 +148,7 @@ object HomeAvatars {
      * कुछ नहीं = null (होम पर ORB). कभी क्रैश नहीं.
      */
     fun bitmap(c: Context, a: Avatar, maxPx: Int): Bitmap? {
+        if (a.res != null) return bundled(c, a, maxPx)
         val f = file(c, a)
         val key = a.file + "|" + f.lastModified() + "|" + maxPx
         if (key == memKey) mem?.let { return it }
@@ -112,6 +160,57 @@ object HomeAvatars {
             }
         } catch (e: Throwable) { com.dk.assistant.Quiet.note(e); null }
         if (b != null) { memKey = key; mem = b }
+        return b
+    }
+
+    private var resKey: String? = null
+    private var resMem: Bitmap? = null
+
+    /**
+     * ऐप के अंदर वाला आर्टवर्क: drawable-nodpi से असली पिक्सल (सिस्टम कोई scaling नहीं करता), फिर बड़ा दिखाने के लिए
+     * [smoothUp] (फ़िल्टर चालू, 2x-2x करके - High quality). फ़ाइल खुद कभी नहीं बदलती.
+     */
+    fun bundled(c: Context, a: Avatar, maxPx: Int): Bitmap? {
+        val key = a.id + "|" + maxPx
+        if (key == resKey) resMem?.let { return it }
+        val b = try {
+            val id = c.resources.getIdentifier(a.res, "drawable", c.packageName)
+            if (id == 0) null else BitmapFactory.decodeResource(c.resources, id, BitmapFactory.Options().apply { inScaled = false })
+        } catch (e: Throwable) { com.dk.assistant.Quiet.note(e); null } ?: return null
+        val out = try { smoothUp(b, upTarget(maxPx)) } catch (e: Throwable) { com.dk.assistant.Quiet.note(e); b }
+        resKey = key; resMem = out
+        return out
+    }
+
+    /** छोटा प्रीव्यू (Settings): असली पिक्सल, बिना बदले */
+    fun thumb(c: Context, a: Avatar): Bitmap? = try {
+        if (a.res != null) {
+            val id = c.resources.getIdentifier(a.res, "drawable", c.packageName)
+            if (id == 0) null else BitmapFactory.decodeResource(c.resources, id, BitmapFactory.Options().apply { inScaled = false })
+        } else file(c, a).takeIf { it.exists() }?.let { BitmapFactory.decodeFile(it.path) }
+    } catch (e: Throwable) { com.dk.assistant.Quiet.note(e); null }
+
+    /** pure: बड़ा करने की हद (बहुत बड़ा bitmap = ज़्यादा memory; 1440px काफ़ी) */
+    fun upTarget(maxPx: Int): Int = maxPx.coerceIn(256, 1440)
+
+    /** pure: लंबी भुजा [target] तक पहुँचने के लिए 2x वाले कदम (आख़िरी कदम ठीक target तक) */
+    fun upSteps(longSide: Int, target: Int): List<Int> {
+        val out = ArrayList<Int>()
+        var s = longSide
+        while (s < target) { s = minOf(s * 2, target); out.add(s) }
+        return out
+    }
+
+    /** फ़िल्टर चालू रखकर धीरे-धीरे (2x) बड़ा - एक बार में 15x खींचने से कहीं नरम */
+    private fun smoothUp(src: Bitmap, target: Int): Bitmap {
+        val long = maxOf(src.width, src.height)
+        var b = src
+        for (side in upSteps(long, target)) {
+            val f = side.toFloat() / long
+            val n = Bitmap.createScaledBitmap(b, maxOf(1, (src.width * f).toInt()), maxOf(1, (src.height * f).toInt()), true)
+            if (b !== src) b.recycle()
+            b = n
+        }
         return b
     }
 

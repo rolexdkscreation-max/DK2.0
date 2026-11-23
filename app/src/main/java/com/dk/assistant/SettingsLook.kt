@@ -55,22 +55,12 @@ internal fun SettingsActivity.secUi() {
         val g = radios(box, orbs, com.dk.assistant.dkai.DkaiOrbs.get(this), 6600)
         g.setOnCheckedChangeListener { _, id -> orbs.getOrNull(id - 6600)?.let { com.dk.assistant.dkai.DkaiOrbs.set(this, it.first) } }
         hint(box, "पुराना DK orb चुना = उसका आकार \"ओर्ब और चेहरा\" वाले हिस्से से। orb सिर्फ़ यहीं से बदलता है — DKAI में orb पर टैप करने से कुछ नहीं खुलता।")
-        // 23 नवंबर 2026 (मालिक): होम के बीच में ORB या 3D अवतार - चुनाव सेव रहता है; अवतार इंटरनेट से आता है
-        val avs = com.dk.assistant.dkai.HomeAvatars.list(this)
-        val centers = listOf(com.dk.assistant.dkai.HomeAvatars.ORB to "ORB (ऊपर चुना हुआ)") +
-            avs.map { com.dk.assistant.dkai.HomeAvatars.prefFor(it.id) to "3D अवतार: ${it.name}" }
-        val cg = radios(box, centers, com.dk.assistant.dkai.HomeAvatars.choice(this), 6700)
-        cg.setOnCheckedChangeListener { _, id ->
-            val pick = centers.getOrNull(id - 6700)?.first ?: return@setOnCheckedChangeListener
-            val av = com.dk.assistant.dkai.HomeAvatars.idOf(pick)
-            if (av == null) { com.dk.assistant.dkai.HomeAvatars.chooseOrb(this); return@setOnCheckedChangeListener }
-            com.dk.assistant.dkai.HomeAvatars.chooseAvatar(this, av)
-            toast("अवतार डाउनलोड हो रहा है…")
-            com.dk.assistant.dkai.HomeAvatars.fetch(this, av) { ok ->
-                if (!isFinishing) toast(if (ok) "अवतार तैयार - होम पर दिखेगा" else "अवतार नहीं आ पाया - इंटरनेट चालू होने पर फिर आएगा, तब तक ORB")
-            }
-        }
-        hint(box, "होम के बीच में: ORB या 3D अवतार। अवतार इंटरनेट से एक बार डाउनलोड होता है; तब तक (या इंटरनेट न हो तो) ORB ही दिखता है।")
+    }
+    // 23 नवंबर 2026 (मालिक): "होम कैरेक्टर" - कोलाज के सारे आर्टवर्क छोटे प्रीव्यू के साथ (+ ऊपर वाला ORB). चुनाव सेव रहता है
+    // (ऐप बंद होने के बाद भी). पहले वाला अवतार हटा; नए आर्टवर्क ऐप के अंदर हैं (डाउनलोड नहीं).
+    card("होम कैरेक्टर", "होम के बीच में कौन दिखे — टैप करके चुनें", startOpen = true) { box ->
+        homeCharacterGrid(box)
+        hint(box, "डिफ़ॉल्ट: DK वेव ऑर्ब। \"ORB\" = ऊपर \"DKAI का orb\" में चुना हुआ चलता orb।")
     }
     card("झलक", "बदलाव यहीं तुरंत दिखता है", startOpen = true) { box ->
         box.addView(OrbView(this).apply { previewStyle = Shapes.NEON; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO },
@@ -233,3 +223,77 @@ object SettingsThemeMode {
     fun current(light: Boolean) = if (light) "light" else "dark"
     fun isLight(key: String) = key == "light"
 }
+
+/**
+ * 23 नवंबर 2026 (मालिक): "होम कैरेक्टर" की जाली - हर टाइल पर आर्टवर्क का छोटा प्रीव्यू (असली पिक्सल, फ़िल्टर चालू) + नाम.
+ * चुना टाइल accent से भरा (साझा कार्ड, selectable). पहली टाइल = ORB. टैप = तुरंत सेव, होम लौटते ही वही.
+ */
+internal fun SettingsActivity.homeCharacterGrid(box: LinearLayout) {
+    val H = com.dk.assistant.dkai.HomeAvatars
+    val items = listOf<com.dk.assistant.dkai.HomeAvatars.Avatar?>(null) + H.list(this)
+    val cols = if (com.dk.assistant.UiFitRules.isTablet(resources.configuration.smallestScreenWidthDp)) 4 else 3
+    val tiles = ArrayList<Pair<String, LinearLayout>>()
+    fun paint(cur: String) { for ((k, v) in tiles) v.isSelected = k == cur }
+    var row: LinearLayout? = null
+    items.forEachIndexed { i, a ->
+        if (i % cols == 0) {
+            row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            box.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = (8 * dp).toInt() })
+        }
+        val key = if (a == null) H.ORB else H.prefFor(a.id)
+        val name = a?.name ?: "ORB"
+        val tile = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+            background = com.dk.assistant.ui.Clay.card(this@homeCharacterGrid, selectable = true)
+            val p = (6 * dp).toInt(); setPadding(p, p, p, p)
+            isClickable = true; isFocusable = true
+            contentDescription = UiLang.s("होम कैरेक्टर: ") + name
+        }
+        val pic = android.widget.ImageView(this).apply {
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            val bmp = a?.let { H.thumb(this@homeCharacterGrid, it) }?.let { raw -> a.badge?.let { badgeThumb(raw, it, a.subject) } ?: raw }
+            if (bmp != null) setImageDrawable(android.graphics.drawable.BitmapDrawable(resources, bmp).apply { isFilterBitmap = true })
+            else setImageResource(R.drawable.ic_dk)
+            if (bmp == null) { val ip = (14 * dp).toInt(); setPadding(ip, ip, ip, ip) }
+            clipToOutline = true
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(v: View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, 14 * dp) }
+            }
+        }
+        tile.addView(pic, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (64 * dp).toInt()).apply { val m = (2 * dp).toInt(); setMargins(m, m, m, 0) })
+        tile.addView(TextView(this).apply {
+            text = UiLang.s(name); textSize = 11f; gravity = Gravity.CENTER; maxLines = 2
+            setTextColor(com.dk.assistant.ui.ClayTheme.t.text); setPadding(0, (4 * dp).toInt(), 0, 0)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        tile.setOnClickListener {
+            if (a == null) H.chooseOrb(this) else H.chooseAvatar(this, a.id)
+            paint(key)
+            if (a != null && a.res == null && !H.downloaded(this, a)) {
+                toast("अवतार डाउनलोड हो रहा है…")
+                H.fetch(this, a.id) { ok -> if (!isFinishing) toast(if (ok) "अवतार तैयार - होम पर दिखेगा" else "अवतार नहीं आ पाया - इंटरनेट चालू होने पर फिर आएगा, तब तक ORB") }
+            } else toast(UiLang.s("होम कैरेक्टर: ") + name)
+        }
+        tiles.add(key to tile)
+        row?.addView(tile, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+            val m = (4 * dp).toInt(); leftMargin = m; rightMargin = m
+        })
+    }
+    // आख़िरी पंक्ति अधूरी हो तो खाली जगह (टाइलें बराबर चौड़ी रहें)
+    val left = (cols - items.size % cols) % cols
+    repeat(left) { row?.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f).apply { val m = (4 * dp).toInt(); leftMargin = m; rightMargin = m }) }
+    paint(H.choice(this))
+}
+
+/** प्रीव्यू पर भी ऑर्ब के बीच वही "DK" (होम जैसा) - छोटी तस्वीर को फ़िल्टर के साथ 4x करके उस पर लिखा */
+private fun badgeThumb(raw: android.graphics.Bitmap, txt: String, subject: List<Float>): android.graphics.Bitmap = try {
+    val b = android.graphics.Bitmap.createScaledBitmap(raw, raw.width * 4, raw.height * 4, true).copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+    val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xF0FFFFFF.toInt(); textAlign = android.graphics.Paint.Align.CENTER
+        typeface = android.graphics.Typeface.DEFAULT_BOLD; textSize = minOf(b.width, b.height) * 0.16f
+        setShadowLayer(textSize * 0.45f, 0f, 0f, 0xFF4FA3FF.toInt())
+    }
+    val cx = (subject.getOrElse(0) { 0f } + subject.getOrElse(2) { 1f }) / 2f
+    android.graphics.Canvas(b).drawText(txt, b.width * cx, b.height * com.dk.assistant.dkai.HomeAvatars.BADGE_Y + p.textSize * 0.35f, p)
+    b
+} catch (e: Throwable) { com.dk.assistant.Quiet.note(e); raw }

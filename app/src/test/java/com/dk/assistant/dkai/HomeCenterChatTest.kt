@@ -25,8 +25,11 @@ class HomeCenterChatTest {
         assertTrue(HomeAvatars.parse(null).isEmpty())
         assertFalse(HomeAvatars.safeFile("../a.png")); assertFalse(HomeAvatars.safeFile("a.jpg")); assertTrue(HomeAvatars.safeFile("dk_a-1.png"))
         // बाद में और लड़के-लड़कियाँ: नई सूची पहले, पहले से तय वाला एक ही बार
-        assertEquals(listOf("dk_boy", "dk_girl"), HomeAvatars.merge(listOf(l[1])).map { it.id })
-        assertEquals(listOf("dk_girl"), HomeAvatars.merge(emptyList()).map { it.id })
+        // 23 नवंबर 2026 (मालिक): पहले वाला dk_girl हटा - ऐप के अंदर वाले कोलाज आर्टवर्क पहले, फिर इंटरनेट वाले नए
+        val inApp = HomeAvatars.BUNDLED.map { it.id }
+        assertEquals(inApp + "dk_boy", HomeAvatars.merge(listOf(l[1])).map { it.id })
+        assertEquals(inApp, HomeAvatars.merge(emptyList()).map { it.id })
+        assertFalse(HomeAvatars.merge(l).any { it.id == "dk_girl" })
     }
 
     @Test fun avatarChoice_prefRoundTrip_png() {

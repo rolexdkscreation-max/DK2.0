@@ -132,6 +132,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     /** इस होम सत्र की शुरुआत (इससे पहले की बात होम के बॉक्स में नहीं) */
     private var liveSince = System.currentTimeMillis()
     private lateinit var greetTxt: TextView
+    /** ऊपर की पट्टी में READY के बराबर वाली जगह - अभिवादन यहीं ([buildHeader]) */
+    private var greetSlot: LinearLayout? = null
     private lateinit var nameTxt: TextView
     lateinit var voice: DkaiVoice; private set
 
@@ -286,6 +288,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         mid.addView(readyTxt)
         mid.setOnClickListener { if (!Prefs.hasAnyKey(c)) host.ready() }
         sub.addView(mid, LinearLayout.LayoutParams(-2, d(36f)))
+        // 23 नवंबर 2026 (मालिक): "Good night, boss" कैरेक्टर / ऑर्ब के ऊपर नहीं - यहीं, READY के ठीक बराबर में (ऊपर की पट्टी में)
+        greetSlot = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL; setPadding(d(12f), 0, 0, 0) }
+        sub.addView(greetSlot, LinearLayout.LayoutParams(0, -2, 1f))
         content.addView(sub, LinearLayout.LayoutParams(-1, -2))
 
         alertRow = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE; setPadding(d(12f), d(8f), d(12f), 0) }
@@ -440,8 +445,17 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         greetTxt = DkaiTheme.text(c, DkaiHomeCore.greeting(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)), 16f, DkaiTheme.GRAY, DkaiTheme.SANS_MED).apply { gravity = Gravity.CENTER }
         nameTxt = DkaiTheme.text(c, "", 30f, DkaiTheme.WHITE, DkaiTheme.SANS_BOLD).apply { gravity = Gravity.CENTER; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(d(16f), d(4f), d(16f), 0) }
         UiLang.keep(greetTxt); UiLang.keep(nameTxt)
-        heroBox.addView(greetTxt, LinearLayout.LayoutParams(-1, -2))
-        heroBox.addView(nameTxt, LinearLayout.LayoutParams(-1, -2))
+        val slot = greetSlot
+        if (slot != null) {
+            // ऊपर की पट्टी: दो छोटी पंक्तियाँ, बाईं ओर READY से सटी (बीच की पूरी जगह कैरेक्टर / ऑर्ब के लिए)
+            greetTxt.textSize = 12f; greetTxt.gravity = Gravity.START
+            nameTxt.textSize = 17f; nameTxt.gravity = Gravity.START; nameTxt.setPadding(0, 0, 0, 0)
+            slot.addView(greetTxt, LinearLayout.LayoutParams(-1, -2))
+            slot.addView(nameTxt, LinearLayout.LayoutParams(-1, -2))
+        } else {
+            heroBox.addView(greetTxt, LinearLayout.LayoutParams(-1, -2))
+            heroBox.addView(nameTxt, LinearLayout.LayoutParams(-1, -2))
+        }
         renderGreeting()
         // 23 नवंबर 2026 (मालिक): बीच में ORB या 3D अवतार (Settings से) - वही जगह, वही आकार, पीछे वही हल्की accent चमक
         val glow = FrameLayout(c).apply {
@@ -1152,6 +1166,14 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         if (sig == centerSig) return
         centerSig = sig
         val showAv = bmp != null
+        // 23 नवंबर 2026 (मालिक का कोलाज): ऐप के अंदर वाला आर्टवर्क = बीच में, कभी न कटे, पीछे रोशनी + बहती वेव
+        centerAvatar.art = showAv && av?.res != null
+        centerAvatar.orb = av?.orb == true
+        centerAvatar.badge = av?.badge
+        centerAvatar.subject = av?.subject ?: HomeAvatars.FULL_SUBJECT
+        centerAvatar.tablet = com.dk.assistant.UiFitRules.isTablet(c.resources.configuration.smallestScreenWidthDp)
+        // आर्टवर्क READY पट्टी से नीचे की बार के ठीक ऊपर तक (नीचे की खाली पट्टी सिर्फ़ ORB के लिए)
+        heroBox.setPadding(0, 0, 0, if (centerAvatar.art) 0 else d(maxOf(0f, GREET_LIFT_DP - cardDrop)))
         // 23 नवंबर 2026 (मालिक: "अवतार पूरी स्क्रीन नहीं"): अवतार सिर्फ़ अभिवादन के नीचे से READY कार्ड के ऊपर तक (बीच वाली जगह),
         // अनुपात वही (Fit), किनारे ऐप के पीछे में घुलते हुए ([HomeAvatarView.fade]). कार्ड / टॉप बार / नीचे की पट्टी पर नहीं चढ़ता.
         bgAvatar.bitmap = null
@@ -1161,9 +1183,10 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         centerGlow?.background?.alpha = if (showAv) 0 else 255
         liveBox.background = if (showAv) glassCard() else com.dk.assistant.ui.Clay.card(c)
         liveBox.setTag(com.dk.assistant.PlainLook.SKIP, if (showAv) true else null)   // काँच वाला कार्ड ठोस Clay में न बदले
-        // कैरेक्टर के ऊपर अभिवादन साफ़ पढ़ा जाए: हल्की परछाईं (थीम का पर्दा-रंग)
-        val sh = com.dk.assistant.ui.ClayTheme.scrim(if (showAv) 0.7f else 0f)
-        for (tv in listOf(greetTxt, nameTxt)) if (showAv) tv.setShadowLayer(d(6f).toFloat(), 0f, d(1f).toFloat(), sh) else tv.setShadowLayer(0f, 0f, 0f, 0)
+        // कैरेक्टर के ऊपर अभिवादन साफ़ पढ़ा जाए: हल्की परछाईं (थीम का पर्दा-रंग). ऊपर की पट्टी में हो तो परछाईं नहीं
+        val overArt = showAv && greetSlot == null
+        val sh = com.dk.assistant.ui.ClayTheme.scrim(if (overArt) 0.7f else 0f)
+        for (tv in listOf(greetTxt, nameTxt)) if (overArt) tv.setShadowLayer(d(6f).toFloat(), 0f, d(1f).toFloat(), sh) else tv.setShadowLayer(0f, 0f, 0f, 0)
         renderBack()
         centerOrb.visibility = if (!showAv && !classic) View.VISIBLE else View.GONE
         centerClassic.visibility = if (!showAv && classic) View.VISIBLE else View.GONE
