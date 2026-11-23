@@ -74,7 +74,12 @@ class ClayDrawable(
         val p = state.contains(android.R.attr.state_pressed)
         val ch = selectable && (state.contains(android.R.attr.state_checked) || state.contains(android.R.attr.state_selected) || state.contains(android.R.attr.state_activated))
         var changed = false
-        if (p != pressed) { pressed = p; animDepth(if (p) 0f else 1f); if (card) pressScale(p); changed = true }
+        if (p != pressed) {
+            pressed = p
+            animDepth(if (p) 0f else 1f)
+            if (card) { pressScale(p) }
+            changed = true
+        }
         if (ch != chosen) { chosen = ch; animFill(if (ch) 1f else 0f); changed = true }
         return changed
     }
