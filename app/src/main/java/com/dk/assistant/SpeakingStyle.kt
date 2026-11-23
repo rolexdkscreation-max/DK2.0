@@ -69,6 +69,8 @@ object SpeakingStyle {
         append("say it was roughly around 1 million dollars (लगभग 10 लाख डॉलर / करीब 1 मिलियन डॉलर), in a light proud tone.\n")
         append(COST_GROWS)
         append(BEST_AI)
+        // 23 नवंबर 2026 (मालिक): धीरे से / प्यार से / गुस्से में चिल्लाकर / गाना - हर मोड में ([VoiceFeel])
+        append(com.dk.assistant.voice.engine.VoiceFeel.LITE)   // पूरा नियम [VoiceFeel.PROMPT] बड़े निर्देशों में (BrainManager); छोटे Live निर्देश में यही छोटा
     }
 
     /** मालिक (v5): "1 मिलियन तो अभी तक का है - आगे जो भी लगेगा उससे और बढ़ सकता है, यह अनुमानित है" */

@@ -84,7 +84,10 @@ object GeminiTtsEngine : VoiceEngine {
 
     override fun speak(c: Context, text: String, voice: String, out: PcmOut) {
         notReady(c)?.let { throw IOException("Gemini TTS: $it") }
-        val style = if (com.dk.assistant.JarvisMode.on(c)) com.dk.assistant.JarvisMode.VOICE_STYLE else com.dk.assistant.AssistantPersona.voiceStyle(c) ?: com.dk.assistant.SpeakingStyle.tts(com.dk.assistant.CalmPersona.ttsStyle(com.dk.assistant.DkPersona.ttsStyle(c, com.dk.assistant.avatar.MoodState.voiceStyle(style(c)))))   // v4.3: मालिक का बोलने का तरीका   // v3.71: भाव का निर्देश जुड़ता है
+        val style0 = if (com.dk.assistant.JarvisMode.on(c)) com.dk.assistant.JarvisMode.VOICE_STYLE else com.dk.assistant.AssistantPersona.voiceStyle(c) ?: com.dk.assistant.SpeakingStyle.tts(com.dk.assistant.CalmPersona.ttsStyle(com.dk.assistant.DkPersona.ttsStyle(c, com.dk.assistant.avatar.MoodState.voiceStyle(style(c)))))   // v4.3: मालिक का बोलने का तरीका   // v3.71: भाव का निर्देश जुड़ता है
+        // 23 नवंबर 2026 (मालिक: धीरे से / गुस्से में चिल्लाकर / गाना): इस टुकड़े का अंदाज़ style में सबसे आगे ([VoiceFeel]). JARVIS = वैसा ही
+        val d = if (com.dk.assistant.JarvisMode.on(c)) VoiceFeel.Delivery.NORMAL else VoiceFeel.current(text)
+        val style = VoiceFeel.ttsStyle(d, style0)
         var last = ""
         for (key in keys(c)) {
             val now = System.currentTimeMillis()
@@ -95,7 +98,7 @@ object GeminiTtsEngine : VoiceEngine {
                 val req = Request.Builder().url(GeminiTtsDirect.API)
                     .header("x-goog-api-key", key)
                     .header("Api-Revision", GeminiTtsDirect.API_REVISION)
-                    .post(GeminiTtsDirect.body(m, text, voice, style).toRequestBody("application/json; charset=utf-8".toMediaType()))
+                    .post(GeminiTtsDirect.body(m, VoiceFeel.ttsText(text, d, m.startsWith("gemini-3.8")), voice, style).toRequestBody("application/json; charset=utf-8".toMediaType()))
                     .build()
                 val call = http.newCall(req)
                 calls.add(call)
