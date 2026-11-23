@@ -66,7 +66,10 @@ object HomeTabs {
                 if (!mid) setPadding(0, d(4f), 0, d(4f))
                 clipChildren = false; clipToPadding = false
                 tag = t
-                setOnClickListener { if (!mid) select(bar, t); go(t) }
+                setOnClickListener {
+                    if (!mid) { select(bar, t) }
+                    go(t)
+                }
             }
             val icon = ImageView(c).apply {
                 setImageResource(t.icon); scaleType = ImageView.ScaleType.FIT_CENTER
