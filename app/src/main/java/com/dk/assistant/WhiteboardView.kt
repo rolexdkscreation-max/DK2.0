@@ -58,7 +58,8 @@ class WhiteboardView @JvmOverloads constructor(
     private var currentPath: Path? = null
     private var currentPaint: Paint? = null
 
-    var currentMode: Mode = Mode.DRAW
+    /** 23 नवंबर 2026 (मालिक: "बाय डिफ़ॉल्ट पेंसिल नहीं, टाइप वाला रहे - पेंसिल चुनूँ तभी लिखना"): शुरू में TEXT (छूने से कुछ नहीं लिखता) */
+    var currentMode: Mode = Mode.TEXT
     var currentColor: Int = Color.BLACK
     var currentStrokeWidth: Float = 8f
     var currentTextSize: Float = 42f
@@ -93,7 +94,8 @@ class WhiteboardView @JvmOverloads constructor(
                 distanceX: Float,
                 distanceY: Float
             ): Boolean {
-                if (currentMode == Mode.PAN_ZOOM || e2.pointerCount > 1) {
+                // TEXT (पेंसिल बंद) में एक उँगली = पाठ ऊपर-नीचे पढ़ना
+                if (currentMode == Mode.PAN_ZOOM || currentMode == Mode.TEXT || e2.pointerCount > 1) {
                     transformMatrix.postTranslate(-distanceX, -distanceY)
                     userPanned = true
                     invalidate()
@@ -133,6 +135,9 @@ class WhiteboardView @JvmOverloads constructor(
             scheduleSnapshot()
         }
     }
+
+    /** बोर्ड पर अपनी लिखाई / टाइप है? (खाली बोर्ड पर "हल करो" नहीं भेजते) */
+    fun hasInk(): Boolean = undoStack.isNotEmpty()
 
     fun clear() {
         undoStack.clear()
@@ -217,6 +222,72 @@ class WhiteboardView @JvmOverloads constructor(
         TeacherBoard.Kind.STEP -> sPaint
         TeacherBoard.Kind.ANSWER -> aPaint
         TeacherBoard.Kind.POINT -> pPaint
+        TeacherBoard.Kind.FIGURE -> pPaint
+    }
+
+    // ---------------- 23 नवंबर 2026: DK का बनाया चित्र ([TeacherDraw]) ----------------
+    private val figCache = HashMap<String, TeacherDraw.Figure?>()
+    private fun figure(spec: String): TeacherDraw.Figure? = figCache.getOrPut(spec) { TeacherDraw.parse(spec) }
+    private val figStroke = Paint().apply { isAntiAlias = true; style = Paint.Style.STROKE; strokeWidth = 5f; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
+    private val figFill = Paint().apply { isAntiAlias = true; style = Paint.Style.FILL }
+    private val figText = TextPaint().apply { isAntiAlias = true; textAlign = Paint.Align.CENTER; typeface = Typeface.DEFAULT_BOLD }
+    private val figFrame = Paint().apply { isAntiAlias = true; style = Paint.Style.STROKE; strokeWidth = 2f; color = Color.parseColor("#E3F2FD") }
+    private val dash = android.graphics.DashPathEffect(floatArrayOf(18f, 12f), 0f)
+
+    /** चित्र बनाओ (ऊपर-बाएँ [left],[top], चौड़ाई [w]); [part] = 0..1 कितना बन चुका (टीचर जैसे एक-एक चीज़). लौटाता है = ऊँचाई */
+    private fun drawFigure(canvas: Canvas, spec: String, left: Float, top: Float, w: Float, part: Float): Float {
+        val f = figure(spec) ?: return 0f
+        val s = w / TeacherDraw.W
+        val h = f.h * s
+        canvas.drawRoundRect(left - 8f, top - 8f, left + w + 8f, top + h + 8f, 24f, 24f, figFrame)
+        val n = Math.round(f.shapes.size * part.coerceIn(0f, 1f))
+        fun x(v: Float) = left + v * s
+        fun y(v: Float) = top + v * s
+        for (sh in f.shapes.take(n)) {
+            val p = sh.pts
+            figStroke.color = sh.color; figStroke.pathEffect = if (sh.kind == TeacherDraw.Kind.DASH) dash else null
+            figFill.color = (sh.color and 0x00FFFFFF) or 0x55000000
+            when (sh.kind) {
+                TeacherDraw.Kind.LINE, TeacherDraw.Kind.DASH -> canvas.drawLine(x(p[0]), y(p[1]), x(p[2]), y(p[3]), figStroke)
+                TeacherDraw.Kind.ARROW -> {
+                    canvas.drawLine(x(p[0]), y(p[1]), x(p[2]), y(p[3]), figStroke)
+                    val a = Math.atan2((p[3] - p[1]).toDouble(), (p[2] - p[0]).toDouble())
+                    val len = 4f * s
+                    for (d in listOf(2.6, -2.6)) canvas.drawLine(x(p[2]), y(p[3]), x(p[2]) + (len * Math.cos(a + d)).toFloat(), y(p[3]) + (len * Math.sin(a + d)).toFloat(), figStroke)
+                }
+                TeacherDraw.Kind.CIRCLE -> {
+                    if (sh.fill) canvas.drawCircle(x(p[0]), y(p[1]), p[2] * s, figFill)
+                    canvas.drawCircle(x(p[0]), y(p[1]), p[2] * s, figStroke)
+                }
+                TeacherDraw.Kind.ELLIPSE -> {
+                    val r = android.graphics.RectF(x(p[0] - p[2]), y(p[1] - p[3]), x(p[0] + p[2]), y(p[1] + p[3]))
+                    if (sh.fill) canvas.drawOval(r, figFill)
+                    canvas.drawOval(r, figStroke)
+                }
+                TeacherDraw.Kind.RECT -> {
+                    val r = android.graphics.RectF(x(p[0]), y(p[1]), x(p[0] + p[2]), y(p[1] + p[3]))
+                    if (sh.fill) canvas.drawRoundRect(r, 6f, 6f, figFill)
+                    canvas.drawRoundRect(r, 6f, 6f, figStroke)
+                }
+                TeacherDraw.Kind.POLY, TeacherDraw.Kind.PATH -> {
+                    val path = Path(); path.moveTo(x(p[0]), y(p[1]))
+                    var i = 2
+                    while (i + 1 < p.size) { path.lineTo(x(p[i]), y(p[i + 1])); i += 2 }
+                    if (sh.kind == TeacherDraw.Kind.POLY) { path.close(); if (sh.fill) canvas.drawPath(path, figFill) }
+                    canvas.drawPath(path, figStroke)
+                }
+                TeacherDraw.Kind.CURVE -> {
+                    val path = Path(); path.moveTo(x(p[0]), y(p[1])); path.quadTo(x(p[2]), y(p[3]), x(p[4]), y(p[5]))
+                    canvas.drawPath(path, figStroke)
+                }
+                TeacherDraw.Kind.DOT -> { figFill.color = sh.color; canvas.drawCircle(x(p[0]), y(p[1]), 1.4f * s, figFill) }
+                TeacherDraw.Kind.TEXT -> {
+                    figText.color = sh.color; figText.textSize = 34f * sh.size * (w / 900f).coerceIn(0.8f, 1.6f)
+                    canvas.drawText(sh.text, x(p[0]), y(p[1]) + figText.textSize / 3f, figText)
+                }
+            }
+        }
+        return h
     }
 
     /** पाठ लिखो (कटे बिना, स्क्रीन की चौड़ाई में लपेटकर); लौटाता है = कुल ऊँचाई */
@@ -234,6 +305,15 @@ class WhiteboardView @JvmOverloads constructor(
             if (line.kind == TeacherBoard.Kind.QUESTION) {
                 if (y > 60f) { y += 18f; canvas.drawLine(left, y, left + width, y, rulePaint); y += 22f }
                 lastQuestionY = y
+            }
+            if (line.kind == TeacherBoard.Kind.FIGURE) {
+                // चित्र: दिखे अक्षरों के हिसाब से उतनी चीज़ें बन चुकीं (धीरे-धीरे बनता दिखे)
+                val part = if (line.text.isEmpty()) 1f else visible.length.toFloat() / line.text.length
+                val fw = width.coerceAtMost(1100).toFloat()
+                y += 12f
+                val fh = drawFigure(canvas, line.text, left + (width - fw) / 2f, y, fw, part)
+                y += fh + 30f
+                continue
             }
             val p = paintFor(line.kind)
             val sl = StaticLayout.Builder.obtain(prefix + visible, 0, prefix.length + visible.length, p, width)
