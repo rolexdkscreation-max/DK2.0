@@ -31,7 +31,7 @@ internal fun SettingsActivity.secGuard() {
         if (!Setup.accessibilityOn(this)) hint(box, "⚠ पहले Settings → Accessibility में DK चालू करें — उसके बिना टच मोड नहीं चलेगा।")
         swOn = switch(box, "टच मोड चालू", Guard.active())
         status = TextView(this).apply {
-            textSize = 13f; setTextColor(0xCCFFFFFF.toInt()); setPadding((4 * dp).toInt(), (8 * dp).toInt(), 0, 0)
+            textSize = 13f; setTextColor(com.dk.assistant.ui.ClayTheme.t.sub); setPadding((4 * dp).toInt(), (8 * dp).toInt(), 0, 0)
         }
         box.addView(status)
         refresh()
@@ -81,7 +81,7 @@ internal fun SettingsActivity.secGuard() {
     // नवंबर 2026 (मालिक): पहले चेहरा सेट करने की जगह ही नहीं थी (29 अक्टूबर को "चेहरा पहचान" Settings से हटी) -
     // इसलिए चेतावनी स्क्रीन मालिक को पहचान नहीं पाती थी और सायरन बंद नहीं होता था. अब यहीं, सिर्फ़ टच मोड के लिए.
     card("मालिक का चेहरा", "पहली बार एक बार सेट करें — फिर अलार्म बजे और कैमरा आपको देखे तो सायरन अपने-आप बंद", startOpen = true) { box ->
-        val st = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (4 * dp).toInt(), 0, (4 * dp).toInt()) }
+        val st = TextView(this).apply { textSize = 14f; setTextColor(com.dk.assistant.ui.ClayTheme.t.text); setPadding((4 * dp).toInt(), (4 * dp).toInt(), 0, (4 * dp).toInt()) }
         box.addView(st)
         fun refreshFace() { st.text = UiLang.s(GuardFaceSetup.status(this)) }
         refreshFace()
@@ -152,7 +152,7 @@ internal fun SettingsActivity.secGuard() {
     }
 
     card("घुसपैठिए का रिकॉर्ड", "फ़ोटो और क्या-क्या हुआ") { box ->
-        val info = TextView(this).apply { textSize = 13f; setTextColor(0xCCFFFFFF.toInt()); setPadding((4 * dp).toInt(), (8 * dp).toInt(), 0, 0) }
+        val info = TextView(this).apply { textSize = 13f; setTextColor(com.dk.assistant.ui.ClayTheme.t.sub); setPadding((4 * dp).toInt(), (8 * dp).toInt(), 0, 0) }
         box.addView(info)
         // 15 नवंबर 2026: सारी फ़ोटो दिखें (सिर्फ़ गिनती/टाइम नहीं) - छूकर बड़ी, ← / →, शेयर, गैलरी, मिटाएँ
         val photosBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }

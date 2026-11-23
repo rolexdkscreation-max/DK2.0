@@ -3,7 +3,6 @@ package com.dk.assistant.behavior
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
-import com.dk.assistant.MainActivity
 import com.dk.assistant.R
 import com.dk.assistant.dkai.DkaiCore
 import com.dk.assistant.dkai.DkaiScreen
@@ -42,7 +41,8 @@ class DkaiMicStaysTest {
      * 14 नवंबर 2026 (मालिक: Perplexity जैसा डिब्बा): 🔍 / 🖥 बदलो, लंबा लिखो - + / 🔍 / 🖥 / 🎤 / 〰 कोई नहीं छिपता, न हिलता.
      */
     @Test fun micNeverMovesOrHides() {
-        val a = Robolectric.buildActivity(MainActivity::class.java).setup().visible().get()
+        // 23 नवंबर 2026 (मालिक): होम वाला इनपुट बॉक्स अब Chat स्क्रीन पर (ज्यों का त्यों)
+        val a = Robolectric.buildActivity(com.dk.assistant.ChatActivity::class.java).setup().visible().get()
         val s = a.findViewById<View>(R.id.dkai_root).tag as DkaiScreen
         val screenW = a.resources.displayMetrics.widthPixels
         val seen = HashMap<String, Box>()

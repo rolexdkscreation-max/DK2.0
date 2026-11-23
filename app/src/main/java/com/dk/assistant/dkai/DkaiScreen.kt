@@ -112,6 +112,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     private lateinit var centerOrb: FluidOrbView
     private lateinit var centerClassic: com.dk.assistant.OrbView
     private lateinit var centerAvatar: HomeAvatarView
+    private lateinit var centerLogo: Logo3D
     private var centerSig = ""
     /** होम का लाइव टेक्स्ट बॉक्स (यूज़र की बात -> DK की बात) */
     private lateinit var liveBox: LinearLayout
@@ -145,8 +146,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         // 23 नवंबर 2026 (मालिक): होम = ऊपर का हेडर + बीच में ORB / अवतार + लाइव टेक्स्ट; Chat = वही हेडर + बातचीत + होम वाला इनपुट बॉक्स
         if (chatPage) buildChatTop() else buildHeader()
         buildHome()
-        if (chatPage) buildInput()
-        buildTabs()
+        if (chatPage) { buildInput(); buildTabs() } else buildTabs()
         voice = DkaiVoice(this)
         setComputer(false)
         root.addView(voice.mini, voice.miniParams())
@@ -169,7 +169,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> placeMini() }
         activity.onBackPressedDispatcher.addCallback(activity, back)
         DkaiLive.attach(this)
-        renumberChats()
+        if (!chatPage) renumberChats()          // नंबर होम सँभालता है (Chat स्क्रीन खुलने से नंबर नहीं बदलते)
         panelHost.addView(if (chatPage) host.chatBody ?: homeScroll else homeScroll, FrameLayout.LayoutParams(-1, -1))
         render()
         return this
@@ -353,7 +353,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             }
             isClickable = true; isFocusable = true
             contentDescription = "DK - टैप: आवाज़ से बात, लंबा दबाएँ: पूरी आवाज़ स्क्रीन"
-            setOnClickListener { centerTap() }
+            setOnClickListener { if (::centerLogo.isInitialized && centerLogo.visibility == View.VISIBLE) centerLogo.spin(); centerTap() }
             setOnLongClickListener { if (DKState.live) setState(VoiceSessionState.ACTIVE_FULL) else micTap(); true }
         }
         centerOrb = FluidOrbView(c).apply { level = homeLevel; active = homeActive; style = { DkaiOrbs.get(c) }; call = homeCall
@@ -364,6 +364,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         glow.addView(centerOrb, FrameLayout.LayoutParams(d(200f), d(200f), Gravity.CENTER))
         glow.addView(centerClassic, FrameLayout.LayoutParams(d(200f), d(200f), Gravity.CENTER))
         glow.addView(centerAvatar, FrameLayout.LayoutParams(-1, -1))
+        // पहले वाला DK लोगो (3D) ORB के बीच में ही रहता है - अवतार चुनने पर छिपता है
+        centerLogo = Logo3D(c, R.drawable.ic_dk).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO; isClickable = false }
+        glow.addView(centerLogo, FrameLayout.LayoutParams(d(92f), d(92f), Gravity.CENTER))
         heroBox.addView(glow, LinearLayout.LayoutParams(d(260f), d(260f)).apply { topMargin = d(4f) })
         // लाइव टेक्स्ट बॉक्स (वही उभरा Clay कार्ड): हालत + पहले यूज़र की पूरी लाइव बात, फिर उसी डिब्बे में DK की
         liveBox = LinearLayout(c).apply {
@@ -840,7 +843,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     fun renderModel() {
         // 20 नवंबर 2026: चिप = केंद्रीय selectedModel ([SelectedModel]); कुछ न चुना = "Auto" (पहले जैसी routing)
         val ch = SelectedModel.get(c)
-        modelPill.text = (if (ch == null) "Auto" else DkaiCore.modelPill(DkaiKit.providerName(ch.provider), ch.model)) + " ▾"
+        if (::modelPill.isInitialized) modelPill.text = (if (ch == null) "Auto" else DkaiCore.modelPill(DkaiKit.providerName(ch.provider), ch.model)) + " ▾"
     }
 
     // ================================================================== आवाज़ (State 2/3)
@@ -970,6 +973,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         centerAvatar.visibility = if (showAv) View.VISIBLE else View.GONE
         centerOrb.visibility = if (!showAv && !classic) View.VISIBLE else View.GONE
         centerClassic.visibility = if (!showAv && classic) View.VISIBLE else View.GONE
+        centerLogo.visibility = if (showAv) View.GONE else View.VISIBLE
     }
 
     /** लाइव टेक्स्ट बॉक्स: हालत + यूज़र की पूरी लाइव बात, फिर उसी डिब्बे में DK की लाइव बात */

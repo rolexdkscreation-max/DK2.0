@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
@@ -94,8 +93,8 @@ class GuardAlarmActivity : AppCompatActivity() {
         // 15 नवंबर 2026 (मालिक: "फ़्यूचरिस्टिक तरीके से स्कैन"): बड़ा कैमरा + ऊपर hologram स्कैनर
         val hv = HoloScanView(this).also { holo = it; it.show(HoloScanView.Mode.SEARCH, emptyList()) }
         val frame = FrameLayout(this).apply {
-            background = GradientDrawable().apply { setStroke((2 * d).toInt(), 0xFF00E5FF.toInt()); cornerRadius = 16 * d; setColor(Color.BLACK) }
-            val p = (3 * d).toInt(); setPadding(p, p, p, p)
+            background = com.dk.assistant.ui.Clay.inset(this@GuardAlarmActivity, 16f)   // 23 नवंबर 2026: कैमरा Clay के धँसे फ़्रेम में
+            val p = (6 * d).toInt(); setPadding(p, p, p, p)
             clipToOutline = true
             addView(preview, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             addView(hv, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
@@ -269,11 +268,11 @@ class GuardAlarmActivity : AppCompatActivity() {
         val d = resources.displayMetrics.density
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
-            setBackgroundColor(0xFF050A18.toInt()); val p = (16 * d).toInt(); setPadding(p, p, p, p)
+            setBackgroundColor(com.dk.assistant.ui.ClayTheme.t.surface); val p = (16 * d).toInt(); setPadding(p, p, p, p)
         }
         // 22 नवंबर 2026: सही PIN पूरा होते ही अपने-आप (OK नहीं) - लंबाई पता हो तो ([AppLockStore.pinLen])
         val auto = AppLockStore.pinLen(this)
-        val msg = TextView(this).apply { text = UiLang.s(if (auto > 0) AppLockActivity.PIN_AUTO_HINT else "DK सीक्रेट PIN डालें, फिर OK"); setTextColor(0xFFB8E9FF.toInt()); textSize = 15f; gravity = Gravity.CENTER }
+        val msg = TextView(this).apply { text = UiLang.s(if (auto > 0) AppLockActivity.PIN_AUTO_HINT else "DK सीक्रेट PIN डालें, फिर OK"); setTextColor(com.dk.assistant.ui.ClayTheme.t.sub); textSize = 15f; gravity = Gravity.CENTER }
         box.addView(msg)
         val pad = NeonPinPad(this, autoLen = auto)
         box.addView(pad, LinearLayout.LayoutParams((280 * d).toInt(), LinearLayout.LayoutParams.WRAP_CONTENT))

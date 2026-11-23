@@ -75,7 +75,17 @@ object HomeAvatars {
     /** बदलाव गिनती - होम लौटते ही नया चुनाव दिखे */
     @Volatile var version = 0; private set
 
-    fun list(c: Context): List<Avatar> = merge(parse(try { File(dir(c), INDEX).takeIf { it.exists() }?.readText() } catch (_: Exception) { null }))
+    @Volatile private var listMem: Pair<Long, List<Avatar>>? = null
+
+    /** सूची (फ़ोन में रखी index.json + पहले से तय) - हर ताज़ा पर फ़ाइल दोबारा नहीं पढ़ते, बदली हो तभी */
+    fun list(c: Context): List<Avatar> {
+        val f = File(dir(c), INDEX)
+        val stamp = if (f.exists()) f.lastModified() else 0L
+        listMem?.let { if (it.first == stamp) return it.second }
+        val l = merge(parse(try { f.takeIf { it.exists() }?.readText() } catch (_: Exception) { null }))
+        listMem = stamp to l
+        return l
+    }
 
     fun byId(c: Context, id: String?): Avatar? = list(c).firstOrNull { it.id == id }
 
@@ -115,7 +125,7 @@ object HomeAvatars {
     }
 
     private val busy = java.util.Collections.synchronizedSet(HashSet<String>())
-    private val main = Handler(Looper.getMainLooper())
+    private val main by lazy { Handler(Looper.getMainLooper()) }
 
     /** इंटरनेट से: नई सूची + चुना अवतार (पहले से हो तो दोबारा नहीं). [done] UI thread पर (true = तस्वीर तैयार) */
     fun fetch(c: Context, id: String?, done: (Boolean) -> Unit = {}) {

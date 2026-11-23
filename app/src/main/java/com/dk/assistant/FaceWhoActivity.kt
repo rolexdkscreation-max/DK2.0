@@ -33,15 +33,16 @@ class FaceWhoActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val d = resources.displayMetrics.density
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setBackgroundColor(0xFF0B1020.toInt()) }
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setBackgroundColor(com.dk.assistant.ui.ClayTheme.t.bg) }
         val pv = PreviewView(this).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE }
         // 15 नवंबर 2026: futuristic स्कैनर + एक साथ कई चेहरे (नाम + रिश्ता)
         holo = HoloScanView(this).also { it.show(HoloScanView.Mode.SEARCH, emptyList()) }
         root.addView(android.widget.FrameLayout(this).apply {
-            setBackgroundColor(0xFF000000.toInt())
+            // 23 नवंबर 2026 (मालिक): कैमरा Clay के धँसे फ़्रेम में (रंग थीम से)
+            background = com.dk.assistant.ui.Clay.inset(this@FaceWhoActivity, 18f); val cp = (6 * d).toInt(); setPadding(cp, cp, cp, cp); clipToOutline = true
             addView(pv, android.widget.FrameLayout.LayoutParams(-1, -1)); addView(holo, android.widget.FrameLayout.LayoutParams(-1, -1))
         }, LinearLayout.LayoutParams((260 * d).toInt(), (320 * d).toInt()))
-        tv = TextView(this).apply { textSize = 17f; setTextColor(0xFFFFFFFF.toInt()); gravity = Gravity.CENTER; setPadding(0, (14 * d).toInt(), 0, 0); text = UiLang.s("कैमरे में देखें… DK पहचान रही है") }
+        tv = TextView(this).apply { textSize = 17f; setTextColor(com.dk.assistant.ui.ClayTheme.t.text); gravity = Gravity.CENTER; setPadding(0, (14 * d).toInt(), 0, 0); text = UiLang.s("कैमरे में देखें… DK पहचान रही है") }
         root.addView(tv)
         setContentView(root)
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {

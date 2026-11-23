@@ -32,7 +32,7 @@ internal fun SettingsActivity.secAppLock() {
 
     card("ऐप लॉक", "DK और कोई भी ऐप — PIN • पैटर्न • फ़िंगरप्रिंट / फ़ेस • DK फ़ेस स्कैन", startOpen = true) { box ->
         if (!Setup.accessibilityOn(this)) hint(box, "⚠ पहले Settings → Accessibility में DK चालू करें — उसके बिना ऐप लॉक नहीं चलेगा (ऐप खुलना DK वहीं से देखता है)।")
-        state = TextView(this).apply { textSize = 13f; setTextColor(0xCCFFFFFF.toInt()); setPadding((4 * dp).toInt(), (8 * dp).toInt(), 0, 0) }
+        state = TextView(this).apply { textSize = 13f; setTextColor(com.dk.assistant.ui.ClayTheme.t.sub); setPadding((4 * dp).toInt(), (8 * dp).toInt(), 0, 0) }
         box.addView(state)
         val sw = switch(box, "ऐप लॉक चालू", AppLockStore.on(this))
         var quiet = false
@@ -109,13 +109,13 @@ internal fun SettingsActivity.secAppLock() {
 private fun SettingsActivity.appPicker(box: LinearLayout, changed: () -> Unit) {
     val search = EditText(this).apply {
         hint = UiLang.s("ऐप खोजें…"); setBackgroundResource(R.drawable.glass_input)
-        setTextColor(0xFFFFFFFF.toInt()); setHintTextColor(0x66FFFFFF.toInt()); textSize = 14f; isSingleLine = true
+        setTextColor(com.dk.assistant.ui.ClayTheme.t.text); setHintTextColor(com.dk.assistant.ui.ClayTheme.t.hint); textSize = 14f; isSingleLine = true
         val p = (10 * dp).toInt(); setPadding(p + 4, p, p, p)
     }
     box.addView(search, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
     val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
     box.addView(list)
-    val wait = TextView(this).apply { text = UiLang.s("ऐप की सूची बन रही है…"); setTextColor(0x99FFFFFF.toInt()); textSize = 13f }
+    val wait = TextView(this).apply { text = UiLang.s("ऐप की सूची बन रही है…"); setTextColor(com.dk.assistant.ui.ClayTheme.t.gray); textSize = 13f }
     list.addView(wait)
     data class App(val pkg: String, val name: String, val icon: Drawable?)
     Thread {
@@ -134,7 +134,7 @@ private fun SettingsActivity.appPicker(box: LinearLayout, changed: () -> Unit) {
                 val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, (4 * dp).toInt(), 0, (4 * dp).toInt()) }
                 r.addView(ImageView(this).apply { setImageDrawable(a.icon) }, LinearLayout.LayoutParams((30 * dp).toInt(), (30 * dp).toInt()).apply { marginEnd = (10 * dp).toInt() })
                 val cb = CheckBox(this).apply {
-                    text = a.name; textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); isChecked = a.pkg in AppLockStore.apps(this@appPicker)
+                    text = a.name; textSize = 14f; setTextColor(com.dk.assistant.ui.ClayTheme.t.text); isChecked = a.pkg in AppLockStore.apps(this@appPicker)
                     setOnCheckedChangeListener { _, v ->
                         val s = AppLockStore.apps(this@appPicker).toMutableSet()
                         if (v) s.add(a.pkg) else s.remove(a.pkg)
@@ -161,9 +161,9 @@ private fun SettingsActivity.appPicker(box: LinearLayout, changed: () -> Unit) {
 private fun SettingsActivity.pinDialog(title: String, autoLen: Int = 0, onPin: (String, AlertDialog, TextView, NeonPinPad) -> Unit) {
     val box = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
-        setBackgroundColor(0xFF050A18.toInt()); val p = (16 * dp).toInt(); setPadding(p, p, p, p)
+        setBackgroundColor(com.dk.assistant.ui.ClayTheme.t.surface); val p = (16 * dp).toInt(); setPadding(p, p, p, p)
     }
-    val msg = TextView(this).apply { text = UiLang.s(title); setTextColor(0xFFB8E9FF.toInt()); textSize = 15f; gravity = Gravity.CENTER }
+    val msg = TextView(this).apply { text = UiLang.s(title); setTextColor(com.dk.assistant.ui.ClayTheme.t.sub); textSize = 15f; gravity = Gravity.CENTER }
     box.addView(msg)
     val pad = NeonPinPad(this, autoLen = autoLen)
     box.addView(pad, LinearLayout.LayoutParams((280 * dp).toInt(), -2))
@@ -205,9 +205,9 @@ private fun SettingsActivity.setPinFlow(done: () -> Unit) {
 private fun SettingsActivity.setPatternFlow(done: () -> Unit) {
     val box = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
-        setBackgroundColor(0xFF050A18.toInt()); val p = (16 * dp).toInt(); setPadding(p, p, p, p)
+        setBackgroundColor(com.dk.assistant.ui.ClayTheme.t.surface); val p = (16 * dp).toInt(); setPadding(p, p, p, p)
     }
-    val msg = TextView(this).apply { text = UiLang.s("नया पैटर्न बनाइए (कम से कम ${AppLockRules.PATTERN_MIN} बिंदु)"); setTextColor(0xFFB8E9FF.toInt()); textSize = 15f; gravity = Gravity.CENTER }
+    val msg = TextView(this).apply { text = UiLang.s("नया पैटर्न बनाइए (कम से कम ${AppLockRules.PATTERN_MIN} बिंदु)"); setTextColor(com.dk.assistant.ui.ClayTheme.t.sub); textSize = 15f; gravity = Gravity.CENTER }
     box.addView(msg)
     val pv = NeonPattern(this)
     box.addView(pv, LinearLayout.LayoutParams((260 * dp).toInt(), (260 * dp).toInt()))
@@ -230,7 +230,7 @@ private fun SettingsActivity.setPatternFlow(done: () -> Unit) {
  */
 internal fun SettingsActivity.guardPinCard() {
     card("सीक्रेट PIN और फिर से लॉक", "चेतावनी स्क्रीन पर DK सीक्रेट PIN • गलत PIN = तुरंत लॉक • सायरन में फ़ोन खुला = फिर लॉक") { box ->
-        val st = TextView(this).apply { textSize = 13f; setTextColor(0xCCFFFFFF.toInt()); setPadding((4 * dp).toInt(), (8 * dp).toInt(), 0, 0) }
+        val st = TextView(this).apply { textSize = 13f; setTextColor(com.dk.assistant.ui.ClayTheme.t.sub); setPadding((4 * dp).toInt(), (8 * dp).toInt(), 0, 0) }
         fun show() { st.text = UiLang.s("DK सीक्रेट PIN: " + if (AppLockStore.hasPin(this)) "सेट है ●●●●" else "सेट नहीं") }
         box.addView(st); show()
         row(box, button(if (AppLockStore.hasPin(this)) "PIN बदलें" else "PIN सेट करें") { setPinFlow { show(); toast("DK सीक्रेट PIN सेव हो गया") } })

@@ -55,6 +55,22 @@ internal fun SettingsActivity.secUi() {
         val g = radios(box, orbs, com.dk.assistant.dkai.DkaiOrbs.get(this), 6600)
         g.setOnCheckedChangeListener { _, id -> orbs.getOrNull(id - 6600)?.let { com.dk.assistant.dkai.DkaiOrbs.set(this, it.first) } }
         hint(box, "पुराना DK orb चुना = उसका आकार \"ओर्ब और चेहरा\" वाले हिस्से से। orb सिर्फ़ यहीं से बदलता है — DKAI में orb पर टैप करने से कुछ नहीं खुलता।")
+        // 23 नवंबर 2026 (मालिक): होम के बीच में ORB या 3D अवतार - चुनाव सेव रहता है; अवतार इंटरनेट से आता है
+        val avs = com.dk.assistant.dkai.HomeAvatars.list(this)
+        val centers = listOf(com.dk.assistant.dkai.HomeAvatars.ORB to "ORB (ऊपर चुना हुआ)") +
+            avs.map { com.dk.assistant.dkai.HomeAvatars.prefFor(it.id) to "3D अवतार: ${it.name}" }
+        val cg = radios(box, centers, com.dk.assistant.dkai.HomeAvatars.choice(this), 6700)
+        cg.setOnCheckedChangeListener { _, id ->
+            val pick = centers.getOrNull(id - 6700)?.first ?: return@setOnCheckedChangeListener
+            val av = com.dk.assistant.dkai.HomeAvatars.idOf(pick)
+            if (av == null) { com.dk.assistant.dkai.HomeAvatars.chooseOrb(this); return@setOnCheckedChangeListener }
+            com.dk.assistant.dkai.HomeAvatars.chooseAvatar(this, av)
+            toast("अवतार डाउनलोड हो रहा है…")
+            com.dk.assistant.dkai.HomeAvatars.fetch(this, av) { ok ->
+                if (!isFinishing) toast(if (ok) "अवतार तैयार - होम पर दिखेगा" else "अवतार नहीं आ पाया - इंटरनेट चालू होने पर फिर आएगा, तब तक ORB")
+            }
+        }
+        hint(box, "होम के बीच में: ORB या 3D अवतार। अवतार इंटरनेट से एक बार डाउनलोड होता है; तब तक (या इंटरनेट न हो तो) ORB ही दिखता है।")
     }
     card("झलक", "बदलाव यहीं तुरंत दिखता है", startOpen = true) { box ->
         box.addView(OrbView(this).apply { previewStyle = Shapes.NEON; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO },

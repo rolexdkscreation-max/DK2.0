@@ -54,7 +54,8 @@ object GuardFaceSetup {
         // 15 नवंबर 2026: कैमरे के ऊपर futuristic स्कैनर ([HoloScanView])
         val holo = HoloScanView(a)
         val box = android.widget.FrameLayout(a).apply {
-            setBackgroundColor(0xFF000000.toInt())
+            // 23 नवंबर 2026 (मालिक): कैमरा Clay के धँसे फ़्रेम में (रंग थीम से)
+            background = com.dk.assistant.ui.Clay.inset(a, 18f); val cp = (6 * dp).toInt(); setPadding(cp, cp, cp, cp); clipToOutline = true
             addView(pv, android.widget.FrameLayout.LayoutParams(-1, -1)); addView(holo, android.widget.FrameLayout.LayoutParams(-1, -1))
         }
         holo.show(HoloScanView.Mode.SEARCH, emptyList())
@@ -62,7 +63,7 @@ object GuardFaceSetup {
         val spoof = FaceSpoof.Vote()
         val flow = FaceEnroll()
         var badRun = 0
-        val tv = TextView(a).apply { textSize = 16f; setTextColor(0xFFFFFFFF.toInt()); setPadding(0, (12 * dp).toInt(), 0, 0) }
+        val tv = TextView(a).apply { textSize = 16f; setTextColor(com.dk.assistant.ui.ClayTheme.t.text); setPadding(0, (12 * dp).toInt(), 0, 0) }
         wrap.addView(tv)
         val dlg = AlertDialog.Builder(a).setTitle(UiLang.s(when { enroll && person != null -> "$person का चेहरा सीखें"; enroll -> "मालिक का चेहरा सेट करें"; who -> "कौन है?"; else -> "चेहरा जाँचें" })).setView(wrap)
             .setNegativeButton(UiLang.s("बंद करें"), null).show()
