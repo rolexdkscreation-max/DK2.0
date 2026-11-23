@@ -51,6 +51,8 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         @Volatile var engine = ""
         @Volatile var phone = false
         @Volatile var firstPcmAt = 0L
+        /** 23 नवंबर 2026: इस टुकड़े का अंदाज़ (धीरे से / गुस्से में / गाना...) - [VoiceFeel] */
+        @Volatile var delivery = VoiceFeel.Delivery.NORMAL
     }
 
     private val end = ByteArray(0)
@@ -70,6 +72,8 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     /** इस जवाब में ऑफ़लाइन आवाज़ धीमी होकर Gemini की आवाज़ पर गए - लॉग एक बार */
     @Volatile private var geminiNoted = false
     private val chunker = TextChunker()
+    /** 23 नवंबर 2026 (मालिक: इंसान जैसा बोलना + गाना): इस जवाब के टुकड़ों का अंदाज़, गाना कहाँ से कहाँ तक */
+    private val voiceTrack = VoiceFeel.Tracker()
     @Volatile private var gen = 0
     @Volatile private var engine: VoiceEngine? = null
     @Volatile private var firstPending = false
@@ -136,6 +140,7 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         if (e.id == St3VoiceEngine.ID) St3VoiceEngine.newAnswer()     // 19 नवंबर 2026: पहला टुकड़ा जल्दी
         if (e.id == St3VoiceEngine.ID) St3VoiceEngine.lead = { leadMs() }   // बाकी टुकड़ों के कदम: आगे कितनी आवाज़ तैयार
         synchronized(chunker) { chunker.reset(profileFor(e.id)) }
+        voiceTrack.reset()
         synchronized(spoken) { spoken.setLength(0) }
         firstPending = true
         handed = false; segAt = 0; ended = false
@@ -195,6 +200,8 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
         val text = try { com.dk.assistant.NameRule.tidy(text0, com.dk.assistant.NameRule.names(com.dk.assistant.Prefs.userName(ctx)), stream = true) } catch (_: Exception) { text0 }.ifBlank { text0 }
         if (handed) return
         val s = Seg(text, gen, System.currentTimeMillis(), segAt)
+        s.delivery = voiceTrack.next(text)
+        if (s.delivery != VoiceFeel.Delivery.NORMAL) hooks.log("आवाज़ का अंदाज़: ${s.delivery.hi} - \"${text.take(40)}\"")
         segAt += text.length + 1
         pending.incrementAndGet()
         segs.put(s)
@@ -222,12 +229,14 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
             if (why != null) { VoiceEngines.markFailed(e.id, why); continue }     // जैसे Worker का पता नहीं - अगला
             try {
                 var got = false
-                e.speak(ctx, s.text, e.voice(ctx), PcmOut { b ->
-                    if (s.gen == gen && b.isNotEmpty()) {
-                        if (s.firstPcmAt == 0L) s.firstPcmAt = System.currentTimeMillis()
-                        got = true; s.q.put(b)
-                    }
-                })
+                VoiceFeel.during(s.delivery) {
+                    e.speak(ctx, s.text, e.voice(ctx), PcmOut { b ->
+                        if (s.gen == gen && b.isNotEmpty()) {
+                            if (s.firstPcmAt == 0L) s.firstPcmAt = System.currentTimeMillis()
+                            got = true; s.q.put(b)
+                        }
+                    })
+                }
                 if (s.gen != gen) break
                 if (!got) throw IllegalStateException("कोई आवाज़ नहीं आई")
                 s.engine = e.id; ok = true
