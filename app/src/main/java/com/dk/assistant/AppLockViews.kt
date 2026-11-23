@@ -27,7 +27,8 @@ import kotlin.math.min
 class NeonPinPad(context: Context, private val maxLen: Int = AppLockRules.PIN_MAX, private val autoLen: Int = 0) : View(context) {
     /** पूरा PIN (OK दबाया / [autoLen] अंक हुए) */
     var onDone: ((String) -> Unit)? = null
-    var tone = HoloScanView.SCAN
+    /** 23 नवंबर 2026 (मालिक): Clay - चमक का रंग थीम का accent (गलत = लाल, सही = हरा वैसे ही) */
+    var tone = com.dk.assistant.ui.ClayTheme.t.accent
         set(v) { field = v; invalidate() }
     private val sb = StringBuilder()
     private val d = resources.displayMetrics.density
@@ -56,7 +57,7 @@ class NeonPinPad(context: Context, private val maxLen: Int = AppLockRules.PIN_MA
                 animate().translationX(s / 2).setDuration(SHAKE_MS).withEndAction { animate().translationX(0f).setDuration(SHAKE_MS).start() }.start()
             }.start()
         }.start()
-        postDelayed({ tone = HoloScanView.SCAN }, BAD_MS)
+        postDelayed({ tone = com.dk.assistant.ui.ClayTheme.t.accent }, BAD_MS)
     }
 
     /** सही: हरी लहर */
@@ -95,11 +96,19 @@ class NeonPinPad(context: Context, private val maxLen: Int = AppLockRules.PIN_MA
         for ((i, k) in keys.withIndex()) {
             val cx = (i % 3) * cw + cw / 2; val cy = top + (i / 3) * ch + ch / 2
             val on = i == pressed
+            // 23 नवंबर 2026 (मालिक): Clay - उभरा षट्कोण (ऊपर-बाएँ हल्की चमक, नीचे-दाएँ नरम छाया), दबाने पर धँसा
+            val ct = com.dk.assistant.ui.ClayTheme.t
+            if (!on) {
+                val o = CLAY_DP * d
+                fill.color = ct.shadowDark; c.drawPath(hexPath(cx + o, cy + o, r), fill)
+                fill.color = ct.shadowLight; c.drawPath(hexPath(cx - o, cy - o, r), fill)
+            }
             val p = hexPath(cx, cy, r)
+            fill.color = if (on) ct.well else ct.surface; c.drawPath(p, fill)
             // भीतर हल्की चमक, बाहर पतली रेखा, दबाने पर मोटी चमक
-            fill.color = HoloScanView.alpha(tone, if (on) 0.28f else 0.07f); c.drawPath(p, fill)
+            fill.color = HoloScanView.alpha(tone, if (on) 0.18f else 0.04f); c.drawPath(p, fill)
             if (on) { glow.color = HoloScanView.alpha(tone, 0.35f); c.drawPath(p, glow) }
-            ring.color = HoloScanView.alpha(tone, if (on) 1f else 0.6f); c.drawPath(p, ring)
+            ring.color = HoloScanView.alpha(tone, if (on) 1f else 0.35f); c.drawPath(p, ring)
             // भीतरी छोटा षट्कोण (HUD)
             ring.color = HoloScanView.alpha(tone, 0.18f); c.drawPath(hexPath(cx, cy, r * 0.78f), ring)
             // दबाने के बाद फैलती लहर
@@ -109,7 +118,7 @@ class NeonPinPad(context: Context, private val maxLen: Int = AppLockRules.PIN_MA
                 ring.color = HoloScanView.alpha(tone, 0.8f * (1f - f)); c.drawPath(hexPath(cx, cy, r * (1f + 0.45f * f)), ring)
             }
             val special = k == "OK" || k == "CLR"
-            txt.color = when { k == "OK" -> HoloScanView.OK; special -> HoloScanView.alpha(tone, 0.9f); else -> 0xFFE6FBFF.toInt() }
+            txt.color = when { k == "OK" -> HoloScanView.OK; special -> HoloScanView.alpha(tone, 0.9f); else -> ct.text }
             txt.textSize = if (special) r * 0.42f else r * 0.66f
             c.drawText(k, cx, cy - (txt.descent() + txt.ascent()) / 2, txt)
         }
@@ -195,6 +204,7 @@ class NeonPinPad(context: Context, private val maxLen: Int = AppLockRules.PIN_MA
         const val RIPPLE_MS = 380L
         const val PULSE_MS = 500L
         const val SCAN_S = 2.6f
+        const val CLAY_DP = 2.5f
     }
 }
 
@@ -202,7 +212,7 @@ class NeonPinPad(context: Context, private val maxLen: Int = AppLockRules.PIN_MA
 class NeonPattern(context: Context) : View(context) {
     var onDone: ((List<Int>) -> Unit)? = null
     var hidden = false
-    var tone = HoloScanView.SCAN
+    var tone = com.dk.assistant.ui.ClayTheme.t.accent
         set(v) { field = v; invalidate() }
     private val path = ArrayList<Int>()
     private var fx = -1f; private var fy = -1f
@@ -230,9 +240,17 @@ class NeonPattern(context: Context) : View(context) {
             if (fx >= 0) p.lineTo(fx, fy)
             line.color = HoloScanView.alpha(tone, 0.8f); c.drawPath(p, line)
         }
+        val k = com.dk.assistant.ui.ClayTheme.t
+        val o = 2.5f * d
         for (i in 0..8) {
             val on = !hidden && i in path
-            ring.color = HoloScanView.alpha(tone, if (on) 1f else 0.55f)
+            // 23 नवंबर 2026 (मालिक): Clay - उभरा गोल खाना, जुड़ने पर धँसा
+            if (!on) {
+                fill.color = k.shadowDark; c.drawCircle(cx(i) + o, cy(i) + o, r * 2.2f, fill)
+                fill.color = k.shadowLight; c.drawCircle(cx(i) - o, cy(i) - o, r * 2.2f, fill)
+            }
+            fill.color = if (on) k.well else k.surface; c.drawCircle(cx(i), cy(i), r * 2.2f, fill)
+            ring.color = HoloScanView.alpha(tone, if (on) 1f else 0.3f)
             c.drawCircle(cx(i), cy(i), r * 2.2f, ring)
             fill.color = if (on) tone else HoloScanView.alpha(tone, 0.7f)
             c.drawCircle(cx(i), cy(i), if (on) r * 1.1f else r * 0.6f, fill)

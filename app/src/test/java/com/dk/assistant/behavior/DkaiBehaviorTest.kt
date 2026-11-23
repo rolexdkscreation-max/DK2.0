@@ -28,6 +28,14 @@ class DkaiBehaviorTest {
         return a to (root.tag as DkaiScreen)
     }
 
+    /** 23 नवंबर 2026 (मालिक): होम वाला इनपुट बॉक्स अब Chat स्क्रीन पर (ज्यों का त्यों) */
+    private fun openChatPage(): Pair<com.dk.assistant.ChatActivity, DkaiScreen> {
+        val a = Robolectric.buildActivity(com.dk.assistant.ChatActivity::class.java).setup().get()
+        val root = a.findViewById<View>(R.id.dkai_root)
+        assertNotNull("Chat पर इनपुट बॉक्स / पट्टी नहीं जुड़ी", root)
+        return a to (root.tag as DkaiScreen)
+    }
+
     private fun texts(v: View, out: MutableList<String> = ArrayList(), onlyShown: Boolean = true): List<String> {
         if (onlyShown && v.visibility != View.VISIBLE) return out
         if (v is TextView) out += v.text.toString()
@@ -50,9 +58,13 @@ class DkaiBehaviorTest {
         // 14 नवंबर 2026 (मालिक: "नया UI हटाओ, होम Perplexity जैसा"): मोड, quick कार्ड, 6 टैब (Terminal समेत) नहीं
         for (c in listOf("Builder", "Agent", "Pipeline", "Broadcast", "Chat ▾")) assertFalse("$c अब होम पर नहीं होना चाहिए", c in t)
         for (tab in listOf("Files", "Editor", "Terminal", "Preview", "GitHub")) assertFalse("टैब $tab अब नहीं होना चाहिए", tab in t)
-        assertEquals("Ask anything…", s.input.hint.toString())
-        for (d in listOf("फोटो / फ़ाइल जोड़ें (5 तक)", "खोज / चैट", "DK Computer (टैप = चालू)", "AI मॉडल चुनें", "बोलकर लिखें", "आवाज़ से बात (DK लाइव)", "DK लोगो"))
-            assertNotNull("$d बटन नहीं", byDesc(s.root, d))
+        assertNotNull("DK लोगो बटन नहीं", byDesc(s.root, "DK लोगो"))
+        // 23 नवंबर 2026 (मालिक): इनपुट बॉक्स होम से हटा - वही बॉक्स Chat स्क्रीन पर, सारे बटन के साथ
+        assertNull("होम पर इनपुट बॉक्स नहीं होना चाहिए", byDesc(s.root, "आवाज़ से बात (DK लाइव)"))
+        val (_, ch) = openChatPage()
+        assertEquals("Ask anything…", ch.input.hint.toString())
+        for (d in listOf("फोटो / फ़ाइल जोड़ें (5 तक)", "खोज / चैट", "DK Computer (टैप = चालू)", "AI मॉडल चुनें", "बोलकर लिखें", "आवाज़ से बात (DK लाइव)"))
+            assertNotNull("$d बटन नहीं", byDesc(ch.root, d))
         assertEquals(VoiceSessionState.INACTIVE, s.voiceSessionState)
         assertEquals(View.GONE, s.voice.sheet.visibility); assertEquals(View.GONE, s.voice.mini.visibility)
     }
@@ -71,9 +83,13 @@ class DkaiBehaviorTest {
         assertEquals(VoiceSessionState.ACTIVE_MINIMIZED, s.voiceSessionState)
         assertEquals(View.VISIBLE, s.voice.mini.visibility)
         assertEquals(View.GONE, s.voice.sheet.visibility)
-        // पट्टी के रहते भी लिखना चलता है
-        s.input.setText("नमस्ते"); assertEquals("नमस्ते", s.input.text.toString())
-        assertTrue(s.input.isEnabled && s.input.visibility == View.VISIBLE)
+        // पट्टी के रहते भी लिखना चलता है (इनपुट बॉक्स अब Chat स्क्रीन पर)
+        val (_, ch) = openChatPage()
+        ch.setState(VoiceSessionState.ACTIVE_MINIMIZED, animate = false)
+        assertEquals(View.VISIBLE, ch.voice.mini.visibility)
+        ch.input.setText("नमस्ते"); assertEquals("नमस्ते", ch.input.text.toString())
+        assertTrue(ch.input.isEnabled && ch.input.visibility == View.VISIBLE)
+        ch.setState(VoiceSessionState.INACTIVE, animate = false)
 
         s.setState(DkaiCore.next(s.voiceSessionState, VoiceEvent.EXPAND), animate = false)
         assertEquals(VoiceSessionState.ACTIVE_FULL, s.voiceSessionState)
@@ -111,7 +127,7 @@ class DkaiBehaviorTest {
 
     // 14 नवंबर 2026 (मालिक): 🔍 / 🖥 - DK Computer आइकन टैप = DK Computer चालू, 🔍 = वापस चैट
     @Test fun searchOrComputerToggle() {
-        val (_, s) = open()
+        val (_, s) = openChatPage()
         assertFalse(s.computerMode)
         byDesc(s.root, "DK Computer (टैप = चालू)")!!.performClick(); idle()
         assertTrue(s.computerMode)
@@ -139,7 +155,9 @@ class DkaiBehaviorTest {
             byDescStart(s.root, "Chat 2, ")!!.performClick(); idle()
             assertEquals(2, Dkai.chatNo(a))
             assertEquals(listOf("पुरानी बेकरी वाली चैट", "पुराना जवाब"), com.dk.assistant.DKState.messages.map { it.text })
-            assertTrue("पुराना जवाब" in texts(s.root))                               // पूरी पुरानी बातचीत स्क्रीन पर
+            // पूरी पुरानी बातचीत Chat स्क्रीन पर (23 नवंबर 2026: बातचीत की सूची होम से Chat पर)
+            assertEquals(com.dk.assistant.ChatActivity::class.java.name, shadowOf(a).nextStartedActivity?.component?.className)
+            assertTrue("पुराना जवाब" in texts(openChatPage().second.root))
             assertEquals(listOf("अभी की बात"), DkaiChats.load(dir, 5).map { it.text })   // छोड़ी हुई चैट सेव
             assertFalse(com.dk.assistant.dkai.DkaiUi.anyOpen(s.root))                 // सूची बंद
             // back से भी बंद

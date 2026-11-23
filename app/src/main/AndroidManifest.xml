@@ -190,7 +190,7 @@
         <activity
             android:name=".ChatActivity"
             android:exported="false"
-            android:windowSoftInputMode="adjustResize|stateAlwaysVisible" />
+            android:windowSoftInputMode="adjustResize|stateHidden" />
 
         <activity
             android:name=".template.TemplateSettingsActivity"
@@ -260,7 +260,7 @@
         <activity
             android:name=".CodingActivity"
             android:exported="false"
-            android:windowSoftInputMode="adjustResize|stateAlwaysVisible" />
+            android:windowSoftInputMode="adjustResize|stateHidden" />
 
         <!-- DK कंप्यूटर: कई कदम वाला एजेंट (search, वेब, कोड, फ़ाइलें, फ़ोन, कोडिंग, रिमाइंडर) -->
         <!-- DK AI: Website Forge - 3D में बनती वेबसाइट + तैयार वेबसाइट -->

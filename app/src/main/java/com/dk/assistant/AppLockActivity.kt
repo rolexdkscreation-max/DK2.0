@@ -8,7 +8,6 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
 import android.os.Build
@@ -66,21 +65,21 @@ class AppLockActivity : AppCompatActivity() {
         label = ai?.let { pm.getApplicationLabel(it).toString() } ?: pkg
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
-            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xFF02040C.toInt(), 0xFF071530.toInt(), 0xFF02040C.toInt()))
+            setBackgroundColor(com.dk.assistant.ui.ClayTheme.t.bg)   // 23 नवंबर 2026 (मालिक): Clay - रंग थीम से
             val p = (18 * d).toInt(); setPadding(p, (36 * d).toInt(), p, p)
         }
         // आइकन निऑन घेरे में
         val ring = FrameLayout(this).apply {
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setStroke((2 * d).toInt(), HoloScanView.SCAN); setColor(0x2200E5FF) }
+            background = com.dk.assistant.ui.Clay.circle(this@AppLockActivity)
             val p = (14 * d).toInt(); setPadding(p, p, p, p)
             addView(ImageView(this@AppLockActivity).apply {
                 try { setImageDrawable(pm.getApplicationIcon(pkg)) } catch (_: Exception) { setImageResource(R.drawable.ic_s_applock) }
             }, FrameLayout.LayoutParams((56 * d).toInt(), (56 * d).toInt()))
         }
         root.addView(ring, LinearLayout.LayoutParams(-2, -2))
-        root.addView(text("DK SECURE LOCK", 12f, HoloScanView.SCAN, mono = true).apply { letterSpacing = 0.3f; setPadding(0, (12 * d).toInt(), 0, 0) })
-        root.addView(text("$label लॉक है", 22f, Color.WHITE, bold = true))
-        status = text("", 14f, 0xFFB8E9FF.toInt()).apply { minLines = 2; setPadding(0, (6 * d).toInt(), 0, (6 * d).toInt()) }
+        root.addView(text("DK SECURE LOCK", 12f, com.dk.assistant.ui.ClayTheme.t.accent, mono = true).apply { letterSpacing = 0.3f; setPadding(0, (12 * d).toInt(), 0, 0) })
+        root.addView(text("$label लॉक है", 22f, com.dk.assistant.ui.ClayTheme.t.text, bold = true))
+        status = text("", 14f, com.dk.assistant.ui.ClayTheme.t.sub).apply { minLines = 2; setPadding(0, (6 * d).toInt(), 0, (6 * d).toInt()) }
         root.addView(status)
         body = FrameLayout(this)
         root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -108,7 +107,7 @@ class AppLockActivity : AppCompatActivity() {
         typeface = if (mono) Typeface.create(Typeface.MONOSPACE, Typeface.BOLD) else if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
     }
 
-    private fun say(t: String, tone: Int = 0xFFB8E9FF.toInt()) = runOnUiThread { status.text = UiLang.s(t); status.setTextColor(tone) }
+    private fun say(t: String, tone: Int = com.dk.assistant.ui.ClayTheme.t.sub) = runOnUiThread { status.text = UiLang.s(t); status.setTextColor(tone) }
 
     /** इस फ़ोन पर यह तरीका चलेगा? */
     private fun available(m: AppLockRules.Method): Boolean = when (m) {
@@ -140,12 +139,10 @@ class AppLockActivity : AppCompatActivity() {
                 AppLockRules.Method.PHONE -> bioLabel()
                 AppLockRules.Method.FACE -> "DK फ़ेस स्कैन"
             }
-            chips.addView(text(name, 13f, if (m == method) Color.BLACK else HoloScanView.SCAN, bold = true).apply {
+            val k = com.dk.assistant.ui.ClayTheme.t
+            chips.addView(text(name, 13f, if (m == method) k.onAccent else k.accent, bold = true).apply {
                 val p = (12 * d).toInt(); setPadding(p, (8 * d).toInt(), p, (8 * d).toInt())
-                background = GradientDrawable().apply {
-                    cornerRadius = 20 * d; setStroke((1.5f * d).toInt(), HoloScanView.SCAN)
-                    setColor(if (m == method) HoloScanView.SCAN else 0x1100E5FF)
-                }
+                background = if (m == method) com.dk.assistant.ui.Clay.accent(this@AppLockActivity) else com.dk.assistant.ui.Clay.chip(this@AppLockActivity)
                 setOnClickListener { use(m) }
             }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = (4 * d).toInt(); marginEnd = (4 * d).toInt(); topMargin = (8 * d).toInt() })
         }
@@ -172,7 +169,7 @@ class AppLockActivity : AppCompatActivity() {
                 say(if (wait > 0) waitText(wait) else "DK पैटर्न बनाइए")
             }
             AppLockRules.Method.PHONE -> {
-                body.addView(text("◉\n${bioLabel()} से खोलें\n(यहाँ छुएँ)", 18f, HoloScanView.SCAN).apply { setOnClickListener { phoneAuth() } },
+                body.addView(text("◉\n${bioLabel()} से खोलें\n(यहाँ छुएँ)", 18f, com.dk.assistant.ui.ClayTheme.t.accent).apply { setOnClickListener { phoneAuth() } },
                     FrameLayout.LayoutParams(-1, -1))
                 phoneAuth()
             }
@@ -195,7 +192,7 @@ class AppLockActivity : AppCompatActivity() {
         if (wait > 0) { say(waitText(wait), HoloScanView.WARN); pv.clear(); return }
         if (dots.size < AppLockRules.PATTERN_MIN) { say("कम से कम ${AppLockRules.PATTERN_MIN} बिंदु जोड़िए", HoloScanView.WARN); pv.clear(); return }
         if (AppLockStore.checkPattern(this, dots)) { ok("पैटर्न"); return }
-        pv.tone = HoloScanView.BAD; pv.postDelayed({ pv.tone = HoloScanView.SCAN; pv.clear() }, 600)
+        pv.tone = HoloScanView.BAD; pv.postDelayed({ pv.tone = com.dk.assistant.ui.ClayTheme.t.accent; pv.clear() }, 600)
         wrong()
     }
 
@@ -265,8 +262,8 @@ class AppLockActivity : AppCompatActivity() {
         val hv = HoloScanView(this).also { holo = it; it.show(HoloScanView.Mode.SEARCH, emptyList()) }
         val w = (resources.displayMetrics.widthPixels * 0.72f).toInt().coerceAtMost((300 * d).toInt())
         body.addView(FrameLayout(this).apply {
-            background = GradientDrawable().apply { setStroke((2 * d).toInt(), HoloScanView.SCAN); cornerRadius = 18 * d; setColor(Color.BLACK) }
-            val p = (3 * d).toInt(); setPadding(p, p, p, p); clipToOutline = true
+            background = com.dk.assistant.ui.Clay.inset(this@AppLockActivity, 18f)   // कैमरा Clay के धँसे फ़्रेम में
+            val p = (6 * d).toInt(); setPadding(p, p, p, p); clipToOutline = true
             addView(pv, FrameLayout.LayoutParams(-1, -1)); addView(hv, FrameLayout.LayoutParams(-1, -1))
         }, FrameLayout.LayoutParams(w, (w * 1.25f).toInt(), Gravity.CENTER))
         gate = QuickFaceGate()

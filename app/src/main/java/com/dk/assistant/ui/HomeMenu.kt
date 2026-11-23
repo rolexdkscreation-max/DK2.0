@@ -27,12 +27,20 @@ object HomeMenu {
         DkaiTheme.load(a)
         // 23 नवंबर 2026 (Soft Clay): उभरा बड़ा कार्ड, हर आइटम उभरी पट्टी (दबाने पर धँसे), नीचे ऐप version छोटे अक्षरों में
         val k = ClayTheme.t
-        val box = LinearLayout(a).apply {
+        // 23 नवंबर 2026 (मालिक: "☰ की लिस्ट स्क्रॉल नहीं होती, नीचे के आइटम कट जाते हैं"): वही उभरा कार्ड, पर आइटम
+        // अब ऊपर-नीचे स्क्रॉल होते हैं ([scroll]); कार्ड की ऊँचाई स्क्रीन के अंदर ([maxHeight]) - Settings पूरा दिखे
+        val card = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
             background = Clay.raised(a, 26f, 7f)
             val p = (16 * dp).toInt(); setPadding(p, p, p, p)
         }
-        val pw = PopupWindow(box, (300 * dp).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT, true)
+        val box = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
+        val scroll = android.widget.ScrollView(a).apply {
+            isVerticalScrollBarEnabled = true; isFillViewport = false; overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            addView(box, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        card.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        val pw = PopupWindow(card, (300 * dp).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT, true)
         items.forEach { it0 ->
             val row = LinearLayout(a).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -60,17 +68,27 @@ object HomeMenu {
                 topMargin = (8 * dp).toInt()
             })
         }
-        // सबसे नीचे: ऐप का version (छोटा, हल्का)
-        box.addView(TextView(a).apply {
+        // सबसे नीचे: ऐप का version (छोटा, हल्का) - स्क्रॉल के बाहर, हमेशा दिखे
+        card.addView(TextView(a).apply {
             text = try { com.dk.assistant.Updater.displayVersion(a) } catch (_: Exception) { "DK" }
             textSize = 11f; setTextColor(k.hint); gravity = Gravity.CENTER; letterSpacing = 0.06f
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = (14 * dp).toInt() })
-        com.dk.assistant.PlainLook.apply(box)   // लाइट थीम: सफ़ेद चिह्न गहरे (रंगीन वैसे ही)
+        // कितनी ऊँचाई मिले: anchor के नीचे से स्क्रीन के नीचे तक (थोड़ी जगह छोड़कर)
+        val loc = IntArray(2); anchor.getLocationInWindow(loc)
+        val screenH = anchor.rootView?.height?.takeIf { it > 0 } ?: a.resources.displayMetrics.heightPixels
+        val maxH = maxHeight(screenH, loc[1] + anchor.height + (6 * dp).toInt(), (16 * dp).toInt())
+        card.measure(View.MeasureSpec.makeMeasureSpec((300 * dp).toInt(), View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        val natural = card.measuredHeight
+        pw.height = minOf(natural, maxH)
+        com.dk.assistant.PlainLook.apply(card)   // लाइट थीम: सफ़ेद चिह्न गहरे (रंगीन वैसे ही)
         pw.elevation = 0f
         pw.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0))
         pw.isOutsideTouchable = true
         if (!NeonTheme.reducedMotion()) pw.animationStyle = android.R.style.Animation_Dialog else pw.animationStyle = 0
         pw.showAsDropDown(anchor, 0, (6 * dp).toInt())
     }
+
+    /** pure (JVM test): पैनल की सबसे ज़्यादा ऊँचाई = anchor के नीचे से स्क्रीन के नीचे तक, [margin] छोड़कर (कम से कम 200px) */
+    fun maxHeight(screenH: Int, top: Int, margin: Int): Int = (screenH - top - margin).coerceAtLeast(200)
 }

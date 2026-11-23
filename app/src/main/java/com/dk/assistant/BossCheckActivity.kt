@@ -45,18 +45,19 @@ class BossCheckActivity : AppCompatActivity() {
         mode = intent?.getStringExtra(EXTRA_MODE) ?: MODE_VERIFY
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val d = resources.displayMetrics.density
-        root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setBackgroundColor(0xFF0B1020.toInt()) }
+        root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setBackgroundColor(com.dk.assistant.ui.ClayTheme.t.bg) }
         root.addView(TextView(this).apply {
-            text = UiLang.s("DK सुरक्षा जाँच — सिर्फ़ Boss"); textSize = 18f; setTextColor(0xFF00E5FF.toInt()); gravity = Gravity.CENTER
+            text = UiLang.s("DK सुरक्षा जाँच — सिर्फ़ Boss"); textSize = 18f; setTextColor(com.dk.assistant.ui.ClayTheme.t.accent); gravity = Gravity.CENTER
             setPadding(0, 0, 0, (10 * d).toInt())
         })
         val pv = PreviewView(this).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE }
         holo = HoloScanView(this).also { it.show(HoloScanView.Mode.SEARCH, emptyList()) }
         root.addView(FrameLayout(this).apply {
-            setBackgroundColor(0xFF000000.toInt())
+            // 23 नवंबर 2026 (मालिक): कैमरा Clay के धँसे फ़्रेम में (रंग थीम से)
+            background = com.dk.assistant.ui.Clay.inset(this@BossCheckActivity, 18f); val cp = (6 * d).toInt(); setPadding(cp, cp, cp, cp); clipToOutline = true
             addView(pv, FrameLayout.LayoutParams(-1, -1)); addView(holo, FrameLayout.LayoutParams(-1, -1))
         }, LinearLayout.LayoutParams((260 * d).toInt(), (320 * d).toInt()))
-        tv = TextView(this).apply { textSize = 16f; setTextColor(0xFFFFFFFF.toInt()); gravity = Gravity.CENTER; setPadding((16 * d).toInt(), (14 * d).toInt(), (16 * d).toInt(), 0); text = UiLang.s(liveness.guide()) }
+        tv = TextView(this).apply { textSize = 16f; setTextColor(com.dk.assistant.ui.ClayTheme.t.text); gravity = Gravity.CENTER; setPadding((16 * d).toInt(), (14 * d).toInt(), (16 * d).toInt(), 0); text = UiLang.s(liveness.guide()) }
         root.addView(tv)
         root.addView(Button(this).apply { text = UiLang.s("रद्द करें"); isAllCaps = false; setOnClickListener { finishWith(false, "CANCELLED") } })
         setContentView(root)
@@ -145,7 +146,7 @@ class BossCheckActivity : AppCompatActivity() {
         root.addView(photos)
         GuardPhotos.strip(this, photos, Watchman.photos(this)) {}
         root.addView(ScrollView(this).apply {
-            addView(TextView(this@BossCheckActivity).apply { text = UiLang.s(Watchman.reportFor(this@BossCheckActivity)); textSize = 15f; setTextColor(0xFFFFFFFF.toInt()); setTextIsSelectable(true) })
+            addView(TextView(this@BossCheckActivity).apply { text = UiLang.s(Watchman.reportFor(this@BossCheckActivity)); textSize = 15f; setTextColor(com.dk.assistant.ui.ClayTheme.t.text); setTextIsSelectable(true) })
         }, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(Button(this).apply { text = UiLang.s("बंद करें"); isAllCaps = false; setOnClickListener { finishWith(true, "OK") } })
     }

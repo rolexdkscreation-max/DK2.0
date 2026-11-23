@@ -1,0 +1,85 @@
+package com.dk.assistant.dkai
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RadialGradient
+import android.graphics.RectF
+import android.graphics.Shader
+import com.dk.assistant.ui.ClayTheme
+import com.dk.assistant.ui.NeonTheme
+import kotlin.math.PI
+import kotlin.math.sin
+
+/**
+ * 23 नवंबर 2026 (मालिक): होम के बीच वाला 3D अवतार (ORB की जगह, उतना ही बड़ा).
+ *  - साँस जैसा धीमा ऊपर-नीचे ([BREATH_S] सेकंड का एक चक्र)
+ *  - पीछे हल्की चमक (glow) - रंग वॉइस की हालत से: सुन रहा = थीम का accent, सोच रहा = बैंगनी, बोल रहा = आसमानी
+ *  - बोलते समय आवाज़ ([level]) के हिसाब से हल्का हिलना / झूमना
+ * "कम एनिमेशन" चालू = सिर्फ़ तस्वीर + स्थिर चमक. सारे रंग थीम / DkaiTheme के नाम वाले रंगों से.
+ */
+class HomeAvatarView(c: Context) : DkaiAnimView(c) {
+    var bitmap: Bitmap? = null
+        set(v) { field = v; invalidate() }
+    /** [FluidOrbView.LISTEN] / [FluidOrbView.THINK] / [FluidOrbView.SPEAK], -1 = शांत */
+    var call: () -> Int = { -1 }
+
+    companion object {
+        const val BREATH_S = 4.2f
+
+        /** pure: साँस का ऊपर-नीचे (px), t सेकंड पर */
+        fun breath(t: Float, amp: Float): Float = (sin(2 * PI * t / BREATH_S) * amp).toFloat()
+
+        /** pure: बोलते समय झूमना (डिग्री) - आवाज़ जितनी तेज़ उतना, पर 4° से ज़्यादा नहीं */
+        fun sway(t: Float, level: Float): Float = (sin(t * 7.0) * 4.0 * level.coerceIn(0f, 1f)).toFloat()
+    }
+
+    private val img = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val glowP = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val dst = RectF()
+    private var glowNow = 0
+    private var glowSet = false
+
+    private fun targetGlow(): Int = when (try { call() } catch (_: Exception) { -1 }) {
+        FluidOrbView.SPEAK -> DkaiTheme.CYAN
+        FluidOrbView.THINK -> DkaiTheme.VIOLET
+        else -> ClayTheme.t.accent
+    }
+
+    override fun onDraw(cv: Canvas) {
+        super.onDraw(cv)
+        step()
+        val calm = NeonTheme.reducedMotion()
+        val t = if (calm) 0f else secs()
+        val w = width.toFloat(); val h = height.toFloat()
+        if (w <= 0f || h <= 0f) return
+        val dp = resources.displayMetrics.density
+        // चमक का रंग धीरे-धीरे बदले (अचानक नहीं)
+        val want = targetGlow()
+        glowNow = if (!glowSet || calm) want else FluidOrbView.mix(glowNow, want, 0.08f)
+        glowSet = true
+        val speaking = (try { call() } catch (_: Exception) { -1 }) == FluidOrbView.SPEAK
+        val pulse = if (calm) 0.5f else 0.5f + 0.5f * sin(t * 2.2f)
+        val strength = (0.55f + 0.25f * pulse + 0.35f * lv).coerceAtMost(1f)
+        val r = minOf(w, h) * (0.46f + 0.04f * lv)
+        glowP.shader = RadialGradient(w / 2, h * 0.52f, r,
+            intArrayOf(NeonTheme.alpha(glowNow, (0x88 * strength).toInt()), NeonTheme.alpha(glowNow, (0x30 * strength).toInt()), NeonTheme.alpha(glowNow, 0)),
+            floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+        cv.drawCircle(w / 2, h * 0.52f, r, glowP)
+
+        val b = bitmap ?: return
+        // तस्वीर view में पूरी (अनुपात वही), नीचे-बीच
+        val s = minOf(w * 0.92f / b.width, h * 0.96f / b.height)
+        val bw = b.width * s; val bh = b.height * s
+        val dy = if (calm) 0f else breath(t, 4f * dp)
+        val scale = 1f + (if (calm) 0f else 0.012f * sin(2 * PI.toFloat() * t / BREATH_S)) + if (speaking) 0.03f * lv else 0f
+        dst.set((w - bw) / 2, h - bh + dy, (w + bw) / 2, h + dy)
+        cv.save()
+        cv.scale(scale, scale, w / 2, h)
+        if (speaking && !calm) cv.rotate(sway(t, lv), w / 2, h)
+        cv.drawBitmap(b, null, dst, img)
+        cv.restore()
+        if (!calm) again()
+    }
+}
