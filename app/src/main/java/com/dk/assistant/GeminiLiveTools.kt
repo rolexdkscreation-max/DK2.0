@@ -476,6 +476,7 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 "website_action" -> com.dk.assistant.forge.ForgeVoice.run(svc, args)
                 "make_game" -> com.dk.assistant.forge.GameMaker.start(svc, args.optString("description"), voice = true, change = args.optBoolean("change", false))
                 "teacher_mode" -> LiveReport.teacher(svc, args.optBoolean("on", true))
+                "teacher_draw" -> LiveReport.teacherDraw(svc, args.optString("title"), args.optString("figure"))
                 "dk_settings" -> DkSettingsApply.run(svc, args)
                 "dk_inspector" -> com.dk.assistant.inspector.Inspector.liveTool(svc, args)
                 "remember_fact" -> if (Memory.addFact(svc, args.optString("fact"))) "saved" else "NOT saved: private info (passwords, PIN, OTP, bank/card/Aadhaar numbers) is never stored. If the user asked you to remember it, tell them gently you do not save such private details." 

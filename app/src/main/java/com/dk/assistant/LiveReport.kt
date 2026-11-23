@@ -46,6 +46,15 @@ object LiveReport {
         } catch (e: Exception) { DKLog.d("${a.title} स्क्रीन नहीं खुली: ${e.message}") }
     }
 
+    /** 23 नवंबर 2026: DK Live का teacher_draw - बोर्ड बंद हो तो खुलवा कर चित्र */
+    fun teacherDraw(c: Context, title: String, figure: String): String {
+        val opened = !TeacherBoard.open
+        val ok = TeacherBoard.addFigure(title, figure)
+        if (ok && opened) TeacherLink.openByVoice(c)
+        DKLog.d("टीचर: चित्र ${if (ok) "बना" else "नहीं बना"} (${figure.length} अक्षर)")
+        return LiveConnect.drawResult(ok, ok && opened)
+    }
+
     fun teacher(c: Context, on: Boolean): String {
         if (on) { TeacherLink.openByVoice(c); return LiveConnect.teacherResult(true, false) }
         return LiveConnect.teacherResult(false, TeacherLink.closeByVoice())
