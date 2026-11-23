@@ -15,7 +15,8 @@ import android.widget.HorizontalScrollView
  */
 object Glass {
     /** Saare AlertDialog isi glass theme me (Android 12+ par peeche blur) */
-    val DIALOG = R.style.Theme_DK_Dialog
+    /** 23 नवंबर 2026: लाइट Clay थीम में गहरी लिखावट वाला dialog (सफ़ेद पर सफ़ेद नहीं) */
+    val DIALOG: Int get() = if (com.dk.assistant.ui.ClayTheme.t.light) R.style.Theme_DK_Dialog_ClayLight else R.style.Theme_DK_Dialog
 
     const val TEXT = 0xFFFFFFFF.toInt()
     const val TEXT2 = 0xD9FFFFFF.toInt()

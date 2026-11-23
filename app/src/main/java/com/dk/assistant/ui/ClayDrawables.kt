@@ -143,13 +143,19 @@ class ClayDrawable(
         // ---- बाहर की दो परछाइयाँ (उभरा) - दबने पर धीमे-धीमे गायब
         val out = if (raised) depth else 0f
         if (out > 0.01f && d > 0.5f) {
-            val off = d * 0.55f * out
+            // 23 नवंबर 2026 (मालिक: "उभार काफ़ी ज़्यादा"): आकार वही ([dist] से), सिर्फ़ परछाईं गहरी/बड़ी - [ClayTheme.LIFT] से
+            val lift = ClayTheme.LIFT
+            val off = d * 0.55f * lift * out
             shP.style = Paint.Style.FILL
-            shP.maskFilter = blurOf(d * 0.9f)
+            shP.maskFilter = blurOf(d * 0.9f * lift)
             shP.color = a(k.shadowDark, out)
             tmp.set(shape); tmp.offset(off, off); drawShape(c, tmp, r, shP)
             shP.color = a(k.shadowLight, out)
             tmp.set(shape); tmp.offset(-off, -off); drawShape(c, tmp, r, shP)
+            // पास की गहरी छाया (ज़मीन से ठीक ऊपर उठा दिखे)
+            shP.maskFilter = blurOf(d * 0.45f)
+            shP.color = a(k.shadowDark, out * 0.55f)
+            tmp.set(shape); tmp.offset(d * 0.28f * out, d * 0.32f * out); drawShape(c, tmp, r, shP)
             shP.maskFilter = null
         }
         // ---- भराव
@@ -183,16 +189,29 @@ class ClayDrawable(
             c.restore()
         }
 
-        // ---- अंदर की परछाईं (धँसा / दबा हुआ)
-        val inn = if (raised) (1f - depth) * 0.85f else 1f
+        // ---- ऊपर-बाएँ की चमक (हाइलाइट): उभरा डिब्बा स्क्रीन से ऊपर उठा दिखे
+        if (raised && depth > 0.01f) {
+            val gr = maxOf(shape.width(), shape.height()) * 0.75f
+            val hl = NeonTheme.alpha(k.rim, if (style == Style.ACCENT) 0x55 else if (k.light) 0xB0 else 0x30)
+            c.save(); c.clipPath(path)
+            fillP.shader = android.graphics.RadialGradient(shape.left + shape.width() * 0.16f, shape.top + shape.height() * 0.10f, gr.coerceAtLeast(1f),
+                intArrayOf(a(hl, depth), a(hl, 0f)), null, Shader.TileMode.CLAMP)
+            drawShape(c, shape, r, fillP)
+            fillP.shader = null
+            c.restore()
+        }
+
+        // ---- अंदर की परछाईं (धँसा / दबा हुआ) - [ClayTheme.SINK] से गहरी
+        val inn = if (raised) (1f - depth) else 1f
         if (inn > 0.01f) {
             val id = maxOf(d, 3f * (bounds.height().coerceAtLeast(1) / 48f).coerceIn(0.6f, 1.6f))
             c.save()
             c.clipPath(path)
             shP.style = Paint.Style.STROKE
-            shP.strokeWidth = id * 1.6f
-            shP.maskFilter = blurOf(id * 0.8f)
-            val off = id * 0.5f
+            val sink = ClayTheme.SINK
+            shP.strokeWidth = id * 1.6f * sink
+            shP.maskFilter = blurOf(id * 0.8f * sink)
+            val off = id * 0.5f * sink
             shP.color = a(k.shadowDark, inn)
             tmp.set(shape); tmp.inset(-id * 0.6f, -id * 0.6f); tmp.offset(off, off); drawShape(c, tmp, r + id * 0.6f, shP)
             shP.color = a(k.shadowLight, inn * (if (k.light) 1f else 0.8f))
@@ -202,8 +221,10 @@ class ClayDrawable(
         }
         // ---- ऊपर का बहुत पतला उजला किनारा (उभार को साफ़ दिखाने के लिए)
         if (raised && depth > 0.5f) {
-            rimP.strokeWidth = maxOf(1f, d * 0.12f)
-            rimP.shader = LinearGradient(0f, shape.top, 0f, shape.bottom, a(k.rim, 0.55f), a(k.rim, 0f), Shader.TileMode.CLAMP)
+            rimP.strokeWidth = maxOf(1.2f, d * 0.16f)
+            // ऊपर-बाएँ उजला किनारा -> नीचे-दाएँ हल्का गहरा किनारा (तिरछा)
+            rimP.shader = LinearGradient(shape.left, shape.top, shape.right, shape.bottom,
+                intArrayOf(a(k.rim, 0.95f), a(k.rim, 0f), a(k.shadowDark, 0.35f)), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
             tmp.set(shape); tmp.inset(rimP.strokeWidth / 2, rimP.strokeWidth / 2)
             drawShape(c, tmp, maxOf(0f, r - rimP.strokeWidth / 2), rimP)
             rimP.shader = null
