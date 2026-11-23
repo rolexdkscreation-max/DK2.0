@@ -19,6 +19,8 @@ import java.lang.ref.WeakReference
  * कहीं भी छुएँ / कोई भी बटन (volume / power) = बजना बंद. फ़ोन नहीं खुलता (PIN वैसे ही).
  */
 class FindPhoneActivity : Activity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
 
     @Suppress("DEPRECATION")
     override fun onCreate(savedInstanceState: Bundle?) {

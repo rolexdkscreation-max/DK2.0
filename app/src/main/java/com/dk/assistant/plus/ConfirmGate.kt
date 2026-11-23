@@ -159,6 +159,8 @@ object ConfirmGate {
 
 /** ConfirmGate का कार्ड - लॉक स्क्रीन के ऊपर नहीं खुलता (showWhenLocked नहीं) */
 class ConfirmActivity : Activity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
     companion object {
         const val EXTRA_TITLE = "dk_confirm_title"
         const val EXTRA_DETAIL = "dk_confirm_detail"

@@ -37,6 +37,8 @@ import java.util.Locale
  * बैकअप के समय "बैकअप हो रहा है…", रिस्टोर के समय "रिस्टोर हो रहा है…".
  */
 class BackupActivity : AppCompatActivity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
     private lateinit var container: LinearLayout
     private val dp by lazy { resources.displayMetrics.density }
     private lateinit var edEmail: EditText

@@ -71,6 +71,7 @@ class ScanPanel(private val act: AppCompatActivity, private val startLive: () ->
     fun show(front: Boolean = false, userTap: Boolean = false) {
         if (userTap) asked = false         // ऐप लौटने पर (इजाज़त मना की हो) बार-बार न पूछे - टैब फिर दबाने पर ही
         shown = true; showing = true
+        tabAct = java.lang.ref.WeakReference(act); current = java.lang.ref.WeakReference(this)
         LiveVision.listen(listener)
         if (faces == null) faces = LensFaces(act.applicationContext, holo)
         want(front)
@@ -137,12 +138,39 @@ class ScanPanel(private val act: AppCompatActivity, private val startLive: () ->
         holo.clear()
     }
 
-    fun release() { hide(); faces?.stop(); faces = null; feed?.release(); feed = null }
+    /** स्कैन टैब छोड़ा (दूसरा टैब / स्क्रीन बंद) - अब से कैमरा माँगा जाए तो पहले वाली आवाज़ स्क्रीन ही */
+    fun leaveTab() {
+        hide()
+        if (tabAct?.get() === act) { tabAct = null; current = null }
+    }
+
+    fun release() { leaveTab(); faces?.stop(); faces = null; feed?.release(); feed = null }
 
     companion object {
         const val REQ_CAM = 4219
         /** होम का स्कैन सामने है - [LiveVision.setCamera] तब अलग आवाज़ स्क्रीन नहीं खोलता */
         @Volatile var showing = false
             private set
+        @Volatile private var tabAct: java.lang.ref.WeakReference<AppCompatActivity>? = null
+        @Volatile private var current: java.lang.ref.WeakReference<ScanPanel>? = null
+
+        /**
+         * 23 नवंबर 2026 (मालिक: "DK जुड़ा न हो तब स्कैन दबाओ तो पुरानी विंडो भी खुलती है"): होम का स्कैन टैब चुना है और
+         * DK स्क्रीन सामने है - कैमरा / इजाज़त की खिड़की के पीछे पल भर रुकी हो तब भी. तब [LiveVision] पुरानी आवाज़
+         * स्क्रीन (VoiceActivity) कभी नहीं खोलता; लेंस इसी टैब में खुलता है.
+         */
+        fun onScreen(): Boolean {
+            if (showing) return true
+            val a = tabAct?.get() ?: return false
+            return !a.isFinishing && !a.isDestroyed && a.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+        }
+
+        /** स्कैन टैब खुला है तो वहीं फिर से (DK लाइव जोड़कर) लेंस - true = टैब ने सँभाल लिया */
+        fun again(front: Boolean): Boolean {
+            if (!onScreen()) return false
+            val p = current?.get() ?: return false
+            p.view.post { if (p.shown) p.show(front) }
+            return true
+        }
     }
 }

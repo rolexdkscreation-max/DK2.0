@@ -127,7 +127,8 @@ class TruthCheckTest {
     @Test fun homeTabs_wired() {
         val scr = src("dkai/DkaiScreen.kt")
         assertTrue(scr.contains("buildInput(); buildTabs()"))
-        assertTrue(scr.contains("HomeTabs.Tab.SCAN -> openLens(false)") && scr.contains("HomeTabs.Tab.MIC -> micTap()"))
+        assertTrue(scr.contains("HomeTabs.Tab.SCAN -> { DkaiUi.closeTop(root); hideKeyboard(); if (!host.tab(t))") && scr.contains("HomeTabs.Tab.MIC -> micTap()"))
+        assertTrue(src("ChatActivity.kt").contains(".putExtra(MainActivity.EXTRA_TAB, MainActivity.TAB_SCAN)"))
         val main = src("MainActivity.kt")
         assertTrue(main.contains("HomeTabs.Tab.CHAT -> { openChat(); true }"))
         assertTrue(main.contains("HomeTabs.Tab.MEMORY -> { startActivity(Intent(this, MemoryActivity::class.java)); true }"))

@@ -23,6 +23,8 @@ import com.dk.assistant.DKState
  * निजी काम (मैसेज पढ़ना वगैरह) लॉक में नहीं - [WakeRules.lockedPrivate].
  */
 class WakeLockActivity : Activity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
     private val main = Handler(Looper.getMainLooper())
     private val startedAt = System.currentTimeMillis()
 

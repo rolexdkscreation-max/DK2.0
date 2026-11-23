@@ -20,6 +20,8 @@ import kotlinx.coroutines.launch
 
 /** Likhkar baat karne wali alag screen (WhatsApp jaisi). Phone ke kaam bhi yahin se likhkar karwa sakte hain. */
 class ChatActivity : AppCompatActivity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
 
     private lateinit var list: LinearLayout
     private lateinit var scroll: ScrollView
@@ -98,7 +100,7 @@ class ChatActivity : AppCompatActivity() {
         swSpeak = SwitchCompat(this).apply {
             text = "बोलकर भी"; textSize = 12f; setTextColor(0xCCFFFFFF.toInt())
             isChecked = getSharedPreferences("dk_prefs", MODE_PRIVATE).getBoolean("chat_speak", false)
-            setOnCheckedChangeListener { _, on -> getSharedPreferences("dk_prefs", MODE_PRIVATE).edit().putBoolean("chat_speak", on).apply() }
+            setOnCheckedChangeListener { _, on -> com.dk.assistant.dkai.ChatSpeak.set(this@ChatActivity, on) }
         }
         top.addView(swSpeak)
 
@@ -122,6 +124,13 @@ class ChatActivity : AppCompatActivity() {
             tab = { t ->
                 when (t) {
                     com.dk.assistant.ui.HomeTabs.Tab.MEMORY -> { startActivity(android.content.Intent(this, MemoryActivity::class.java)); true }
+                    // 23 नवंबर 2026 (मालिक): स्कैन = होम का वही नया स्कैन (बीच वाली जगह में), पुरानी आवाज़ वाली विंडो नहीं
+                    com.dk.assistant.ui.HomeTabs.Tab.SCAN -> {
+                        startActivity(android.content.Intent(this, MainActivity::class.java)
+                            .putExtra(MainActivity.EXTRA_TAB, MainActivity.TAB_SCAN)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                        finish(); true
+                    }
                     else -> false
                 }
             },
@@ -193,6 +202,8 @@ class ChatActivity : AppCompatActivity() {
                     else -> c.ifBlank { "…" }
                 }
                 DKState.reply(out, emptyList(), b.lastGround)
+                // 23 नवंबर 2026 (मालिक): "बोलकर भी" चालू = फ़ोन के बिना भी (Accessibility बंद) जवाब फ़ोन की ऑफ़लाइन आवाज़ में
+                com.dk.assistant.dkai.ChatSpeak.sayIfOn(this@ChatActivity, out)
                 // 15 नवंबर 2026: हर जवाब से DK का अपना दिमाग सीखे (अगली बार बिना नेट / बिना request भी)
                 if (!c.startsWith("{")) { val g = b.lastGround != null; launch(kotlinx.coroutines.Dispatchers.IO) { OwnMind.learn(this@ChatActivity, t, out, g) } }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e

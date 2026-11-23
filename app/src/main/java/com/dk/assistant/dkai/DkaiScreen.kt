@@ -89,6 +89,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     lateinit var root: FrameLayout; private set
     private lateinit var content: LinearLayout
     private lateinit var chatLabel: TextView
+    /** Chat टैब का "बोलकर भी" (सिर्फ़ Chat टैब पर दिखता है) */
+    private var speakSw: androidx.appcompat.widget.SwitchCompat? = null
     private lateinit var readyDot: PulseDot
     /** 15 नवंबर 2026 (मालिक): header के THINKING पर भी वही टाइपिंग एनीमेशन (Settings › दिखावट वाला) */
     private lateinit var readyAnim: com.dk.assistant.DKWorkingIndicator
@@ -111,6 +113,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     private lateinit var attachRow: LinearLayout
     private lateinit var attachScroll: HorizontalScrollView
     private lateinit var heroBox: LinearLayout
+    private var cardDrop = DkaiHomeCore.CARD_DROP_MIN
     /** होम के बीच: ORB (चुना हुआ) या 3D अवतार - Settings › दिखावट › "DKAI का orb" */
     private lateinit var centerOrb: FluidOrbView
     private lateinit var centerClassic: com.dk.assistant.OrbView
@@ -149,7 +152,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         content = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
         // 23 नवंबर 2026 (मालिक): चुना कैरेक्टर पूरी स्क्रीन के पीछे (होम टैब पर), ऊपर काँच जैसा लाइव कार्ड
         if (!chatPage) {
-            bgAvatar = HomeAvatarView(c).apply { level = homeLevel; active = homeActive; call = homeCall; cover = true
+            bgAvatar = HomeAvatarView(c).apply { level = homeLevel; active = homeActive; call = homeCall; cover = true; fade = true
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO; visibility = View.GONE }
             root.addView(bgAvatar, FrameLayout.LayoutParams(-1, -1))
         }
@@ -235,14 +238,6 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             layoutParams = LinearLayout.LayoutParams(d(46f), d(46f)).apply { leftMargin = d(8f) }
         }
 
-    /** DK लेंस: आवाज़ स्क्रीन खुले, DK लाइव जुड़ते ही लेंस चालू और जो दिखे तुरंत बोले */
-    private fun openLens(front: Boolean) {
-        if (!host.ready()) return
-        c.startActivity(Intent(c, com.dk.assistant.VoiceActivity::class.java)
-            .putExtra(com.dk.assistant.VoiceActivity.EXTRA_WANT, com.dk.assistant.VoiceActivity.WANT_CAMERA)
-            .putExtra(com.dk.assistant.VoiceActivity.EXTRA_FRONT, front))
-    }
-
     private fun buildHeader() {
         // ☰ [DK लोगो] DKAI                     ⚙
         // ● READY  (वहीं जहाँ पहले "Chat #" था)
@@ -264,6 +259,14 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             LinearLayout.LayoutParams(d(28f), d(28f)))
         title.addView(DkaiTheme.text(c, "DKAI", 20f, DkaiTheme.WHITE, DkaiTheme.SANS_BOLD).apply { letterSpacing = 0.06f; setPadding(d(8f), 0, 0, 0); maxLines = 1 })
         headF.addView(title, LinearLayout.LayoutParams(0, -2, 1f))
+        // 23 नवंबर 2026 (मालिक): Chat टैब पर ऊपर वही "बोलकर भी" toggle (बाय डिफ़ॉल्ट बंद) - चालू = लिखा जवाब बोलकर भी
+        speakSw = androidx.appcompat.widget.SwitchCompat(c).apply {
+            text = ChatSpeak.LABEL; textSize = 12f; setTextColor(DkaiTheme.GRAY); switchPadding = d(6f)
+            isChecked = ChatSpeak.on(c); contentDescription = "जवाब बोलकर भी सुनाएँ"
+            setOnCheckedChangeListener { _, on -> ChatSpeak.set(c, on) }
+            visibility = View.GONE
+        }
+        headF.addView(speakSw, LinearLayout.LayoutParams(-2, -2))
         // 14 नवंबर 2026 (मालिक): ⚙ दबाते ही सीधे Settings खुले. लंबा दबाओ = पुरानी छोटी सूची (प्रोफ़ाइल / थीम / बाकी रास्ते)
         headF.addView(headIcon(DkaiIcon.Kind.GEAR, "Settings - सब कुछ एक जगह") { openSettings() }.apply {
             setOnLongClickListener { settingsList(); true }
@@ -351,7 +354,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
                 else -> homeScroll
             }
         } catch (e: Exception) { com.dk.assistant.Quiet.note(e); return false }
-        if (tabNow == com.dk.assistant.ui.HomeTabs.Tab.SCAN && t != tabNow) scanPanel?.hide()
+        if (tabNow == com.dk.assistant.ui.HomeTabs.Tab.SCAN && t != tabNow) scanPanel?.leaveTab()
         DkaiUi.closeTop(root)
         if (t != com.dk.assistant.ui.HomeTabs.Tab.CHAT) hideKeyboard()
         val changed = t != tabNow
@@ -371,6 +374,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             else -> homeScroll.post { homeScroll.smoothScrollTo(0, 0) }
         }
         com.dk.assistant.ui.HomeTabs.select(tabsBar, t)
+        speakSw?.let { sw -> sw.isChecked = ChatSpeak.on(c); DkaiTheme.gone(sw, t != com.dk.assistant.ui.HomeTabs.Tab.CHAT) }
         renderBack()
         return true
     }
@@ -424,7 +428,10 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         homeCol = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(0, d(8f), 0, d(16f)) }
         // 14 नवंबर 2026 (मालिक: "Perplexity जैसा"): चैट खाली = बीच में घूमता 3D DK लोगो (टैप = फिर घूमे). quick कार्ड / Broadcast हटे
         // 23 नवंबर 2026 (मालिक): अभिवादन बीच में पर पहले से थोड़ा ऊपर (ऊपर की चार चीज़ें हटीं) - नीचे ज़्यादा जगह
-        heroBox = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(0, 0, 0, d(GREET_LIFT_DP)) }
+        // 23 नवंबर 2026 (मालिक): READY कार्ड थोड़ा नीचे ([DkaiHomeCore.cardDropDp]) - कार्ड के ऊपर उतनी जगह, नीचे की जगह उतनी कम
+        // (अभिवादन वहीं रहता है, सिर्फ़ कार्ड नीचे खिसकता है)
+        cardDrop = DkaiHomeCore.cardDropDp(c.resources.configuration.screenHeightDp)
+        heroBox = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(0, 0, 0, d(maxOf(0f, GREET_LIFT_DP - cardDrop))) }
         // 23 नवंबर 2026 (Soft Clay): समय के हिसाब से नमस्ते + नीचे आपका नाम बड़े मोटे अक्षरों में (नाम = Settings › प्रोफ़ाइल वाला)
         greetTxt = DkaiTheme.text(c, DkaiHomeCore.greeting(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)), 16f, DkaiTheme.GRAY, DkaiTheme.SANS_MED).apply { gravity = Gravity.CENTER }
         nameTxt = DkaiTheme.text(c, "", 30f, DkaiTheme.WHITE, DkaiTheme.SANS_BOLD).apply { gravity = Gravity.CENTER; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(d(16f), d(4f), d(16f), 0) }
@@ -450,7 +457,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         centerOrb = FluidOrbView(c).apply { level = homeLevel; active = homeActive; style = { DkaiOrbs.get(c) }; call = homeCall
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
         centerClassic = com.dk.assistant.OrbView(c).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO; visibility = View.GONE }
-        centerAvatar = HomeAvatarView(c).apply { level = homeLevel; active = homeActive; call = homeCall
+        centerAvatar = HomeAvatarView(c).apply { level = homeLevel; active = homeActive; call = homeCall; fade = true
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO; visibility = View.GONE }
         glow.addView(centerOrb, FrameLayout.LayoutParams(d(200f), d(200f), Gravity.CENTER))
         glow.addView(centerClassic, FrameLayout.LayoutParams(d(200f), d(200f), Gravity.CENTER))
@@ -458,7 +465,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         // पहले वाला DK लोगो (3D) ORB के बीच में ही रहता है - अवतार चुनने पर छिपता है
         centerLogo = Logo3D(c, R.drawable.ic_dk).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO; isClickable = false }
         glow.addView(centerLogo, FrameLayout.LayoutParams(d(92f), d(92f), Gravity.CENTER))
-        heroBox.addView(glow, LinearLayout.LayoutParams(d(260f), d(260f)).apply { topMargin = d(4f) })
+        heroBox.addView(glow, avatarArea(false))
         centerGlow = glow
         // लाइव टेक्स्ट बॉक्स (वही उभरा Clay कार्ड): हालत + पहले यूज़र की पूरी लाइव बात, फिर उसी डिब्बे में DK की
         liveBox = LinearLayout(c).apply {
@@ -481,7 +488,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             override fun onMeasure(w: Int, h: Int) = super.onMeasure(w, View.MeasureSpec.makeMeasureSpec(d(170f), View.MeasureSpec.AT_MOST))
         }.apply { isVerticalScrollBarEnabled = false; addView(liveTxt) }
         liveBox.addView(liveScroll, LinearLayout.LayoutParams(-1, -2))
-        heroBox.addView(liveBox, LinearLayout.LayoutParams(minOf(c.resources.displayMetrics.widthPixels - d(28f), d(560f)), -2).apply { topMargin = d(14f) })
+        // चौड़ाई = उपलब्ध जगह (दोनों तरफ़ 14dp) - फ़ोन पर पहले जितनी ही; टैबलेट पर स्क्रीन के अनुपात में ([com.dk.assistant.UiFit.tablet])
+        heroBox.addView(liveBox, LinearLayout.LayoutParams(-1, -2).apply { topMargin = d(14f + cardDrop); leftMargin = d(14f); rightMargin = d(14f) })
         if (!chatPage) homeCol.addView(heroBox, LinearLayout.LayoutParams(-1, 0, 1f))
         chatList = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(d(14f), d(14f), d(14f), 0) }
         UiLang.keep(chatList)
@@ -599,14 +607,16 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         if (!chatPage) {
             when (t) {
                 com.dk.assistant.ui.HomeTabs.Tab.MIC -> micTap()
-                else -> if (!showTab(t)) { if (t == com.dk.assistant.ui.HomeTabs.Tab.SCAN) openLens(false) else if (!host.tab(t)) toast(t.label + " अभी नहीं खुला") }
+                // 23 नवंबर 2026 (मालिक): स्कैन कभी पुरानी आवाज़ वाली विंडो में नहीं - सिर्फ़ इसी जगह (DK जुड़ा हो या नहीं)
+                else -> if (!showTab(t) && !host.tab(t)) toast(t.label + " अभी नहीं खुला")
             }
             return
         }
         when (t) {
             com.dk.assistant.ui.HomeTabs.Tab.HOME -> { DkaiUi.closeTop(root); hideKeyboard(); activity.finish() }
             com.dk.assistant.ui.HomeTabs.Tab.CHAT -> { DkaiUi.closeTop(root); input.requestFocus() }
-            com.dk.assistant.ui.HomeTabs.Tab.SCAN -> openLens(false)
+            // Chat स्क्रीन से स्कैन = होम का वही नया स्कैन टैब (ChatActivity होम पर लौटकर खोलता है), पुरानी विंडो नहीं
+            com.dk.assistant.ui.HomeTabs.Tab.SCAN -> { DkaiUi.closeTop(root); hideKeyboard(); if (!host.tab(t)) toast(t.label + " अभी नहीं खुला") }
             com.dk.assistant.ui.HomeTabs.Tab.MIC -> micTap()
             else -> if (!host.tab(t)) toast(t.label + " अभी नहीं खुला")
         }
@@ -820,12 +830,12 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
      */
     private fun chatRoute(t: String): Boolean {
         val send = host.chatSend
-        if (send == null || com.dk.assistant.FluxImage.wanted(t) || com.dk.assistant.research.DeepResearch.wanted(t, Prefs.deepAuto(c))) return sendChat(t)
+        if (send == null || com.dk.assistant.FluxImage.wanted(t) || com.dk.assistant.research.DeepResearch.wanted(t, Prefs.deepAuto(c))) return sendChat(t, speak = ChatSpeak.on(c))
         return send(t)
     }
 
     /** चैट वाला भेजना (ChatActivity जैसा): Accessibility चालू = DK का पूरा दिमाग़ (फ़ोन के काम भी), नहीं = सिर्फ़ बातचीत */
-    private fun sendChat(t: String): Boolean {
+    private fun sendChat(t: String, speak: Boolean = false): Boolean {
         // 20 नवंबर 2026 (मालिक): "यूज़र इमेज माँगे तो इमेज सीधे चैट में दिखे" - सिर्फ़ DK सर्वर का Cloudflare FLUX (key की ज़रूरत नहीं)
         if (com.dk.assistant.FluxImage.wanted(t)) {
             DKState.userNow(t)
@@ -839,16 +849,20 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         // 14 नवंबर 2026 (मालिक): "डीप रिसर्च" - Exa + Tavily + Linkup एक साथ, Firecrawl से पूरे पेज, Gemini की हिंदी रिपोर्ट
         if (com.dk.assistant.research.DeepResearch.wanted(t, Prefs.deepAuto(c))) { deepResearch(t); return true }
         val svc = DKAccessibilityService.instance
-        // Chat स्क्रीन: "बोलकर भी" चालू = जवाब बोलकर भी (पहले वाले Chat जैसा, typed = true)
-        if (svc != null) { svc.runCommand(t, speak = false); return true }
+        // Chat टैब: "बोलकर भी" चालू = जवाब बोलकर भी (पहले वाले Chat जैसा); बंद / DK लाइव से आई बात = सिर्फ़ लिखकर
+        if (svc != null) { svc.runCommand(t, speak = speak, typed = speak); return true }
+        fun answer(x: String) {
+            DKState.reply(x)
+            if (speak) { ChatSpeak.sayIfOn(c, x) }
+        }
         val b = BrainManager(c)
         localJob?.cancel()
         localJob = activity.lifecycleScope.launch {
             try {
-                LocalBrain.instant(c, t)?.let { DKState.reply(it); return@launch }
+                LocalBrain.instant(c, t)?.let { answer(it); return@launch }
                 // 15 नवंबर 2026 (मालिक): बिना नेट = DK का अपना दिमाग तुरंत; पहले पूछा पक्का सवाल = अपना जवाब (request बचे)
-                if (!com.dk.assistant.NetProbe.online(c)) { DKState.reply(com.dk.assistant.OwnMind.offline(c, t)); return@launch }
-                com.dk.assistant.OwnMind.saved(c, t)?.let { DKState.reply(it); return@launch }
+                if (!com.dk.assistant.NetProbe.online(c)) { answer(com.dk.assistant.OwnMind.offline(c, t)); return@launch }
+                com.dk.assistant.OwnMind.saved(c, t)?.let { answer(it); return@launch }
                 val sb = StringBuilder()
                 fun clean(x: String) = x.replace(Regex("\\[(SCREEN|SEARCH|THINK)\\]"), "").substringBefore("[YAAD").replace(Regex("[*#`]"), "").trim()
                 val full = b.streamChat("USER SAYS: $t", "USER SAYS: $t") { dl ->
@@ -862,6 +876,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
                     else -> cl.ifBlank { "…" }
                 }
                 DKState.reply(out, emptyList(), b.lastGround)
+                if (speak) ChatSpeak.sayIfOn(c, out)
                 // 15 नवंबर 2026: हर जवाब से DK का अपना दिमाग सीखे
                 if (!cl.startsWith("{")) { val g = b.lastGround != null; launch(kotlinx.coroutines.Dispatchers.IO) { com.dk.assistant.OwnMind.learn(c, t, out, g) } }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e
@@ -1077,6 +1092,11 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         }
     }
 
+    /** ORB = 260dp का गोला (पहले जैसा); अवतार = अभिवादन और READY कार्ड के बीच की पूरी जगह */
+    private fun avatarArea(avatar: Boolean): LinearLayout.LayoutParams =
+        if (avatar) LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = d(4f) }
+        else LinearLayout.LayoutParams(d(260f), d(260f)).apply { topMargin = d(4f) }
+
     /** Settings में ORB चुना = ORB; 3D अवतार चुना और तस्वीर फ़ोन में = अवतार; तस्वीर नहीं = ORB (और पीछे से डाउनलोड) */
     private fun renderCenter() {
         if (chatPage || !::centerOrb.isInitialized) return
@@ -1092,10 +1112,12 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         if (sig == centerSig) return
         centerSig = sig
         val showAv = bmp != null
-        // कैरेक्टर = पूरी स्क्रीन के पीछे ([bgAvatar]); बीच वाला छोटा अवतार अब नहीं (जगह खाली, टैप वहीं काम करता है)
-        centerAvatar.bitmap = null
-        centerAvatar.visibility = View.GONE
-        bgAvatar.bitmap = bmp
+        // 23 नवंबर 2026 (मालिक: "अवतार पूरी स्क्रीन नहीं"): अवतार सिर्फ़ अभिवादन के नीचे से READY कार्ड के ऊपर तक (बीच वाली जगह),
+        // अनुपात वही (Fit), किनारे ऐप के पीछे में घुलते हुए ([HomeAvatarView.fade]). कार्ड / टॉप बार / नीचे की पट्टी पर नहीं चढ़ता.
+        bgAvatar.bitmap = null
+        centerAvatar.bitmap = bmp
+        centerAvatar.visibility = if (showAv) View.VISIBLE else View.GONE
+        centerGlow?.layoutParams = avatarArea(showAv)
         centerGlow?.background?.alpha = if (showAv) 0 else 255
         liveBox.background = if (showAv) glassCard() else com.dk.assistant.ui.Clay.raised(c, 22f, 6f)
         liveBox.setTag(com.dk.assistant.PlainLook.SKIP, if (showAv) true else null)   // काँच वाला कार्ड ठोस Clay में न बदले
@@ -1251,7 +1273,16 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         val searchOn = DkaiSearchLive.active()
         val sig = "${msgs.size}|${msgs.lastOrNull()?.time}|${msgs.lastOrNull()?.text?.length}|${msgs.lastOrNull()?.src?.size}|${msgs.lastOrNull()?.g?.chunks?.size}|$thinking|${DKState.hintText}|$searchOn|${if (thinking) thinkStyle() else ""}".hashCode()
         if (sig == shownMsgs && liveR == shownLive) return
-        shownMsgs = sig; shownLive = liveR
+        // 23 नवंबर 2026 (मालिक: "लंबा जवाब / आवाज़ वाली बात लिखते समय चैट blink करती है"): सिर्फ़ बनता जवाब बदला =
+        // वही एक बुलबुला अपडेट (पूरी सूची दोबारा नहीं बनती, इमेज फिर से नहीं खुलतीं, scroll का animation बार-बार नहीं)
+        val tail = liveTail
+        if (sig == shownMsgs && liveR.isNotBlank() && tail != null && tail.parent === chatList) {
+            shownLive = liveR
+            tail.text = com.dk.assistant.GroundView.decorate(c, liveR, null, DkaiTheme.WHITE)
+            keepChatEnd()
+            return
+        }
+        shownMsgs = sig; shownLive = liveR; liveTail = null
         chatList.removeAllViews()
         val lastImg = msgs.indexOfLast { it.role != "u" && com.dk.assistant.FluxImage.parse(it.text) != null }
         for ((i, m) in msgs.withIndex()) {
@@ -1271,12 +1302,21 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             }
         }
         if (searchDone) shrinkIn(chatList.childCount - 1)
-        if (liveR.isNotBlank()) chatList.addView(bubble(false, liveR))
+        if (liveR.isNotBlank()) chatList.addView((bubble(false, liveR) as TextView).also { liveTail = it })
         else if (searchOn) chatList.addView(DkaiSearchCard(c).apply {
             layoutParams = LinearLayout.LayoutParams(minOf((c.resources.displayMetrics.widthPixels * 0.86f).toInt(), d(520f)), -2).apply { gravity = Gravity.START; bottomMargin = d(10f) }
         })
         else if (thinking) chatList.addView(thinkingBubble(DKState.hintText.ifBlank { "सोच रहा हूँ…" }))
         if (msgs.isNotEmpty()) scrollHomeEnd()
+    }
+
+    /** बनता जवाब (लाइव) वाला बुलबुला - [renderChat] इसी का पाठ बदलता है */
+    private var liveTail: TextView? = null
+
+    /** नीचे टिके रहो बिना animation के (बनते जवाब पर हर टुकड़े के साथ smooth-scroll = हिलना / blink) */
+    private fun keepChatEnd() {
+        val sc = chatScroll ?: return
+        sc.post { val bottom = chatList.height - sc.height + sc.paddingBottom; if (bottom > sc.scrollY) { sc.scrollTo(0, bottom) } }
     }
 
     /** खोज वाला कार्ड हटा: आख़िरी स्रोत-डिब्बा सिकुड़ा-सा आकर अपनी जगह बैठे (कार्ड से चिप बनने जैसा) */

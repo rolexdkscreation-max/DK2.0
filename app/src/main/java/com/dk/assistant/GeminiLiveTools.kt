@@ -450,6 +450,8 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 ?: SideTalk.ownerFirst(name, args, whoNow, SideTalk.global.bossTaskAt, nowMs)?.also { log("tool $name - मालिक का काम चल रहा, दूसरी आवाज़ का काम रोका") }
                 // 14 नवंबर 2026: DKAI पर चुना टैब + बड़े काम से पहले मालिक की हाँ ([workGate])
                 ?: workGate(name, args)
+                // 23 नवंबर 2026 (मालिक: निजता): गैलरी / स्क्रीन / कैमरा / चैट पढ़ना = पहले "क्या मैं ये देखूँ?", यूज़र की हाँ के बाद ही
+                ?: PrivacyGate.gate(name, args)?.also { PrivacyGate.onTap = { _, t, yes -> pushNote(privacyTapNote(t, yes)) } }
                 // 16 नवंबर 2026 (मालिक): "हे डीके" से फ़ोन लॉक में जागा = निजी काम (मैसेज / सूचना / फ़ोटो) पहले अनलॉक; इमरजेंसी लॉक पर भी
                 ?: (if (com.dk.assistant.wake.WakeWord.sessionLocked && com.dk.assistant.wake.WakeWord.locked(svc) &&
                         com.dk.assistant.wake.WakeRules.lockedPrivate(name, args.optString("action"))) com.dk.assistant.wake.WakeRules.LOCKED_PRIVATE_NOTE.also { log("tool $name - फ़ोन लॉक (वेक वर्ड), निजी काम रोका") } else null)
@@ -681,3 +683,8 @@ internal fun GeminiLive.ignoreTools(calls: JSONArray) {
     log("किसी और की आवाज़ पर काम माँगा (${calls.length()}) - कुछ नहीं किया")
     try { ws?.tx(JSONObject().put("toolResponse", JSONObject().put("functionResponses", arr)).toString()) } catch (e: Exception) { Quiet.note(e) }
 }
+
+/** 23 नवंबर 2026: निजता कार्ड पर टैप - Live को SYSTEM NOTE (हाँ = वही tool दोबारा, ना = नहीं देखना) */
+internal fun privacyTapNote(tool: String, yes: Boolean): String =
+    if (yes) "SYSTEM NOTE: the user tapped हाँ on DK's privacy card (\"${PrivacyGate.QUESTION}\"). Now call $tool again for this one task only."
+    else "SYSTEM NOTE: the user tapped नहीं on DK's privacy card - do NOT look. Tell him in one short line that you did not look."

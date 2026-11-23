@@ -829,6 +829,7 @@ class BrainManager(private val ctx: Context) {
             append("You are $name, a friendly Hindi voice assistant on the user's Android phone.")
             if (user.isNotBlank()) append(" The user's name is $user.")
             append(personaLine(persona))
+            append("\n").append(PrivacyGate.RULE)   // 23 नवंबर 2026 (मालिक): बिना पूछे गैलरी / स्क्रीन नहीं
             append("\nReply with ONLY JSON: {\"say\": \"<natural spoken Hindi in Devanagari, 1-3 short sentences, no markdown>\", \"done\": true}")
             append("\nIf the user wants something DONE on the phone (open/click/type/send/call/settings/shopping etc.) reply exactly {\"need_screen\": true}.")
             append("\nIf the input says SEARCH AVAILABLE and the question needs search under the policy below, reply exactly {\"need_search\": true}.")
@@ -857,6 +858,7 @@ class BrainManager(private val ctx: Context) {
             append("You are $name, a smart, warm Hindi voice assistant on the user's Android phone, talking like a real person.")
             if (user.isNotBlank()) append(" The user's name is $user.")
             append(personaLine(persona))
+            append("\n").append(PrivacyGate.RULE)   // 23 नवंबर 2026 (मालिक): बिना पूछे गैलरी / स्क्रीन नहीं
             append("\nReply in PLAIN spoken Hindi (Devanagari; common English words ok). No JSON, no markdown, no lists, no emojis.")
             append(" Usually 1-3 short sentences; start directly with the answer. Even if earlier turns look like JSON, reply as plain text.")
             append("\nAnswer from your own knowledge immediately: talk, general knowledge, how/why, advice, explanations, maths, stories.")
@@ -1012,6 +1014,7 @@ class BrainManager(private val ctx: Context) {
             append("You are $name, a smart, warm voice assistant on the user's Android phone, talking like a real person in a live voice call.")
             if (user.isNotBlank()) append(" The user's name is $user.")
             append(personaLine(persona))
+            append("\n").append(PrivacyGate.RULE)   // 23 नवंबर 2026 (मालिक): बिना पूछे गैलरी / स्क्रीन नहीं
             append("\nSpeak clear, natural Hindi by default; change the language only when the user clearly asks you to. Usually 1-3 short sentences; start directly with the answer.")
             append("\nAnswer timeless things (chat, explanations, coding, maths, stories) from your own knowledge at once. But for ANYTHING live or changing - news, events, prices, weather, scores, government schemes/rules/forms/last dates, exams/results/recruitment, current office holders, latest releases/versions, anything about today/now/latest - ALWAYS call web_search: it searches several websites at once (official government websites first for government questions), cross-checks them and returns one verified answer. Your own knowledge may be months old: never answer such things from memory, and when you do NOT know or are not sure, search instead of guessing.")
             append("\n" + SearchPolicy.rules("web_search"))
@@ -1080,6 +1083,7 @@ class BrainManager(private val ctx: Context) {
             append("You are $name, a smart, warm voice assistant on the user's Android phone, talking like a real person in a live voice call.")
             if (user.isNotBlank()) append(" The user's name is $user.")
             append(personaLine(persona))
+            append("\n").append(PrivacyGate.RULE)   // 23 नवंबर 2026 (मालिक): बिना पूछे गैलरी / स्क्रीन नहीं
             append(LivePromptLite.rules(f, Prefs.oneKeyOn(ctx)))
             append("\n").append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(user, name)).append(OwnerProfile.block(ctx))
             append("\n" + NowClock.line())
@@ -1140,6 +1144,7 @@ class BrainManager(private val ctx: Context) {
             append("You are $name, a friendly voice assistant that fully controls the user's Android phone.\n")
             if (user.isNotBlank()) append("The user's name is $user. Address them by name occasionally, warmly.\n")
             append(personaLine(persona).trim()).append("\n")
+            append(PrivacyGate.RULE).append("\n")   // 23 नवंबर 2026 (मालिक): बिना पूछे गैलरी / स्क्रीन नहीं
             append(Memory.factsBlock(ctx)).append("\n")
             append(TALK_RULES).append("\n")
             append(TaskSense.PROMPT).append("\n").append(ActFirstRule.TEXT).append("\n")   // नवंबर 2026: काम / सवाल / जवाब / बातचीत - पहले पहचानो

@@ -37,6 +37,8 @@ import java.io.OutputStream
 import java.util.Locale
 
 class TeacherActivity : AppCompatActivity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
 
     companion object {
         /** v3.87: पढ़ाई की बात सुनकर अपने-आप खुला (बटन से नहीं) */

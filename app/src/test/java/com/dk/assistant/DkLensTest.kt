@@ -31,8 +31,10 @@ class DkLensTest {
         assertTrue(d.contains("ScanPanel(it) { startLive() }"))
         val sp = src("dkai/ScanPanel.kt")
         assertTrue(sp.contains("LiveVision.setCamera(act, true, if (front) \"front\" else \"back\")"))
-        assertTrue(src("LiveVision.kt").contains("!com.dk.assistant.dkai.ScanPanel.showing"))
-        assertTrue(d.contains("putExtra(com.dk.assistant.VoiceActivity.EXTRA_FRONT, front)"))
+        // 23 नवंबर 2026 (मालिक): स्कैन टैब चुना = पुरानी आवाज़ वाली विंडो कभी नहीं (पल भर रुकी स्क्रीन पर भी)
+        assertTrue(src("LiveVision.kt").contains("!com.dk.assistant.dkai.ScanPanel.onScreen()"))
+        assertFalse(d.contains("VoiceActivity.WANT_CAMERA"))
+        assertTrue(src("DKAccessibilityYt.kt").contains(".putExtra(VoiceActivity.EXTRA_FRONT, front)"))
         assertTrue(src("VoiceActivity.kt").contains("if (i.getBooleanExtra(EXTRA_FRONT, false)) \"front\" else \"back\""))
     }
 }

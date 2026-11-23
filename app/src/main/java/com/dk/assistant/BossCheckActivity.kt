@@ -27,6 +27,8 @@ import java.util.concurrent.Executors
  * [MODE_CLEAR] = रिकॉर्ड मिटाना, [MODE_VERIFY] = DK लाइव के लिए सिर्फ़ हाँ/ना.
  */
 class BossCheckActivity : AppCompatActivity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
     private var cam: FaceCam? = null
     private val work = Executors.newSingleThreadExecutor { r -> Thread(r, "dk-boss-check").apply { isDaemon = true } }
     @Volatile private var busy = false

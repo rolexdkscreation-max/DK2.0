@@ -29,6 +29,8 @@ import java.io.ByteArrayOutputStream
 
 /** v3.40: स्क्रीन शेयर की Android इजाज़त (बिना UI वाली पारदर्शी screen) */
 class ScreenShareActivity : Activity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
     private var done = false
 
     override fun onCreate(savedInstanceState: Bundle?) {

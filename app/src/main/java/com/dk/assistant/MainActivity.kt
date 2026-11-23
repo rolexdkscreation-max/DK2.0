@@ -14,6 +14,8 @@ import kotlinx.coroutines.launch
 
 /** Mukhya screen: beech me 3D orb, upar status, neeche baatcheet aur likhne ki bar. */
 class MainActivity : AppCompatActivity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
 
     private lateinit var txtHello: TextView
     private lateinit var txtName: TextView
@@ -280,8 +282,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** Chat से आया "स्कैन" - onResume में (DkaiScreen तैयार होने के बाद) वही नया स्कैन टैब */
+    private var pendingTab: String? = null
+
+    private fun openPendingTab() {
+        val t = pendingTab ?: return
+        pendingTab = null
+        if (t != TAB_SCAN) return
+        val d = dkai
+        if (d == null) openVoice(VoiceActivity.WANT_CAMERA)          // पुराना (क्लासिक) होम = पहले जैसा
+        else d.showTab(com.dk.assistant.ui.HomeTabs.Tab.SCAN)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        intent.getStringExtra(EXTRA_TAB)?.let { pendingTab = it; intent.removeExtra(EXTRA_TAB) }
         if (intent.getBooleanExtra("ask_mic", false)) checkMicPerm(force = true)
         if (intent.getBooleanExtra("ask_location", false)) askLocationNow()
     }
@@ -400,6 +415,8 @@ class MainActivity : AppCompatActivity() {
         a11yOnOpen()
         dkai?.onResume()
         dkai?.syncTabs()
+        intent?.getStringExtra(EXTRA_TAB)?.let { pendingTab = it; intent?.removeExtra(EXTRA_TAB) }
+        openPendingTab()
     }
 
     /** DK AI Part 13: हर बार खुलने पर key की जाँच (3 घंटे में एक बार backend से; नेटवर्क गलती = पुरानी हालत) */
@@ -493,6 +510,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        /** 23 नवंबर 2026: दूसरी स्क्रीन (Chat) से होम का कोई टैब सीधे खोलना - अभी सिर्फ़ स्कैन */
+        const val EXTRA_TAB = "dk_open_tab"
+        const val TAB_SCAN = "scan"
         @Volatile private var live: java.lang.ref.WeakReference<MainActivity>? = null
         /** Settings / DK लाइव ने होम का रूप बदला: खुली होम स्क्रीन तुरंत नई (बंद हो तो अगली बार खुलते ही) */
         fun homeChanged() {

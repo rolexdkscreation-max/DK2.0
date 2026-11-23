@@ -190,7 +190,9 @@ internal fun GeminiLive.scheduleFast() {
         // 21 नवंबर 2026 (मालिक): Groq Whisper (दूसरी बार सुनना) हटा - caption (फ़ोन पर Sherpa-ONNX) का text ही काम के लिए
         // "स्क्रीन शेयर करो / बंद करो" Live में = असली स्क्रीन शेयर (Gemini देखे), पुराना screenshot switch नहीं
         if (q != null && q.action.optString("type") == "screen_view") {
-            val r = LiveVision.setScreen(svc, q.action.optBoolean("on", true))
+            // 23 नवंबर 2026 (मालिक: निजता): स्क्रीन शेयर चालू करना तुरंत नहीं - Gemini का screen_share पहले पूछेगा ([PrivacyGate])
+            if (q.action.optBoolean("on", true)) { log("निजता: स्क्रीन शेयर - पहले \"${PrivacyGate.QUESTION}\" (Gemini पूछेगा)"); return@launch }
+            val r = LiveVision.setScreen(svc, false)
             log("तुरंत: स्क्रीन शेयर ${if (q.action.optBoolean("on", true)) "चालू" else "बंद"} -> ${r.take(60)}"); return@launch
         }
         if (q == null) { log("रूटर: \"${b.take(30)}\" फ़ोन पर सीधा नहीं - Gemini संभालेगा (वर्गीकरण $classMs ms)"); return@launch }

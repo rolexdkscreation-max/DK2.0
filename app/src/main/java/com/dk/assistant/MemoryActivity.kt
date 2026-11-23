@@ -17,6 +17,8 @@ import kotlinx.coroutines.launch
 
 /** DK ki yaadein: jo baatein "याद रखो" bolkar sikhayi, unhe dekho / jodo / hatao. Chat aur baatcheet bhi mita sakte hain. */
 class MemoryActivity : AppCompatActivity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
     private lateinit var panel: MemoryPanel
 
     override fun onCreate(savedInstanceState: Bundle?) {

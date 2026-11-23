@@ -37,6 +37,8 @@ import kotlinx.coroutines.withContext
  * Kaam StorySession me chalta hai - screen band karke wapas aao to bhi kahani wahin milegi.
  */
 class StoryWriterActivity : AppCompatActivity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
 
     private lateinit var scroll: ScrollView
     private lateinit var sub: TextView

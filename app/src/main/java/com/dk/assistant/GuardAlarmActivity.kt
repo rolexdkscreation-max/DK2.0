@@ -29,6 +29,8 @@ import java.util.concurrent.Executors
  * - "मैं मालिक हूँ" = फ़ोन का अपना PIN / फ़िंगरप्रिंट वाला खाना (फ़ोन खुला = [Guard] बंद).
  */
 class GuardAlarmActivity : AppCompatActivity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
     private var cam: FaceCam? = null
     /**
      * 22 नवंबर 2026 (मालिक: "टच मोड से सिर घुमाना हटा दो, सिर्फ़ रंगीन लाइव जाँच रखो"): सिर घुमाना नहीं.

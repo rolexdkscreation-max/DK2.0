@@ -3,7 +3,10 @@ package com.dk.assistant.dkai
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
@@ -28,11 +31,22 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
      */
     var cover = false
         set(v) { field = v; invalidate() }
+    /**
+     * 23 नवंबर 2026 (मालिक: "अवतार चिपकाया हुआ न लगे, स्क्रीन का हिस्सा लगे"): true = तस्वीर के चारों किनारे धीरे-धीरे
+     * पारदर्शी ([FADE] हिस्से तक), ताकि पीछे ऐप का वही थीम-रंग दिखे. हर अवतार (आज के और आगे जुड़ने वाले) पर यही.
+     */
+    var fade = false
+        set(v) { field = v; invalidate() }
     /** [FluidOrbView.LISTEN] / [FluidOrbView.THINK] / [FluidOrbView.SPEAK], -1 = शांत */
     var call: () -> Int = { -1 }
 
     companion object {
         const val BREATH_S = 4.2f
+        /** किनारे का कितना हिस्सा (हर तरफ़) धीरे-धीरे गायब */
+        const val FADE = 0.16f
+
+        /** pure: किनारे के फेड के रंग-पड़ाव (पारदर्शी -> पूरा -> पूरा -> पारदर्शी) और उनकी जगह */
+        fun fadeStops(f: Float = FADE): FloatArray { val x = f.coerceIn(0.01f, 0.45f); return floatArrayOf(0f, x, 1f - x, 1f) }
 
         /** pure: साँस का ऊपर-नीचे (px), t सेकंड पर */
         fun breath(t: Float, amp: Float): Float = (sin(2 * PI * t / BREATH_S) * amp).toFloat()
@@ -49,6 +63,7 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
     private val img = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val glowP = Paint(Paint.ANTI_ALIAS_FLAG)
     private val dst = RectF()
+    private val maskP = Paint(Paint.ANTI_ALIAS_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN) }
     private var glowNow = 0
     private var glowSet = false
 
@@ -88,11 +103,23 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
         // पूरी स्क्रीन: चेहरा ऊपर के हिस्से में रहे (ऊपर से टिकी, नीचे कटे); बाकी: नीचे-बीच
         if (cover) dst.set((w - bw) / 2, minOf(0f, h - bh) * 0.25f + dy, (w + bw) / 2, minOf(0f, h - bh) * 0.25f + bh + dy)
         else dst.set((w - bw) / 2, h - bh + dy, (w + bw) / 2, h + dy)
+        val layer = if (fade) cv.saveLayer(0f, 0f, w, h, null) else -1
         cv.save()
         cv.scale(scale, scale, w / 2, h)
         if (speaking && !calm) cv.rotate(sway(t, lv), w / 2, h)
         cv.drawBitmap(b, null, dst, img)
         cv.restore()
+        if (layer >= 0) {
+            // तस्वीर जहाँ दिख रही है उसी के किनारे (view के भीतर) - ऊपर-नीचे और दाएँ-बाएँ, दोनों ओर से धीरे-धीरे गायब
+            val l = maxOf(0f, dst.left); val tp = maxOf(0f, dst.top); val r = minOf(w, dst.right); val bt = minOf(h, dst.bottom)
+            val stops = fadeStops(); val on = ClayTheme.scrim(1f)   // सिर्फ़ मास्क (दिखता नहीं)
+            val cols = intArrayOf(0, on, on, 0)
+            maskP.shader = LinearGradient(0f, tp, 0f, bt, cols, stops, Shader.TileMode.CLAMP)
+            cv.drawRect(0f, 0f, w, h, maskP)
+            maskP.shader = LinearGradient(l, 0f, r, 0f, cols, stops, Shader.TileMode.CLAMP)
+            cv.drawRect(0f, 0f, w, h, maskP)
+            cv.restoreToCount(layer)
+        }
         if (!calm) again()
     }
 }

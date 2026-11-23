@@ -56,6 +56,8 @@ class ToolAgent(
         val history = JSONArray().put(ToolWire.userTurn(goal, svc.currentPackage()))
         var steps = 0
         var first = true
+        // 23 नवंबर 2026 (मालिक: निजता): स्क्रीन पढ़ने से पहले एक बार "क्या मैं ये देखूँ?" - हाँ सिर्फ़ इसी काम के लिए
+        var screenOk = false
         while (true) {
             coroutineContext.ensureActive()
             val resp = try { call(keys, history) } catch (e: AiFail) {
@@ -88,6 +90,12 @@ class ToolAgent(
                 cardKind(c.name, c.args).takeIf { com.dk.assistant.agent.core.OutsideText.needsCard(it, goal) }?.let { k ->
                     val ans = ask("${k.hi} वाला कदम: ${argLine(c.args).take(120)}। क्या मैं करूँ? हाँ या ना बोलिए।")
                     if (!com.dk.assistant.agent.core.ConfirmGate.isYes(ans.orEmpty())) { say("ठीक है, यह कदम नहीं किया — काम यहीं रोक दिया।"); return true }
+                }
+                if (com.dk.assistant.PrivacyGate.kind(c.name, c.args) != null && !screenOk) {
+                    val k = com.dk.assistant.PrivacyGate.kind(c.name, c.args)!!
+                    val ans = ask(com.dk.assistant.PrivacyGate.askLine(k))
+                    if (!com.dk.assistant.agent.core.ConfirmGate.isYes(ans.orEmpty())) { say("ठीक है, मैंने ${k.hi} नहीं देखी — काम यहीं रोक दिया।"); return true }
+                    screenOk = true
                 }
                 val out = ToolExec.run(svc, c.name, c.args, ask)
                 DKLog.d("टूल एजेंट कदम $steps: ${c.name} ${c.args} -> ${if (out.ok) "✓" else "✗"} (${out.tries} बार, ${out.by})")

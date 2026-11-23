@@ -40,6 +40,8 @@ import java.io.File
  * Chrome में खोलना / उसी Wi-Fi के दूसरे फ़ोन-लैपटॉप के लिए लिंक / ZIP / code देखना - ऊपर के बटन.
  */
 class StudioActivity : AppCompatActivity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
     private val dp by lazy { resources.displayMetrics.density }
     private val ui = Handler(Looper.getMainLooper())
     private lateinit var web: WebView
