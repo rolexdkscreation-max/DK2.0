@@ -127,13 +127,16 @@ object FutureViews {
         if (gold) goldShader(this)
     }
 
-    /** धातु जैसा सुनहरा पाठ (CONTROL CENTER) */
-    fun goldShader(tv: TextView) {
+    /**
+     * धातु जैसा सुनहरा पाठ (CONTROL CENTER). [deeper] = सुनहरा इतना गहरा (0 = पहले जैसा; लाइट थीम पर पढ़ने लायक -
+     * 23 नवंबर 2026, मेन्यू के नीचे "DK AI")
+     */
+    fun goldShader(tv: TextView, deeper: Float = 0f) {
         tv.post {
             val h = tv.textSize.coerceAtLeast(1f)
             // रंग पूरी थीम से (डिफ़ॉल्ट = सुनहरा; दूसरी थीम का अपना शीर्षक रंग)
-            val (a, b) = com.dk.assistant.ui.NeonTheme.title().let { it[0] to it[1] }
             val T = com.dk.assistant.ui.NeonTheme
+            val (a, b) = T.title().let { if (deeper > 0f) T.mix(it[0], Color.BLACK, deeper) to T.mix(it[1], Color.BLACK, deeper) else it[0] to it[1] }
             tv.paint.shader = LinearGradient(0f, 0f, 0f, h,
                 intArrayOf(T.mix(a, Color.WHITE, 0.45f), b, T.mix(b, Color.BLACK, 0.38f), a),
                 floatArrayOf(0f, 0.45f, 0.7f, 1f), Shader.TileMode.CLAMP)

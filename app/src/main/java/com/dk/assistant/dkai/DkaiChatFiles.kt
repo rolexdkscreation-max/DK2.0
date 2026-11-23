@@ -55,6 +55,34 @@ object DkaiChatFiles {
         return sb.toString()
     }
 
+    /** लाइव बातचीत में भेजे फ़ाइल-text की सीमा (अक्षर) */
+    const val LIVE_TEXT = 4000
+
+    /**
+     * 23 नवंबर 2026 (मालिक: "लाइव के दौरान फोटो / फ़ाइल अटैच करूँ तो DK देखकर / पढ़कर जवाब दे, सत्र टूटे नहीं"):
+     * DK लाइव को जाने वाला SYSTEM NOTE - फोटो हो तो वही तस्वीर (और [lastImage] से look_photo), text फ़ाइल का लिखा साथ में. pure
+     */
+    fun liveNote(question: String, names: List<String>, texts: List<Pair<String, String>>, images: Int): String {
+        val q = question.trim()
+        val sb = StringBuilder("SYSTEM NOTE: The user just attached in the DK chat")
+        if (names.isNotEmpty()) sb.append(": ").append(names.joinToString(", "))
+        sb.append(". ")
+        if (images > 0) sb.append("It includes ").append(images).append(" photo/page image(s) - it was just sent to you as an image. ")
+            .append("If you cannot see it clearly, call the look_photo tool now and answer from its result. Never say you cannot see photos. ")
+        if (texts.isNotEmpty()) {
+            sb.append("Here is the text of the attached file(s). Read it, answer from it, and keep it in mind for his follow-up questions:\n")
+            var left = LIVE_TEXT
+            for ((n, t) in texts) {
+                if (left <= 0) break
+                val part = t.take(left); left -= part.length
+                sb.append("--- ").append(n).append(" ---\n").append(part).append('\n')
+            }
+        }
+        sb.append(if (q.isNotEmpty()) "His question: \"" + q.take(500) + "\". Answer it." else "He did not type a question - say in 1-2 short sentences what it is.")
+        sb.append(" Reply by voice in his language, short. Do not invent anything that is not in it.")
+        return sb.toString()
+    }
+
     /** JSON {"say": …} या सीधा लिखा - दोनों से जवाब */
     fun parseSay(raw: String): String {
         val t = raw.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()

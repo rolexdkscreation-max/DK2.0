@@ -93,6 +93,9 @@ class DkaiVoice(private val s: DkaiScreen) {
     }
     private val active: () -> Boolean = { DKState.live && (DKState.mode == Mode.SPEAKING || !DKState.micMuted) }
 
+    /** छोटी पट्टी के माइक / बड़ा करें / कॉल कट बटन ([buildMini] भरता है) - init से पहले बने */
+    private val miniBtns = ArrayList<View>()
+
     init { buildSheet(); buildMini() }
 
     // ================================================================== State 2
@@ -224,7 +227,8 @@ class DkaiVoice(private val s: DkaiScreen) {
     private fun buildMini() {
         mini.visibility = View.GONE
         mini.orientation = LinearLayout.HORIZONTAL; mini.gravity = Gravity.CENTER_VERTICAL
-        mini.background = DkaiTheme.round(c, DkaiTheme.CARD, 999f, DkaiTheme.BORDER)       // तैरती गोली
+        // 23 नवंबर 2026 (मालिक: "Speaking वाली mini bar में भी वही साझा कार्ड स्टाइल"): बड़ी नरम गोलाई, दबाने पर हल्का धँसे
+        mini.background = com.dk.assistant.ui.Clay.card(c)
         mini.elevation = d(12f).toFloat()
         mini.setPadding(d(8f), d(6f), d(8f), d(6f))
         mini.isClickable = true
@@ -254,10 +258,29 @@ class DkaiVoice(private val s: DkaiScreen) {
         mid.addView(miniText)
         mini.addView(mid, LinearLayout.LayoutParams(0, -2, 1f))
         miniMic = ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.MIC, DkaiTheme.WHITE)) }
-        mini.addView(miniBtn(miniMic, DkaiTheme.PILL, "माइक म्यूट / चालू") { micToggle() })
-        mini.addView(miniBtn(ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.UP, DkaiTheme.WHITE)) }, DkaiTheme.PILL, "बड़ा करें") { s.event(VoiceEvent.EXPAND) })
-        mini.addView(miniBtn(ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.CALL_END, DkaiTheme.WHITE)) }, DkaiTheme.RED, "कॉल काटें - बातचीत बंद") { close() })
+        mini.addView(miniBtn(miniMic, DkaiTheme.PILL, "माइक म्यूट / चालू") { micToggle() }.also { miniBtns.add(it) })
+        mini.addView(miniBtn(ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.UP, DkaiTheme.WHITE)) }, DkaiTheme.PILL, "बड़ा करें") { s.event(VoiceEvent.EXPAND) }.also { miniBtns.add(it) })
+        mini.addView(miniBtn(ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.CALL_END, DkaiTheme.WHITE)) }, DkaiTheme.RED, "कॉल काटें - बातचीत बंद") { close() }.also { miniBtns.add(it) })
     }
+
+    /**
+     * 23 नवंबर 2026 (मालिक: "लाइव चालू हो तो लाइव बार में माइक, expand और कॉल कट - ये तीन बटन न दिखें"): लाइव चालू = ये
+     * तीनों छिपे; बंद करना नीचे की पट्टी के बीच वाले बटन से (वही लाल कॉल-कट बनता है - [com.dk.assistant.ui.HomeTabs.live]).
+     * पट्टी पर टैप = बड़ी आवाज़ स्क्रीन, पहले जैसा. (सूची [miniBtns] init से ऊपर बनी है)
+     */
+
+    /** छोटी पट्टी अभी दिखे? (होम पर नहीं - सिर्फ़ Chat टैब / Chat स्क्रीन, [DkaiScreen.miniAllowed]) */
+    private fun miniOk() = s.miniAllowed()
+
+    /** टैब बदला: छोटी पट्टी उसी हिसाब से (होम = छिपी, Chat = बातचीत चालू हो तो दिखे) */
+    fun syncMini() {
+        val want = s.voiceSessionState == VoiceSessionState.ACTIVE_MINIMIZED && miniOk()
+        mini.animate().cancel(); mini.alpha = 1f; mini.translationY = 0f
+        mini.visibility = if (want) View.VISIBLE else View.GONE
+    }
+
+    /** नीचे की पट्टी के कॉल-कट से: वही बंद जो छोटी पट्टी का ✕ करता था (स्क्रीन शेयर भी बंद) */
+    fun endCall() = close()
 
     private fun miniBtn(icon: ImageView, fill: Int, desc: String, onTap: () -> Unit): View = FrameLayout(c).apply {
         background = DkaiTheme.press(DkaiTheme.oval(fill), DkaiTheme.oval(0xFFFFFFFF.toInt()))
@@ -287,9 +310,11 @@ class DkaiVoice(private val s: DkaiScreen) {
             VoiceSessionState.ACTIVE_MINIMIZED -> {
                 if (sheet.visibility == View.VISIBLE)
                     sheet.animate().translationY(h).alpha(0.6f).setDuration(dur).setInterpolator(AccelerateInterpolator(1.5f)).withEndAction { sheet.visibility = View.GONE }.start()
+                if (!miniOk()) { mini.animate().cancel(); mini.visibility = View.GONE } else {
                 mini.animate().cancel(); mini.visibility = View.VISIBLE
                 if (animate) { mini.alpha = 0f; mini.translationY = d(40f).toFloat() }
                 mini.animate().alpha(1f).translationY(0f).setStartDelay(if (from == VoiceSessionState.ACTIVE_FULL) dur / 2 else 0).setDuration(dur).setInterpolator(DecelerateInterpolator()).withEndAction { mini.animate().setStartDelay(0) }.start()
+                }
             }
             VoiceSessionState.INACTIVE -> {
                 closedAt = System.currentTimeMillis()
@@ -301,7 +326,7 @@ class DkaiVoice(private val s: DkaiScreen) {
         }
         if (!animate) {
             sheet.visibility = if (to == VoiceSessionState.ACTIVE_FULL) View.VISIBLE else View.GONE
-            mini.visibility = if (to == VoiceSessionState.ACTIVE_MINIMIZED) View.VISIBLE else View.GONE
+            mini.visibility = if (to == VoiceSessionState.ACTIVE_MINIMIZED && miniOk()) View.VISIBLE else View.GONE
             sheet.translationY = 0f; sheet.alpha = 1f; mini.translationY = 0f; mini.alpha = 1f
         }
         render()
@@ -538,6 +563,7 @@ class DkaiVoice(private val s: DkaiScreen) {
         miniStatus.setTextColor(miniCol); miniDot.color = miniCol; miniDot.invalidate()
         miniMic.setImageDrawable(DkaiIcon(if (DKState.micMuted) DkaiIcon.Kind.MIC_OFF else DkaiIcon.Kind.MIC, if (DKState.micMuted) DkaiTheme.RED else DkaiTheme.WHITE))
         bigMic.muted = DKState.micMuted; bigMic.invalidate()
+        for (b in miniBtns) DkaiTheme.gone(b, DKState.live)
 
         val v = currentVoice()
         voicePill.text = v.name
