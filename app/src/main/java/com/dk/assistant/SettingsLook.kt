@@ -55,22 +55,16 @@ internal fun SettingsActivity.secUi() {
         val g = radios(box, orbs, com.dk.assistant.dkai.DkaiOrbs.get(this), 6600)
         g.setOnCheckedChangeListener { _, id -> orbs.getOrNull(id - 6600)?.let { com.dk.assistant.dkai.DkaiOrbs.set(this, it.first) } }
         hint(box, "पुराना DK orb चुना = उसका आकार \"ओर्ब और चेहरा\" वाले हिस्से से। orb सिर्फ़ यहीं से बदलता है — DKAI में orb पर टैप करने से कुछ नहीं खुलता।")
-        // 23 नवंबर 2026 (मालिक): होम के बीच में ORB या 3D अवतार - चुनाव सेव रहता है; अवतार इंटरनेट से आता है
-        val avs = com.dk.assistant.dkai.HomeAvatars.list(this)
-        val centers = listOf(com.dk.assistant.dkai.HomeAvatars.ORB to "ORB (ऊपर चुना हुआ)") +
-            avs.map { com.dk.assistant.dkai.HomeAvatars.prefFor(it.id) to "3D अवतार: ${it.name}" }
-        val cg = radios(box, centers, com.dk.assistant.dkai.HomeAvatars.choice(this), 6700)
-        cg.setOnCheckedChangeListener { _, id ->
-            val pick = centers.getOrNull(id - 6700)?.first ?: return@setOnCheckedChangeListener
-            val av = com.dk.assistant.dkai.HomeAvatars.idOf(pick)
-            if (av == null) { com.dk.assistant.dkai.HomeAvatars.chooseOrb(this); return@setOnCheckedChangeListener }
-            com.dk.assistant.dkai.HomeAvatars.chooseAvatar(this, av)
-            toast("अवतार डाउनलोड हो रहा है…")
-            com.dk.assistant.dkai.HomeAvatars.fetch(this, av) { ok ->
-                if (!isFinishing) toast(if (ok) "अवतार तैयार - होम पर दिखेगा" else "अवतार नहीं आ पाया - इंटरनेट चालू होने पर फिर आएगा, तब तक ORB")
-            }
-        }
-        hint(box, "होम के बीच में: ORB या 3D अवतार। अवतार इंटरनेट से एक बार डाउनलोड होता है; तब तक (या इंटरनेट न हो तो) ORB ही दिखता है।")
+    }
+    // 23 नवंबर 2026 (मालिक): "होम कैरेक्टर" - कोलाज के सारे आर्टवर्क छोटे प्रीव्यू के साथ (+ ऊपर वाला ORB). चुनाव सेव रहता है
+    // (ऐप बंद होने के बाद भी). पहले वाला अवतार हटा; नए आर्टवर्क ऐप के अंदर हैं (डाउनलोड नहीं).
+    card("होम कैरेक्टर", "होम के बीच में कौन दिखे — टैप करके चुनें", startOpen = true) { box ->
+        homeCharacterGrid(box)
+        hint(box, "डिफ़ॉल्ट: DK वेव ऑर्ब। \"ORB\" = ऊपर \"DKAI का orb\" में चुना हुआ चलता orb।")
+    }
+    // 23 नवंबर 2026 (मालिक): ORB / कैरेक्टर छोटा-बड़ा + ORB के अपने रंग (एक रंग, या 2 से 5 रंग मिलाकर)
+    card("ORB का साइज़ और रंग", "ORB / कैरेक्टर छोटा-बड़ा करें, ORB को अपने रंग दें", startOpen = true) { box ->
+        orbLookCard(box)
     }
     card("झलक", "बदलाव यहीं तुरंत दिखता है", startOpen = true) { box ->
         box.addView(OrbView(this).apply { previewStyle = Shapes.NEON; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO },
@@ -232,4 +226,234 @@ object SettingsThemeMode {
     val ITEMS = listOf("dark" to "डार्क (गहरा)", "light" to "लाइट (उजला)")
     fun current(light: Boolean) = if (light) "light" else "dark"
     fun isLight(key: String) = key == "light"
+}
+
+/**
+ * 23 नवंबर 2026 (मालिक): "होम कैरेक्टर" की जाली - हर टाइल पर आर्टवर्क का छोटा प्रीव्यू (असली पिक्सल, फ़िल्टर चालू) + नाम.
+ * चुना टाइल accent से भरा (साझा कार्ड, selectable). पहली टाइल = ORB. टैप = तुरंत सेव, होम लौटते ही वही.
+ */
+internal fun SettingsActivity.homeCharacterGrid(box: LinearLayout) {
+    val H = com.dk.assistant.dkai.HomeAvatars
+    val items = listOf<com.dk.assistant.dkai.HomeAvatars.Avatar?>(null) + H.list(this)
+    val cols = if (com.dk.assistant.UiFitRules.isTablet(resources.configuration.smallestScreenWidthDp)) 4 else 3
+    val tiles = ArrayList<Pair<String, LinearLayout>>()
+    fun paint(cur: String) { for ((k, v) in tiles) v.isSelected = k == cur }
+    var row: LinearLayout? = null
+    items.forEachIndexed { i, a ->
+        if (i % cols == 0) {
+            row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            box.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = (8 * dp).toInt() })
+        }
+        val key = if (a == null) H.ORB else H.prefFor(a.id)
+        val name = a?.name ?: "ORB"
+        val tile = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+            background = com.dk.assistant.ui.Clay.card(this@homeCharacterGrid, selectable = true)
+            val p = (6 * dp).toInt(); setPadding(p, p, p, p)
+            isClickable = true; isFocusable = true
+            contentDescription = UiLang.s("होम कैरेक्टर: ") + name
+        }
+        val pic = android.widget.ImageView(this).apply {
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            val bmp = a?.let { H.thumb(this@homeCharacterGrid, it) }?.let { raw -> a.badge?.let { badgeThumb(raw, it, a.subject) } ?: raw }
+            if (bmp != null) setImageDrawable(android.graphics.drawable.BitmapDrawable(resources, bmp).apply { isFilterBitmap = true })
+            else setImageResource(R.drawable.ic_dk)
+            if (bmp == null) { val ip = (14 * dp).toInt(); setPadding(ip, ip, ip, ip) }
+            clipToOutline = true
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(v: View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, 14 * dp) }
+            }
+        }
+        tile.addView(pic, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (64 * dp).toInt()).apply { val m = (2 * dp).toInt(); setMargins(m, m, m, 0) })
+        tile.addView(TextView(this).apply {
+            text = UiLang.s(name); textSize = 11f; gravity = Gravity.CENTER; maxLines = 2
+            setTextColor(com.dk.assistant.ui.ClayTheme.t.text); setPadding(0, (4 * dp).toInt(), 0, 0)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        tile.setOnClickListener {
+            if (a == null) H.chooseOrb(this) else H.chooseAvatar(this, a.id)
+            paint(key)
+            if (a != null && a.res == null && !H.downloaded(this, a)) {
+                toast("अवतार डाउनलोड हो रहा है…")
+                H.fetch(this, a.id) { ok -> if (!isFinishing) toast(if (ok) "अवतार तैयार - होम पर दिखेगा" else "अवतार नहीं आ पाया - इंटरनेट चालू होने पर फिर आएगा, तब तक ORB") }
+            } else toast(UiLang.s("होम कैरेक्टर: ") + name)
+        }
+        tiles.add(key to tile)
+        row?.addView(tile, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+            val m = (4 * dp).toInt(); leftMargin = m; rightMargin = m
+        })
+    }
+    // आख़िरी पंक्ति अधूरी हो तो खाली जगह (टाइलें बराबर चौड़ी रहें)
+    val left = (cols - items.size % cols) % cols
+    repeat(left) { row?.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f).apply { val m = (4 * dp).toInt(); leftMargin = m; rightMargin = m }) }
+    paint(H.choice(this))
+}
+
+/** प्रीव्यू पर भी ऑर्ब के बीच वही "DK" (होम जैसा) - छोटी तस्वीर को फ़िल्टर के साथ 4x करके उस पर लिखा */
+private fun badgeThumb(raw: android.graphics.Bitmap, txt: String, subject: List<Float>): android.graphics.Bitmap = try {
+    val b = android.graphics.Bitmap.createScaledBitmap(raw, raw.width * 4, raw.height * 4, true).copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+    val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xF0FFFFFF.toInt(); textAlign = android.graphics.Paint.Align.CENTER
+        typeface = android.graphics.Typeface.DEFAULT_BOLD; textSize = minOf(b.width, b.height) * 0.16f
+        setShadowLayer(textSize * 0.45f, 0f, 0f, 0xFF4FA3FF.toInt())
+    }
+    val cx = (subject.getOrElse(0) { 0f } + subject.getOrElse(2) { 1f }) / 2f
+    android.graphics.Canvas(b).drawText(txt, b.width * cx, b.height * com.dk.assistant.dkai.HomeAvatars.BADGE_Y + p.textSize * 0.35f, p)
+    b
+} catch (e: Throwable) { com.dk.assistant.Quiet.note(e); raw }
+
+/**
+ * 23 नवंबर 2026 (मालिक): "ORB का साइज़ और रंग" - ऊपर चलती झलक, साइज़ की पट्टी (60%..140%), चुने रंग (1 से 5),
+ * तैयार रंग (टैप = जोड़ें), तैयार मेल (एक टैप), अपना कोई भी रंग (रंग / गहराई / चमक), और "पहले जैसे रंग".
+ * हर बदलाव तुरंत सेव - होम पर लौटते ही वही दिखे.
+ */
+internal fun SettingsActivity.orbLookCard(box: LinearLayout) {
+    val L = com.dk.assistant.dkai.OrbLook
+    val px = { v: Float -> (v * dp).toInt() }
+    // झलक: चलता ORB (रंग हर फ़्रेम सेव से पढ़ता है) + DK वेव ऑर्ब आर्टवर्क अपने रंगों में
+    val stage = android.widget.FrameLayout(this)
+    val live = com.dk.assistant.dkai.FluidOrbView(this).apply { style = { com.dk.assistant.dkai.DkaiOrbs.get(this@orbLookCard) } }
+    val art = android.widget.ImageView(this).apply {
+        scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+    val wave = com.dk.assistant.dkai.HomeAvatars.BUNDLED.firstOrNull { it.id == com.dk.assistant.dkai.HomeAvatars.DEFAULT_ID }
+    val raw = wave?.let { com.dk.assistant.dkai.HomeAvatars.thumb(this, it) }
+    fun paintArt() {
+        val b = raw ?: return
+        art.setImageDrawable(android.graphics.drawable.BitmapDrawable(resources, L.recolor(b, L.colors(this))).apply { isFilterBitmap = true })
+    }
+    val pics = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+    stage.addView(live, android.widget.FrameLayout.LayoutParams(px(130f), px(130f), Gravity.CENTER))
+    pics.addView(stage, LinearLayout.LayoutParams(0, px(190f), 1f))
+    pics.addView(art, LinearLayout.LayoutParams(0, px(150f), 1f))
+    box.addView(pics, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(190f)))
+    fun sizePreview(v: Int) { live.layoutParams = (live.layoutParams as android.widget.FrameLayout.LayoutParams).apply { width = px(130f * L.factor(v)); height = width } }
+
+    // ---- साइज़
+    val sizeLab = TextView(this).apply { textSize = 14f; setTextColor(com.dk.assistant.ui.ClayTheme.t.text); setPadding(px(4f), px(10f), 0, 0) }
+    fun showSize(v: Int) { sizeLab.text = UiLang.s("साइज़") + ": $v%" + if (v == L.DEF_SIZE) UiLang.s(" (पहले जैसा)") else "" }
+    val cur = L.size(this)
+    showSize(cur); sizePreview(cur); box.addView(sizeLab)
+    val bar = SeekBar(this).apply {
+        max = L.MAX_SIZE - L.MIN_SIZE; progress = cur - L.MIN_SIZE; contentDescription = UiLang.s("ORB और कैरेक्टर का साइज़")
+        setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(b: SeekBar?, p: Int, fromUser: Boolean) { val v = L.MIN_SIZE + p; showSize(v); sizePreview(v) }
+            override fun onStartTrackingTouch(b: SeekBar?) {}
+            override fun onStopTrackingTouch(b: SeekBar?) { L.setSize(this@orbLookCard, L.MIN_SIZE + progress) }
+        })
+    }
+    box.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(48f)))
+    row(box,
+        button("छोटा") { val v = L.clampSize(L.size(this) - 10); L.setSize(this, v); bar.progress = v - L.MIN_SIZE },
+        button("100%") { L.setSize(this, L.DEF_SIZE); bar.progress = L.DEF_SIZE - L.MIN_SIZE },
+        button("बड़ा") { val v = L.clampSize(L.size(this) + 10); L.setSize(this, v); bar.progress = v - L.MIN_SIZE })
+
+    // ---- चुने रंग
+    label(box, "मेरे रंग (1 से 5 तक — एक रंग या कई रंग मिलाकर)")
+    val chosen = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+    box.addView(chosen, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(48f)))
+    lateinit var refresh: () -> Unit
+    fun dot(col: Int, size: Float, ring: Boolean) = View(this).apply {
+        background = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(col)
+            setStroke(px(if (ring) 2f else 1f), if (ring) com.dk.assistant.ui.ClayTheme.t.text else 0x40FFFFFF)
+        }
+        layoutParams = LinearLayout.LayoutParams(px(size), px(size)).apply { val m = px(4f); setMargins(m, m, m, m) }
+    }
+    fun set(cols: List<Int>) {
+        if (cols.isEmpty()) L.clearColors(this) else L.setColors(this, cols.take(L.MAX_COLORS))
+        refresh()
+    }
+    refresh = {
+        chosen.removeAllViews()
+        val cols = L.colors(this)
+        if (cols.isEmpty()) chosen.addView(TextView(this).apply {
+            text = UiLang.s("अभी: ORB के अपने रंग (थीम वाले)"); textSize = 13f; setTextColor(com.dk.assistant.ui.ClayTheme.t.gray)
+        })
+        cols.forEachIndexed { i, col ->
+            chosen.addView(dot(col, 36f, true).apply {
+                contentDescription = UiLang.s("रंग ") + (i + 1) + UiLang.s(" — टैप करके हटाएँ")
+                setOnClickListener { set(L.colors(this@orbLookCard).toMutableList().also { it.removeAt(i) }); toast("रंग हटाया") }
+            })
+        }
+        paintArt()
+    }
+    refresh()
+    hint(box, "किसी रंग पर टैप = वह रंग हटे। नीचे से रंग टैप करें = जुड़ जाए (ज़्यादा से ज़्यादा 5)।")
+
+    // ---- तैयार रंग (टैप = जोड़ें)
+    val cols = 6
+    L.SWATCHES.chunked(cols).forEach { line ->
+        val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+        line.forEach { col ->
+            r.addView(dot(col, 34f, false).apply {
+                contentDescription = UiLang.s("रंग जोड़ें")
+                setOnClickListener { addOrbColor(col, ::set) }
+            })
+        }
+        box.addView(r, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+    }
+    row(box,
+        button("अपना रंग बनाएँ") { customColor { addOrbColor(it, ::set) } },
+        button("पहले जैसे रंग") { set(emptyList()); toast("ORB के अपने रंग वापस") })
+
+    // ---- तैयार मेल
+    label(box, "तैयार मेल (एक टैप)")
+    L.PRESETS.chunked(2).forEach { pair ->
+        row(box, *pair.map { (name, list) ->
+            // उसी मेल की पट्टी + नाम (टैप = यही रंग)
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                background = com.dk.assistant.ui.Clay.chip(this@orbLookCard, 20f, 4f)
+                isClickable = true; isFocusable = true; contentDescription = UiLang.s("रंग का मेल: ") + UiLang.s(name)
+                setPadding(0, px(7f), 0, px(3f))
+                addView(View(this@orbLookCard).apply {
+                    background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                        if (list.size == 1) intArrayOf(list[0], list[0]) else list.toIntArray()).apply { cornerRadius = 4 * dp }
+                }, LinearLayout.LayoutParams(px(64f), px(6f)))
+                addView(TextView(this@orbLookCard).apply {
+                    text = UiLang.s(name); textSize = 13f; gravity = Gravity.CENTER
+                    setTextColor(com.dk.assistant.ui.ClayTheme.t.text); setPadding(0, px(3f), 0, 0)
+                })
+                setOnClickListener { set(list); toast(UiLang.s("रंग: ") + UiLang.s(name)) }
+            }
+        }.toTypedArray())
+    }
+    hint(box, "रंग चलते ORB, ऑर्ब वाले आर्टवर्क और पीछे की रोशनी / वेव पर लगते हैं; कैरेक्टर (लड़की) की तस्वीर हमेशा असली रंग में रहती है। " +
+        "साइज़ 100% = कैरेक्टर पूरा दिखे; 100% से बड़ा करने पर फ़ोन में आर्टवर्क के किनारे स्क्रीन से बाहर जा सकते हैं।")
+}
+
+private fun SettingsActivity.addOrbColor(col: Int, set: (List<Int>) -> Unit) {
+    val L = com.dk.assistant.dkai.OrbLook
+    val now = L.colors(this)
+    if (now.size >= L.MAX_COLORS) { toast("ज़्यादा से ज़्यादा 5 रंग — पहले कोई रंग हटाएँ"); return }
+    set(now + col)
+}
+
+/** अपना कोई भी रंग: रंग (hue) / गहराई / चमक की तीन पट्टियाँ + झलक */
+private fun SettingsActivity.customColor(done: (Int) -> Unit) {
+    val hsv = floatArrayOf(200f, 0.85f, 1f)
+    val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; val p = (18 * dp).toInt(); setPadding(p, p, p, 0) }
+    val sw = View(this)
+    fun paint() { sw.background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = 14 * dp; setColor(android.graphics.Color.HSVToColor(hsv)) } }
+    paint()
+    box.addView(sw, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (56 * dp).toInt()))
+    fun bar(title: String, max: Int, start: Int, on: (Int) -> Unit) {
+        box.addView(TextView(this).apply { text = UiLang.s(title); textSize = 13f; setPadding(0, (10 * dp).toInt(), 0, 0) })
+        box.addView(SeekBar(this).apply {
+            this.max = max; progress = start; contentDescription = UiLang.s(title)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(b: SeekBar?, p: Int, fromUser: Boolean) { on(p); paint() }
+                override fun onStartTrackingTouch(b: SeekBar?) {}
+                override fun onStopTrackingTouch(b: SeekBar?) {}
+            })
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (44 * dp).toInt()))
+    }
+    bar("रंग", 360, 200) { hsv[0] = it.toFloat() }
+    bar("गहराई", 100, 85) { hsv[1] = it / 100f }
+    bar("चमक", 100, 100) { hsv[2] = it / 100f }
+    android.app.AlertDialog.Builder(this).setTitle(UiLang.s("अपना रंग")).setView(box)
+        .setPositiveButton(UiLang.s("जोड़ें")) { _, _ -> done(android.graphics.Color.HSVToColor(hsv)) }
+        .setNegativeButton(UiLang.s("रद्द करें"), null).show()
 }

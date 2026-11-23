@@ -1,6 +1,4 @@
 {
-  "version": 1,
-  "avatars": [
-    { "id": "dk_girl", "name": "DK गर्ल", "gender": "girl", "file": "dk_avatar_girl.png" }
-  ]
+  "version": 2,
+  "avatars": []
 }
