@@ -40,6 +40,8 @@ import kotlinx.coroutines.launch
  */
 
 class SettingsActivity : AppCompatActivity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
 
     internal lateinit var container: LinearLayout
     internal var txtSaved: TextView? = null

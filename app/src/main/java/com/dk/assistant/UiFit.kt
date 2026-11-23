@@ -52,6 +52,26 @@ object UiFitRules {
         Kind.LARGE -> MAX_SCALE
     }
 
+    /**
+     * 23 नवंबर 2026 (मालिक: "फ़ोन और टैबलेट के लिए अलग, अपने-आप"): डिवाइस टैबलेट है? (WindowSizeClass: Compact = फ़ोन,
+     * Medium/Expanded = टैबलेट). फ़ोन को आड़ा करने पर भी फ़ोन ही रहे, इसलिए सबसे छोटी चौड़ाई (smallestScreenWidthDp) से.
+     */
+    fun isTablet(smallestWidthDp: Int): Boolean = smallestWidthDp >= PHONE_MAX_DP
+
+    /** स्क्रीन के अनुपात वाली content चौड़ाई: पूरी चौड़ाई का [CONTENT_FRACTION], पर कम से कम [CONTENT_MIN_DP] */
+    const val CONTENT_FRACTION = 0.86f
+    const val CONTENT_MIN_DP = 640
+
+    /**
+     * टैबलेट पर दोनों तरफ़ की खाली जगह (dp, बढ़ाए गए dp में): सब कुछ बीच में, किनारे से किनारे तक खिंचा नहीं.
+     * फ़ोन = 0 (कुछ नहीं बदलता).
+     */
+    fun sideDp(tablet: Boolean, widthDp: Int): Int {
+        if (!tablet || widthDp <= CONTENT_MIN_DP) return 0
+        val content = maxOf(CONTENT_MIN_DP.toFloat(), widthDp * CONTENT_FRACTION)
+        return ((widthDp - content) / 2f).toInt().coerceAtLeast(0)
+    }
+
     /** स्क्रीन के किनारे से content की दूरी (dp): टैबलेट/बड़ी स्क्रीन पर कम खाली किनारे */
     fun edgeDp(widthDp: Int): Int = if (kind(widthDp) == Kind.PHONE) 12 else 10
 }
@@ -77,6 +97,42 @@ object UiFit {
             }
         }
         return base.createConfigurationContext(c)
+    }
+
+    /**
+     * 23 नवंबर 2026 (मालिक): हर Activity.attachBaseContext में. टैबलेट = पूरा UI (अक्षर, आइकन, कार्ड, बटन, Settings की पंक्तियाँ,
+     * ORB / अवतार) स्क्रीन की चौड़ाई के अनुपात में बड़ा ([UiFitRules.scaleFor], density से - हर dp/sp एक साथ).
+     * फ़ोन = वही context, कुछ नहीं बदलता (font scale भी नहीं छूता).
+     */
+    fun tablet(base: Context): Context {
+        val cfg = base.resources.configuration
+        val sw = cfg.smallestScreenWidthDp
+        val w = cfg.screenWidthDp
+        if (sw == Configuration.SMALLEST_SCREEN_WIDTH_DP_UNDEFINED || !UiFitRules.isTablet(sw)) return base
+        if (w == Configuration.SCREEN_WIDTH_DP_UNDEFINED || w <= 0 || cfg.densityDpi == Configuration.DENSITY_DPI_UNDEFINED) return base
+        val scale = UiFitRules.scaleFor(maxOf(w, UiFitRules.PHONE_MAX_DP))
+        if (scale == 1f) return base
+        val c = Configuration(cfg).apply {
+            densityDpi = (cfg.densityDpi * scale).toInt()
+            screenWidthDp = (cfg.screenWidthDp / scale).toInt()
+            screenHeightDp = (cfg.screenHeightDp / scale).toInt()
+            smallestScreenWidthDp = (cfg.smallestScreenWidthDp / scale).toInt()
+        }
+        return base.createConfigurationContext(c)
+    }
+
+    /** टैबलेट पर content बीच में: android.R.id.content के दोनों तरफ़ [UiFitRules.sideDp] (हर स्क्रीन, DKApp से) */
+    fun center(a: android.app.Activity) {
+        val content = a.findViewById<ViewGroup>(android.R.id.content) ?: return
+        // पारदर्शी / तैरती स्क्रीनें (हाँ-ना कार्ड, शेयर, असिस्ट) को न छुओ - वे पीछे का दिखाती हैं
+        val ta = a.obtainStyledAttributes(intArrayOf(android.R.attr.windowIsTranslucent, android.R.attr.windowIsFloating))
+        val see = try { ta.getBoolean(0, false) || ta.getBoolean(1, false) } finally { ta.recycle() }
+        if (see) return
+        val tablet = UiFitRules.isTablet(a.applicationContext.resources.configuration.smallestScreenWidthDp)
+        val side = (UiFitRules.sideDp(tablet, a.resources.configuration.screenWidthDp) * a.resources.displayMetrics.density).toInt()
+        if (content.paddingLeft == side && content.paddingRight == side) return
+        content.setPadding(side, content.paddingTop, side, content.paddingBottom)
+        if (side > 0) content.setBackgroundColor(com.dk.assistant.ui.ClayTheme.t.bg)
     }
 
     /** असली (बिना बढ़ाए) स्क्रीन चौड़ाई dp में - फ़ोन/टैबलेट तय करने के लिए */

@@ -25,6 +25,8 @@ import kotlinx.coroutines.withContext
  * Settings → ऑटोनोमस मोड: मुख्य switch (शुरू में बंद), हर काम का switch, अपने काम, पुष्टि, keys, इमरजेंसी स्टॉप, लॉग.
  */
 class AutoSettingsActivity : AppCompatActivity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
     private val dp get() = resources.displayMetrics.density
     private lateinit var col: LinearLayout
     private lateinit var customList: LinearLayout

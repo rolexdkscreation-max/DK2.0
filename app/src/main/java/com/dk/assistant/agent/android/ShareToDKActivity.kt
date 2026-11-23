@@ -11,6 +11,8 @@ import kotlin.concurrent.thread
 
 /** गैलरी -> Share -> "DK को दें": फ़ोटो/वीडियो DK के पास, फिर बोलो "इसे Instagram पर डाल दो" */
 class ShareToDKActivity : Activity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val i = intent

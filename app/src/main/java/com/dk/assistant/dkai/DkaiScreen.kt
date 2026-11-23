@@ -111,6 +111,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     private lateinit var attachRow: LinearLayout
     private lateinit var attachScroll: HorizontalScrollView
     private lateinit var heroBox: LinearLayout
+    private var cardDrop = DkaiHomeCore.CARD_DROP_MIN
     /** होम के बीच: ORB (चुना हुआ) या 3D अवतार - Settings › दिखावट › "DKAI का orb" */
     private lateinit var centerOrb: FluidOrbView
     private lateinit var centerClassic: com.dk.assistant.OrbView
@@ -149,7 +150,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         content = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
         // 23 नवंबर 2026 (मालिक): चुना कैरेक्टर पूरी स्क्रीन के पीछे (होम टैब पर), ऊपर काँच जैसा लाइव कार्ड
         if (!chatPage) {
-            bgAvatar = HomeAvatarView(c).apply { level = homeLevel; active = homeActive; call = homeCall; cover = true
+            bgAvatar = HomeAvatarView(c).apply { level = homeLevel; active = homeActive; call = homeCall; cover = true; fade = true
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO; visibility = View.GONE }
             root.addView(bgAvatar, FrameLayout.LayoutParams(-1, -1))
         }
@@ -424,7 +425,10 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         homeCol = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(0, d(8f), 0, d(16f)) }
         // 14 नवंबर 2026 (मालिक: "Perplexity जैसा"): चैट खाली = बीच में घूमता 3D DK लोगो (टैप = फिर घूमे). quick कार्ड / Broadcast हटे
         // 23 नवंबर 2026 (मालिक): अभिवादन बीच में पर पहले से थोड़ा ऊपर (ऊपर की चार चीज़ें हटीं) - नीचे ज़्यादा जगह
-        heroBox = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(0, 0, 0, d(GREET_LIFT_DP)) }
+        // 23 नवंबर 2026 (मालिक): READY कार्ड थोड़ा नीचे ([DkaiHomeCore.cardDropDp]) - कार्ड के ऊपर उतनी जगह, नीचे की जगह उतनी कम
+        // (अभिवादन वहीं रहता है, सिर्फ़ कार्ड नीचे खिसकता है)
+        cardDrop = DkaiHomeCore.cardDropDp(c.resources.configuration.screenHeightDp)
+        heroBox = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(0, 0, 0, d(maxOf(0f, GREET_LIFT_DP - cardDrop))) }
         // 23 नवंबर 2026 (Soft Clay): समय के हिसाब से नमस्ते + नीचे आपका नाम बड़े मोटे अक्षरों में (नाम = Settings › प्रोफ़ाइल वाला)
         greetTxt = DkaiTheme.text(c, DkaiHomeCore.greeting(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)), 16f, DkaiTheme.GRAY, DkaiTheme.SANS_MED).apply { gravity = Gravity.CENTER }
         nameTxt = DkaiTheme.text(c, "", 30f, DkaiTheme.WHITE, DkaiTheme.SANS_BOLD).apply { gravity = Gravity.CENTER; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(d(16f), d(4f), d(16f), 0) }
@@ -450,7 +454,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         centerOrb = FluidOrbView(c).apply { level = homeLevel; active = homeActive; style = { DkaiOrbs.get(c) }; call = homeCall
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
         centerClassic = com.dk.assistant.OrbView(c).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO; visibility = View.GONE }
-        centerAvatar = HomeAvatarView(c).apply { level = homeLevel; active = homeActive; call = homeCall
+        centerAvatar = HomeAvatarView(c).apply { level = homeLevel; active = homeActive; call = homeCall; fade = true
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO; visibility = View.GONE }
         glow.addView(centerOrb, FrameLayout.LayoutParams(d(200f), d(200f), Gravity.CENTER))
         glow.addView(centerClassic, FrameLayout.LayoutParams(d(200f), d(200f), Gravity.CENTER))
@@ -458,7 +462,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         // पहले वाला DK लोगो (3D) ORB के बीच में ही रहता है - अवतार चुनने पर छिपता है
         centerLogo = Logo3D(c, R.drawable.ic_dk).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO; isClickable = false }
         glow.addView(centerLogo, FrameLayout.LayoutParams(d(92f), d(92f), Gravity.CENTER))
-        heroBox.addView(glow, LinearLayout.LayoutParams(d(260f), d(260f)).apply { topMargin = d(4f) })
+        heroBox.addView(glow, avatarArea(false))
         centerGlow = glow
         // लाइव टेक्स्ट बॉक्स (वही उभरा Clay कार्ड): हालत + पहले यूज़र की पूरी लाइव बात, फिर उसी डिब्बे में DK की
         liveBox = LinearLayout(c).apply {
@@ -481,7 +485,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             override fun onMeasure(w: Int, h: Int) = super.onMeasure(w, View.MeasureSpec.makeMeasureSpec(d(170f), View.MeasureSpec.AT_MOST))
         }.apply { isVerticalScrollBarEnabled = false; addView(liveTxt) }
         liveBox.addView(liveScroll, LinearLayout.LayoutParams(-1, -2))
-        heroBox.addView(liveBox, LinearLayout.LayoutParams(minOf(c.resources.displayMetrics.widthPixels - d(28f), d(560f)), -2).apply { topMargin = d(14f) })
+        // चौड़ाई = उपलब्ध जगह (दोनों तरफ़ 14dp) - फ़ोन पर पहले जितनी ही; टैबलेट पर स्क्रीन के अनुपात में ([com.dk.assistant.UiFit.tablet])
+        heroBox.addView(liveBox, LinearLayout.LayoutParams(-1, -2).apply { topMargin = d(14f + cardDrop); leftMargin = d(14f); rightMargin = d(14f) })
         if (!chatPage) homeCol.addView(heroBox, LinearLayout.LayoutParams(-1, 0, 1f))
         chatList = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(d(14f), d(14f), d(14f), 0) }
         UiLang.keep(chatList)
@@ -1077,6 +1082,11 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         }
     }
 
+    /** ORB = 260dp का गोला (पहले जैसा); अवतार = अभिवादन और READY कार्ड के बीच की पूरी जगह */
+    private fun avatarArea(avatar: Boolean): LinearLayout.LayoutParams =
+        if (avatar) LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = d(4f) }
+        else LinearLayout.LayoutParams(d(260f), d(260f)).apply { topMargin = d(4f) }
+
     /** Settings में ORB चुना = ORB; 3D अवतार चुना और तस्वीर फ़ोन में = अवतार; तस्वीर नहीं = ORB (और पीछे से डाउनलोड) */
     private fun renderCenter() {
         if (chatPage || !::centerOrb.isInitialized) return
@@ -1092,10 +1102,12 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         if (sig == centerSig) return
         centerSig = sig
         val showAv = bmp != null
-        // कैरेक्टर = पूरी स्क्रीन के पीछे ([bgAvatar]); बीच वाला छोटा अवतार अब नहीं (जगह खाली, टैप वहीं काम करता है)
-        centerAvatar.bitmap = null
-        centerAvatar.visibility = View.GONE
-        bgAvatar.bitmap = bmp
+        // 23 नवंबर 2026 (मालिक: "अवतार पूरी स्क्रीन नहीं"): अवतार सिर्फ़ अभिवादन के नीचे से READY कार्ड के ऊपर तक (बीच वाली जगह),
+        // अनुपात वही (Fit), किनारे ऐप के पीछे में घुलते हुए ([HomeAvatarView.fade]). कार्ड / टॉप बार / नीचे की पट्टी पर नहीं चढ़ता.
+        bgAvatar.bitmap = null
+        centerAvatar.bitmap = bmp
+        centerAvatar.visibility = if (showAv) View.VISIBLE else View.GONE
+        centerGlow?.layoutParams = avatarArea(showAv)
         centerGlow?.background?.alpha = if (showAv) 0 else 255
         liveBox.background = if (showAv) glassCard() else com.dk.assistant.ui.Clay.raised(c, 22f, 6f)
         liveBox.setTag(com.dk.assistant.PlainLook.SKIP, if (showAv) true else null)   // काँच वाला कार्ड ठोस Clay में न बदले

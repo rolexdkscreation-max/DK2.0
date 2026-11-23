@@ -166,6 +166,8 @@ object MediaDelete {
 
 /** पारदर्शी, बिना UI: Android की "Allow / Deny" खिड़की खोलो, जवाब MediaDelete को दो */
 class DeleteMediaActivity : Activity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
     private var answered = false
 
     override fun onCreate(savedInstanceState: Bundle?) {

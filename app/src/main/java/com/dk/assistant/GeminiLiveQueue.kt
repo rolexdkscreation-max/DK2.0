@@ -24,7 +24,12 @@ internal suspend fun GeminiLive.phoneTask(req: String): String {
         return TaskQueue.addedNote(n)
     }
     // 21 नवंबर 2026 (मालिक): "DK स्कैन खोलो" Gemini ने phone_task में भेजा = DK लेंस ही (ऐप नहीं खोलना). बिना बोले पीछे वाला
-    LensCmd.parse(req)?.let { c -> log("DK स्कैन: phone_task से कैमरा (${LensCmd.facing(c)}, on=${c.on})"); return LiveVision.setCamera(svc, c.on, LensCmd.facing(c)) }
+    LensCmd.parse(req)?.let { c ->
+        log("DK स्कैन: phone_task से कैमरा (${LensCmd.facing(c)}, on=${c.on})")
+        // 23 नवंबर 2026 (मालिक: निजता): कैमरा चालू = पहले "क्या मैं ये देखूँ?" ([PrivacyGate])
+        PrivacyGate.gate("camera", JSONObject().put("on", c.on))?.let { ask -> PrivacyGate.onTap = { _, _, yes -> pushNote(privacyTapNote("camera", yes)) }; return ask }
+        return LiveVision.setCamera(svc, c.on, LensCmd.facing(c))
+    }
     val items = TaskQueue.split(req)
     // 22 नवंबर 2026 (मालिक): 3, 5, 10, 20 - कितने भी काम; समझदारी वाला क्रम (तुरंत वाले पहले, गाना आख़िर में)
     if (items.size >= 2) return startQueue(TaskQueue.plan(items, req).also { p ->

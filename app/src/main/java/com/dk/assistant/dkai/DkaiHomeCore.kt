@@ -27,6 +27,14 @@ object DkaiHomeCore {
     /** पूरी एक लाइन (जैसे "Good evening, Rahul") */
     fun greetLine(hour: Int, saved: String?): String = greeting(hour) + " " + greetName(saved)
 
+    /**
+     * 23 नवंबर 2026 (मालिक: "READY कार्ड थोड़ा नीचे, लगभग 24–40dp, डिवाइस के हिसाब से"): स्क्रीन की ऊँचाई (dp) का 4.5%,
+     * 24 से 40 dp के बीच. pure.
+     */
+    const val CARD_DROP_MIN = 24
+    const val CARD_DROP_MAX = 40
+    fun cardDropDp(screenHeightDp: Int): Int = (screenHeightDp * 0.045f).toInt().coerceIn(CARD_DROP_MIN, CARD_DROP_MAX)
+
     /** दाईं ओर का नीला बटन: कुछ लिखा / जुड़ा हो = भेजें, नहीं तो आवाज़ से बात. लिखवाते समय भी भेजें (✓ जैसा) */
     fun inputAction(hasText: Boolean, hasFiles: Boolean, dictating: Boolean): InputAction =
         if (hasText || hasFiles || dictating) InputAction.SEND else InputAction.VOICE

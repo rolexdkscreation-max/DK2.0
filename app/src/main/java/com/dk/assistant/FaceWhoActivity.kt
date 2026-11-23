@@ -22,6 +22,8 @@ import java.util.concurrent.Executors
  * कोई तस्वीर सेव नहीं होती.
  */
 class FaceWhoActivity : AppCompatActivity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
     private var cam: FaceCam? = null
     private val work = Executors.newSingleThreadExecutor { r -> Thread(r, "dk-face-who").apply { isDaemon = true } }
     @Volatile private var busy = false

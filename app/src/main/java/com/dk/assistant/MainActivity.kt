@@ -14,6 +14,8 @@ import kotlinx.coroutines.launch
 
 /** Mukhya screen: beech me 3D orb, upar status, neeche baatcheet aur likhne ki bar. */
 class MainActivity : AppCompatActivity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
 
     private lateinit var txtHello: TextView
     private lateinit var txtName: TextView

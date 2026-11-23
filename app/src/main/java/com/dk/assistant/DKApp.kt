@@ -28,6 +28,7 @@ class DKApp : Application() {
         registerActivityLifecycleCallbacks(com.dk.assistant.ui.NeonRefresh)
         com.dk.assistant.ui.ClayTheme.load(this)          // 23 नवंबर 2026: Soft Clay थीम (8 में से चुनी) - सिर्फ़ UI
         com.dk.assistant.ui.ClayPopup.install()           // 23 नवंबर 2026: हर पॉपअप ठोस + साफ़ लिखावट + पीछे पर्दा
+        PrivacyCard.install { top?.get() }                // 23 नवंबर 2026: निजता - गैलरी / स्क्रीन / कैमरा से पहले हाँ / नहीं कार्ड
         registerActivityLifecycleCallbacks(com.dk.assistant.ui.Clay.Refresh)
         registerActivityLifecycleCallbacks(ScreenAwake)   // v4.1: DK सामने = स्क्रीन जगी (wake lock नहीं)
         StatusNotify.install(this)
@@ -86,7 +87,10 @@ class DKApp : Application() {
         }
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
-            override fun onActivityResumed(a: Activity) { top = java.lang.ref.WeakReference(a); AppVisible.set(true); try { UiLang.onResumed(a) } catch (e: Exception) { Quiet.note(e) } }
+            override fun onActivityResumed(a: Activity) {
+                top = java.lang.ref.WeakReference(a); AppVisible.set(true); try { UiLang.onResumed(a) } catch (e: Exception) { Quiet.note(e) }
+                try { UiFit.center(a) } catch (e: Exception) { Quiet.note(e) }   // 23 नवंबर 2026: टैबलेट पर सब बीच में (फ़ोन पर कुछ नहीं)
+            }
             override fun onActivityPaused(a: Activity) { AppVisible.set(false) }
             override fun onActivityCreated(a: Activity, b: Bundle?) {}
             override fun onActivityStarted(a: Activity) {}

@@ -167,6 +167,12 @@ private fun DKAccessibilityService.ytWatchLater() {
 internal fun DKAccessibilityService.openLens(on: Boolean, front: Boolean): String {
     val facing = if (front) "front" else "back"
     if (!on) { LiveVision.setCamera(this, false); return "SAID: DK स्कैन बंद कर दिया।" }
+    // 23 नवंबर 2026 (मालिक: निजता): कैमरा खोलने से पहले "क्या मैं ये देखूँ?" - हाँ (कार्ड / आवाज़) के बाद ही
+    if (!PrivacyGate.consumeGrant(PrivacyGate.Kind.CAMERA)) {
+        val asked = PrivacyGate.askThen(PrivacyGate.Kind.CAMERA) { openLens(true, front) }
+        return if (asked) "SAID: ${PrivacyGate.QUESTION} (कैमरा) - स्क्रीन पर हाँ या नहीं दबाइए।"
+        else "SAID: कैमरा खोलने से पहले मुझे आपसे पूछना है - DK ऐप खोलकर फिर कहिए।"
+    }
     if (DKState.live && gemLive.canTalk()) {
         val r = LiveVision.setCamera(this, true, facing)
         return if (r.startsWith("Turning") || r.startsWith("Camera is already ON")) r else "ERROR: $r"

@@ -20,6 +20,8 @@ import com.dk.assistant.UiDialog
  * Settings → टेम्पलेट कमांड: अंदर वाले साँचे (हर एक का चालू/बंद) + अपने साँचे (जोड़ो / बदलो / हटाओ / चालू-बंद).
  */
 class TemplateSettingsActivity : AppCompatActivity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
     private val dp get() = resources.displayMetrics.density
     private lateinit var col: LinearLayout
     private lateinit var userBox: LinearLayout

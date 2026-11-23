@@ -5,6 +5,8 @@ import android.content.Intent
 import android.os.Bundle
 
 class DKAssistActivity : Activity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // v5.1: assist बुलावा = Live तुरंत पीछे से (स्क्रीन खुलने के साथ-साथ)

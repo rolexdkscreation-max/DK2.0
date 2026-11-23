@@ -21,6 +21,8 @@ import androidx.camera.view.PreviewView
  *  ✕ = live band karke wapas.  Back = DK background me sunta rahega (chhota bubble).
  */
 class VoiceActivity : AppCompatActivity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
 
     private lateinit var orb: OrbView
     private lateinit var state: TextView

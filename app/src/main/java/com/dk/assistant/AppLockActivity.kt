@@ -33,6 +33,8 @@ import java.util.concurrent.Executors
  * back = होम पर (ताले वाला ऐप नहीं खुलता). [AppLock] खोलता है.
  */
 class AppLockActivity : AppCompatActivity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
     private var pkg = ""
     private var label = ""
     private var done = false

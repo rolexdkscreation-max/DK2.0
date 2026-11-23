@@ -52,6 +52,8 @@ import java.io.File
  * scene WebView को किसी animation/graphicsLayer में नहीं रखा (काला दिखता है).
  */
 class ForgeActivity : AppCompatActivity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
     companion object {
         const val EXTRA_PROMPT = "dk_forge_prompt"
         private const val ASSET_HOST = "appassets.androidplatform.net"

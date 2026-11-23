@@ -14,6 +14,8 @@ import android.provider.Settings
  * पारदर्शी, बिना UI.
  */
 class CallRingPickActivity : Activity() {
+    /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         if (b != null) return
