@@ -34,14 +34,15 @@ object ClayTheme {
         0xFF121110.toInt(), 0xFF1B1917.toInt(), 0xFFFFA62B.toInt())
     val ABYSS = Theme("abyss", "Abyss", "गहरा teal, cyan accent — ठंडा और साफ़ लुक",
         0xFF0B1A1D.toInt(), 0xFF112529.toInt(), 0xFF22D3EE.toInt())
-    val NAVY = Theme("gehra_navy", "Gehra navy", "गहरा नीला, neon नीला accent",
+    // 23 नवंबर 2026 (मालिक): "Clay Navy" - गहरा नीला (navy) बैकग्राउंड, चमकदार neon नीला accent, उभरे 3D clay टाइल; सूची में सबसे ऊपर
+    val NAVY = Theme("gehra_navy", "Clay Navy", "गहरा नीला बैकग्राउंड, चमकदार neon नीला accent, उभरे 3D clay टाइल",
         0xFF0B1433.toInt(), 0xFF111C42.toInt(), 0xFF4D7CFF.toInt())
     val OBSIDIAN = Theme("obsidian", "Obsidian", "न्यूट्रल ग्रे, ठंडा accent — सबसे सरल रूप",
         0xFF1C1D20.toInt(), 0xFF24262A.toInt(), 0xFF7FB2FF.toInt())
     val ROSEWOOD = Theme("rosewood", "Rosewood", "गहरा plum, rose accent — सबसे नरम",
         0xFF231623.toInt(), 0xFF2E1D2E.toInt(), 0xFFF472A0.toInt())
 
-    val ALL: List<Theme> = listOf(CLAY_DAY, MIDNIGHT, NOCTURNE, EMBER, ABYSS, NAVY, OBSIDIAN, ROSEWOOD)
+    val ALL: List<Theme> = listOf(NAVY, CLAY_DAY, MIDNIGHT, NOCTURNE, EMBER, ABYSS, OBSIDIAN, ROSEWOOD)
     val DEFAULT = MIDNIGHT
 
     fun of(id: String?): Theme = ALL.firstOrNull { it.id == id } ?: DEFAULT

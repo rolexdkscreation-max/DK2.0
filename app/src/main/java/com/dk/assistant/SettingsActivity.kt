@@ -193,7 +193,7 @@ class SettingsActivity : AppCompatActivity() {
             // 15 नवंबर 2026 (मालिक: "अपडेट का सेक्शन सबसे नीचे दिखना चाहिए"): मुख्य पन्ने पर एक ही जगह, सबसे नीचे
             // (किसी श्रेणी के अंदर नहीं). नया अपडेट आया हो तो होम पर चमकती पट्टी + popup ([UpdatePrompt])
             // 23 नवंबर 2026 (Soft Clay): सबसे ऊपर "Theme" पट्टी - दबाओ = 8 थीम वाला पेज
-            menuRow("theme", "Theme", "अभी: ${com.dk.assistant.ui.ClayTheme.current.name} • Clay Day • Midnight • Nocturne • Ember • Abyss • Gehra navy • Obsidian • Rosewood")
+            menuRow("theme", "Theme", "अभी: ${com.dk.assistant.ui.ClayTheme.current.name} • Clay Navy • Clay Day • Midnight • Nocturne • Ember • Abyss • Obsidian • Rosewood")
             SettingsSearch.CATEGORIES.forEach { (c, _) -> menuRow(c.first, c.second, c.third) }
             // 15 नवंबर 2026 (मालिक): "DK AI Plus" का अलग पन्ना हटाया - उसकी असली सुविधाएँ अपनी पुरानी जगह ([secSos] वगैरह, SettingsExtra.kt)
             items.firstOrNull { it.first == "license" }?.let { (id, t, sub) -> menuRow(id, t, sub) }

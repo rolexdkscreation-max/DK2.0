@@ -10,7 +10,7 @@ import org.junit.Test
 /** 23 नवंबर 2026: Soft Clay थीम — 8 थीम, हर थीम में अक्षर साफ़ पढ़े जाएँ */
 class ClayThemeTest {
     @Test fun eightThemes() {
-        assertEquals(listOf("Clay Day", "Midnight", "Nocturne", "Ember", "Abyss", "Gehra navy", "Obsidian", "Rosewood"),
+        assertEquals(listOf("Clay Navy", "Clay Day", "Midnight", "Nocturne", "Ember", "Abyss", "Obsidian", "Rosewood"),
             ClayTheme.ALL.map { it.name })
         assertEquals(8, ClayTheme.ALL.map { it.id }.toSet().size)
         assertEquals(listOf("clay_day"), ClayTheme.ALL.filter { it.light }.map { it.id })

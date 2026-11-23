@@ -26,7 +26,8 @@ class ChatActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var swSpeak: SwitchCompat
     private lateinit var edt: EditText
-    private lateinit var composer: DKComposer
+    /** 23 नवंबर 2026 (मालिक): होम वाला वही इनपुट बॉक्स (+, 🔍|🖥, Auto ▾, 🎤, 〰) + नीचे की 5-टैब पट्टी (Chat सक्रिय) */
+    private lateinit var screen: com.dk.assistant.dkai.DkaiScreen
     private lateinit var inline: DKInlineReply
     /** आख़िरी message जो स्क्रीन पर दिखा (गिनती नहीं - 200 के बाद गिनती अटक जाती थी) */
     private var lastShown: DKState.Msg? = null
@@ -41,8 +42,8 @@ class ChatActivity : AppCompatActivity() {
     private val pickPhoto = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia(6)) { uris -> attachToComputer(uris) }
     private val pickFile = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()) { uris -> attachToComputer(uris) }
 
-    private fun attachMenu() {
-        com.dk.assistant.ui.HomeMenu.show(this, composer, listOf(
+    private fun attachMenu(anchor: View) {
+        com.dk.assistant.ui.HomeMenu.show(this, anchor, listOf(
             com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_camera, "फोटो अपलोड", "गैलरी से फोटो चुनें") {
                 pickPhoto.launch(androidx.activity.result.PickVisualMediaRequest(
                     androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -68,16 +69,10 @@ class ChatActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // likhne ki jagah hamesha khuli rahe (keyboard turant, bhejne ke baad bhi)
+        // 23 नवंबर 2026 (मालिक): नीचे की पट्टी Chat पर भी दिखे - इसलिए खुलते ही keyboard नहीं (टैप करते ही खुलता है,
+        // इनपुट बॉक्स कीबोर्ड के ठीक ऊपर - DkaiScreen का ime padding). भेजने के बाद keyboard पहले की तरह खुला रहता है
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
-            android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
-        val root = FrameLayout(this).apply { setBackgroundColor(getColor(R.color.bg)) }
-        root.addView(AuroraView(this), FrameLayout.LayoutParams(-1, -1))
-        val col = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            val p = (14 * dp).toInt(); setPadding(p, p, p, p)
-        }
-        root.addView(col, FrameLayout.LayoutParams(-1, -1))
+            android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN)
 
         // ---- upar
         // v4: काँच वाला header (पीछे का बटन 48dp, नाम के साथ)
@@ -106,30 +101,53 @@ class ChatActivity : AppCompatActivity() {
             setOnCheckedChangeListener { _, on -> getSharedPreferences("dk_prefs", MODE_PRIVATE).edit().putBoolean("chat_speak", on).apply() }
         }
         top.addView(swSpeak)
-        col.addView(top)
 
         // ---- baatcheet
         scroll = ScrollView(this).apply { isFillViewport = true }
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, (8 * dp).toInt(), 0, (8 * dp).toInt()) }
         scroll.addView(list)
-        col.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = (10 * dp).toInt() })
-
-        // ---- neeche likhne ki jagah: साझा इनपुट बॉक्स (हल्के कोनों वाला आयत, माइक बार के अंदर)
-        composer = DKComposer(this, "कुछ भी लिखिए… (जैसे: WhatsApp खोलो, आज का मौसम?)", maxLines = 4, attach = { attachMenu() })
-        edt = composer.edt
+        scroll.setPadding((14 * dp).toInt(), 0, (14 * dp).toInt(), 0); scroll.clipToPadding = false
         // DK का सोचना/लिखना अब जवाब वाले बुलबुले के अंदर (नीचे अलग animation नहीं)
-        col.addView(composer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * dp).toInt() })
         inline = DKInlineReply(list, scroll, 0.78f)
 
-        composer.onSend = {
-            val t = edt.text.toString().trim()
-            if (t.isNotEmpty()) { edt.setText(""); sendText(t) }
-            keepTyping()
-        }
-        setContentView(root)
+        // ---- neeche likhne ki jagah: 23 नवंबर 2026 (मालिक) - पुराना "Type anything…" डिब्बा हटा, होम वाला वही इनपुट बॉक्स
+        // ज्यों का त्यों (DkaiScreen): भेजना = इसी स्क्रीन का sendText, मोड / फ़ाइल / 🎤 / 〰 वैसे ही. उसके नीचे वही 5-टैब पट्टी
+        screen = com.dk.assistant.dkai.DkaiScreen(this, com.dk.assistant.dkai.DkaiHost(
+            ready = { ready() },
+            attachMenu = { v -> attachMenu(v) },
+            moreMenu = { v -> attachMenu(v) },
+            pickPhoto = { pickPhoto.launch(androidx.activity.result.PickVisualMediaRequest(
+                androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+            pickFile = { pickFile.launch(ComputerActivity.PICK_TYPES) },
+            tab = { t ->
+                when (t) {
+                    com.dk.assistant.ui.HomeTabs.Tab.MEMORY -> { startActivity(android.content.Intent(this, MemoryActivity::class.java)); true }
+                    else -> false
+                }
+            },
+            chatHeader = { top },
+            chatBody = scroll,
+            chatSend = { t -> sendText(t); keepTyping(); true }
+        )).attach()
+        edt = screen.input
         com.dk.assistant.PlainLook.install(this)   // 14 नवंबर 2026 (मालिक): होम (DKAI) जैसा सपाट रूप, काँच/ग्लासी नहीं
         Glass.install(this)
-        keepTyping()
+    }
+
+    /** key / माइक / Accessibility तैयार? (होम वाला ही नियम) - नहीं = सही जगह भेजो */
+    private fun ready(): Boolean {
+        when {
+            !Prefs.hasAnyKey(this) -> {
+                startActivity(android.content.Intent(this, SettingsActivity::class.java).putExtra("section", "brain")
+                    .putExtra(SettingsActivity.EXTRA_FOCUS_KEY, true)); return false
+            }
+            !Setup.hasMic(this) -> { requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 41); return false }
+            !Setup.accessibilityOn() && !Setup.selfEnableAccessibility(this) && !Setup.enabledInSettings(this) -> {
+                UiLang.toast(this, "Accessibility में ${Prefs.assistantName(this)} ON करें", android.widget.Toast.LENGTH_LONG).show()
+                Setup.openDkAccessibility(this); return false
+            }
+        }
+        return true
     }
 
     /** Cursor + keyboard hamesha likhne ki jagah par - har message ke baad dobara tap na karna pade */
@@ -261,13 +279,14 @@ class ChatActivity : AppCompatActivity() {
         super.onResume()
         DKState.listen(listener)
         render()
-        keepTyping()
+        screen.onResume()
         ui.removeCallbacks(tick); ui.post(tick)
     }
 
     override fun onPause() {
         ui.removeCallbacks(tick)
         DKState.unlisten(listener)
+        screen.onPause()
         super.onPause()
     }
 
@@ -286,6 +305,11 @@ class ChatActivity : AppCompatActivity() {
         for (idx in from until msgs.size) {
             val m = msgs[idx]; lastShown = m
             placeholder?.let { list.removeView(it); placeholder = null }
+            // 23 नवंबर 2026: Chat पर बनी इमेज भी वैसे ही दिखे जैसे पहले होम की चैट में (डाउनलोड बटन के साथ)
+            val img = if (m.role != "u") FluxImage.parse(m.text) else null
+            if (img != null) {
+                inline.drop(); list.addView(screen.imageCard(m, img.first, img.second, idx == msgs.lastIndex)); inline.keepLast(); continue
+            }
             // DK का जवाब = उसी बुलबुले में जहाँ तरंग चल रही थी (नया बुलबुला नहीं)
             // 13 नवंबर 2026: जिस वाक्य को स्रोत मिला उसके अंत में छोटे चिप (github, wikipedia…) - टैप = पूरा link
             val shown: CharSequence = if (m.role == "d") GroundView.decorate(this, m.text, m.g, 0xFFFFFFFF.toInt()) else m.text

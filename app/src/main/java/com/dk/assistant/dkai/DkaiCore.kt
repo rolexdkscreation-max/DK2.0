@@ -97,7 +97,9 @@ object DkaiCore {
     fun nearestSpeed(pct: Int): Int = SPEEDS.minByOrNull { kotlin.math.abs(it - pct) } ?: 100
 
     // ------------------------------------------------------------------ ऊपर का बैज
-    enum class Status(val label: String) { READY("READY"), CONNECTING("CONNECTING"), LISTENING("LISTENING"), THINKING("THINKING"), SPEAKING("SPEAKING"), MUTED("MUTED"), SETUP("SETUP"), OFFLINE("OFFLINE") }
+    enum class Status(val label: String) { READY("READY"), CONNECTING("CONNECTING"), LISTENING("LISTENING"), THINKING("THINKING"), SPEAKING("SPEAKING"), MUTED("MUTED"), SETUP("SETUP"), OFFLINE("OFFLINE"),
+        /** 23 नवंबर 2026 (मालिक): होम पर गहरी खोज / रिसर्च = RESEARCHING, फ़ोन का काम / लंबा काम = PROCESSING */
+        RESEARCHING("RESEARCHING"), PROCESSING("PROCESSING") }
 
     /** 21 नवंबर 2026: DK सच में सुन रहा है = Live चालू और (Gemini Live जुड़ा, या अलग तरीका चल रहा, या बैकअप मोड) */
     fun voiceUp(live: Boolean, liveReady: Boolean, splitTalking: Boolean, backup: Boolean, oldEar: Boolean = false): Boolean =
@@ -133,8 +135,41 @@ object DkaiCore {
 
     fun callState(st: Status): Call = when (st) {
         Status.SPEAKING -> Call.SPEAKING
-        Status.THINKING, Status.CONNECTING -> Call.PROCESSING
+        Status.THINKING, Status.CONNECTING, Status.RESEARCHING, Status.PROCESSING -> Call.PROCESSING
         else -> Call.LISTENING
+    }
+
+    /**
+     * 23 नवंबर 2026 (मालिक): होम की हालत - जुड़ नहीं पाया = CONNECTING, जुड़ते ही LISTENING; DK बोले = SPEAKING,
+     * सोचे = THINKING; डीप रिसर्च / वेब खोज = RESEARCHING; फ़ोन का काम / लंबा काम = PROCESSING. कुछ नहीं = READY. pure (JVM test)
+     */
+    fun homeLive(hasKey: Boolean, mode: Mode, live: Boolean, muted: Boolean, connected: Boolean, researching: Boolean): Status = when {
+        !hasKey -> Status.SETUP
+        mode == Mode.SPEAKING -> Status.SPEAKING
+        researching -> Status.RESEARCHING
+        mode == Mode.WORKING -> Status.PROCESSING
+        mode == Mode.THINKING -> Status.THINKING
+        live && !connected -> Status.CONNECTING
+        live && muted -> Status.MUTED
+        live -> Status.LISTENING
+        else -> Status.READY
+    }
+
+    /**
+     * 23 नवंबर 2026 (मालिक): होम का लाइव टेक्स्ट बॉक्स - यूज़र बोल रहा है = उसकी पूरी लाइव बात; बोल चुका और DK का जवाब
+     * आने लगा = उसी डिब्बे में DK की लाइव बात. सोचते समय यूज़र की बात दिखी रहती है. (बात, किसकी: true = यूज़र, null = खाली)
+     */
+    fun homeText(st: Status, user: String, userAt: Long, reply: String, lastDk: String, lastDkAt: Long, since: Long): Pair<String, Boolean>? {
+        val u = user.trim().removeSuffix("…").trim()
+        val userNew = u.isNotBlank() && userAt >= since && userAt > lastDkAt
+        val dk = reply.ifBlank { if (lastDkAt >= since && lastDkAt >= userAt) lastDk else "" }.trim()
+        return when {
+            st == Status.SPEAKING && dk.isNotBlank() -> dk to false
+            reply.isNotBlank() -> reply.trim() to false
+            userNew -> u to true
+            dk.isNotBlank() && st != Status.READY && st != Status.SETUP -> dk to false
+            else -> null
+        }
     }
 
     /** टेक्स्ट बॉक्स: (ऊपर की लाइन, बात, बात असली है या सिर्फ़ इशारा) */
