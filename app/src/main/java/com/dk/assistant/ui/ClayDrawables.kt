@@ -404,7 +404,7 @@ class ClaySegmentDrawable(private val host: android.view.ViewGroup, private val 
     }
 
     override fun setAlpha(alpha: Int) { well.alpha = alpha; thumb.alpha = alpha }
-    override fun setColorFilter(cf: ColorFilter?) {}
+    override fun setColorFilter(cf: ColorFilter?) = Unit
     @Deprecated("Deprecated in Java")
     override fun getOpacity() = PixelFormat.TRANSLUCENT
 }

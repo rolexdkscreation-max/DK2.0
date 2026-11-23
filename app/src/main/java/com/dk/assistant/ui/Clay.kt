@@ -153,9 +153,9 @@ object Clay {
     private class SegProxy(private val g: RadioGroup) : Drawable() {
         override fun isStateful() = true
         override fun onStateChange(state: IntArray): Boolean { g.invalidate(); return false }
-        override fun draw(c: android.graphics.Canvas) {}
-        override fun setAlpha(alpha: Int) {}
-        override fun setColorFilter(cf: android.graphics.ColorFilter?) {}
+        override fun draw(c: android.graphics.Canvas) = Unit
+        override fun setAlpha(alpha: Int) = Unit
+        override fun setColorFilter(cf: android.graphics.ColorFilter?) = Unit
         @Deprecated("Deprecated in Java")
         override fun getOpacity() = android.graphics.PixelFormat.TRANSPARENT
     }
@@ -251,10 +251,10 @@ object Clay {
             // थीम बदली (Settings › Theme) = पीछे खुली स्क्रीन लौटते ही नई थीम में बने
             if (seen[a] != null && seen[a] != ClayTheme.version) { seen[a] = ClayTheme.version; if (!translucent(a)) a.recreate() }
         }
-        override fun onActivityStarted(a: Activity) {}
-        override fun onActivityPaused(a: Activity) {}
-        override fun onActivityStopped(a: Activity) {}
-        override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
+        override fun onActivityStarted(a: Activity) = Unit
+        override fun onActivityPaused(a: Activity) = Unit
+        override fun onActivityStopped(a: Activity) = Unit
+        override fun onActivitySaveInstanceState(a: Activity, b: Bundle) = Unit
         override fun onActivityDestroyed(a: Activity) { seen.remove(a) }
     }
 }
