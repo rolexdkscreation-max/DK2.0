@@ -341,6 +341,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
      * नीचे की पट्टी का टैब: सामग्री उसी बीच वाली जगह में बदलती है (होम = कैरेक्टर / ORB, स्कैन = DK लेंस,
      * चैट = बातचीत + इनपुट, मेमोरी = यादें). पट्टी और बीच का माइक हमेशा दिखते रहते हैं.
      */
+    /** 23 नवंबर 2026: "DK सामने वाला लेंस खोलो" (आवाज़) - अगली बार स्कैन टैब खुले तो सामने वाला कैमरा */
+    var scanFront = false
+
     fun showTab(t: com.dk.assistant.ui.HomeTabs.Tab): Boolean {
         if (chatPage || t == com.dk.assistant.ui.HomeTabs.Tab.MIC) return false
         val a = activity as? androidx.appcompat.app.AppCompatActivity
@@ -369,7 +372,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         }
         when (t) {
             com.dk.assistant.ui.HomeTabs.Tab.MEMORY -> memPanel?.refresh()
-            com.dk.assistant.ui.HomeTabs.Tab.SCAN -> scanPanel?.show(userTap = true)
+            com.dk.assistant.ui.HomeTabs.Tab.SCAN -> { val f = scanFront; scanFront = false; scanPanel?.show(front = f, userTap = true) }
             com.dk.assistant.ui.HomeTabs.Tab.CHAT -> { shownMsgs = -1; render(); chatScroll?.post { chatScroll?.scrollTo(0, chatList.height) } }
             else -> homeScroll.post { homeScroll.smoothScrollTo(0, 0) }
         }

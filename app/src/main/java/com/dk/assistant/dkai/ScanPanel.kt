@@ -165,6 +165,20 @@ class ScanPanel(private val act: AppCompatActivity, private val startLive: () ->
             return !a.isFinishing && !a.isDestroyed && a.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
         }
 
+        /**
+         * 23 नवंबर 2026 (मालिक: "DK लेंस ओपन करो" बोलने पर भी पुरानी विंडो नहीं): DK होम का स्कैन टैब खोलो - लेंस उसी में
+         * (टैब खुद DK लाइव जोड़ता है). पुरानी (क्लासिक) होम पर MainActivity पहले वाली आवाज़ स्क्रीन ही खोलती है.
+         */
+        fun openHome(c: android.content.Context, front: Boolean): Boolean = try {
+            c.startActivity(homeIntent(c, front)); true
+        } catch (e: Exception) { com.dk.assistant.DKLog.d("स्कैन: होम नहीं खुला: ${e.message}"); false }
+
+        fun homeIntent(c: android.content.Context, front: Boolean): android.content.Intent =
+            android.content.Intent(c, com.dk.assistant.MainActivity::class.java)
+                .putExtra(com.dk.assistant.MainActivity.EXTRA_TAB, com.dk.assistant.MainActivity.TAB_SCAN)
+                .putExtra(com.dk.assistant.MainActivity.EXTRA_FRONT, front)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+
         /** स्कैन टैब खुला है तो वहीं फिर से (DK लाइव जोड़कर) लेंस - true = टैब ने सँभाल लिया */
         fun again(front: Boolean): Boolean {
             if (!onScreen()) return false

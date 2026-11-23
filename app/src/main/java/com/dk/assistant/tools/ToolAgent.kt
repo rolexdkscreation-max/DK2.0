@@ -91,10 +91,13 @@ class ToolAgent(
                     val ans = ask("${k.hi} वाला कदम: ${argLine(c.args).take(120)}। क्या मैं करूँ? हाँ या ना बोलिए।")
                     if (!com.dk.assistant.agent.core.ConfirmGate.isYes(ans.orEmpty())) { say("ठीक है, यह कदम नहीं किया — काम यहीं रोक दिया।"); return true }
                 }
-                if (com.dk.assistant.PrivacyGate.kind(c.name, c.args) != null && !screenOk) {
-                    val k = com.dk.assistant.PrivacyGate.kind(c.name, c.args)!!
+                // 23 नवंबर 2026 (मालिक): यूज़र ने खुद यही कहा (\"WhatsApp पे जाके चेक करो\") = बिना पूछे; बात साफ़ न हो तभी एक बार पूछो
+                val pk = com.dk.assistant.PrivacyGate.kind(c.name, c.args)
+                if (pk != null && !screenOk && com.dk.assistant.PrivacyGate.asksFor(pk, goal)) screenOk = true
+                if (pk != null && !screenOk) {
+                    val k = pk
                     val ans = ask(com.dk.assistant.PrivacyGate.askLine(k))
-                    if (!com.dk.assistant.agent.core.ConfirmGate.isYes(ans.orEmpty())) { say("ठीक है, मैंने ${k.hi} नहीं देखी — काम यहीं रोक दिया।"); return true }
+                    if (!com.dk.assistant.PrivacyGate.isYesAnswer(ans.orEmpty())) { say("ठीक है, मैंने ${k.hi} नहीं देखी — काम यहीं रोक दिया।"); return true }
                     screenOk = true
                 }
                 val out = ToolExec.run(svc, c.name, c.args, ask)

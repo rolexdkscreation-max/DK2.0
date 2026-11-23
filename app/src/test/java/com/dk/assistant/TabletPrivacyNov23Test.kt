@@ -46,45 +46,90 @@ class TabletPrivacyNov23Test {
         assertNull(PrivacyGate.kind("web_search", j("query" to "मौसम")))
     }
 
-    @Test fun gateDecisions() {
-        val k = PrivacyGate.Kind.GALLERY; val t = "look_photo"
-        val p = PrivacyGate.Pending(k, t, 1_000)
-        assertEquals(PrivacyGate.Gate.Ask, PrivacyGate.check(k, t, null, 0, "", 0, false, 2_000))
-        assertEquals(PrivacyGate.Gate.Run, PrivacyGate.check(k, t, p, 1_500, "हाँ", 0, false, 2_000))
-        assertEquals(PrivacyGate.Gate.Run, PrivacyGate.check(k, t, p, 1_500, "हाँ देखो", 0, false, 2_000))
-        assertEquals(PrivacyGate.Gate.Deny, PrivacyGate.check(k, t, p, 1_500, "नहीं", 0, false, 2_000))
-        // चुप्पी / पूछने से पहले की बात = नहीं देखना
-        assertEquals(PrivacyGate.Gate.NotHeard, PrivacyGate.check(k, t, p, 900, "गैलरी देखो", 0, false, 2_000))
-        assertEquals(PrivacyGate.Gate.NotHeard, PrivacyGate.check(k, t, p, 1_500, "क्या दिखेगा?", 0, false, 2_000))
-        // कार्ड का टैप
-        assertEquals(PrivacyGate.Gate.Run, PrivacyGate.check(k, t, p, 0, "", 1_600, true, 2_000))
-        assertEquals(PrivacyGate.Gate.Deny, PrivacyGate.check(k, t, p, 0, "", 1_600, false, 2_000))
-        // पुराना टैप (पूछने से पहले) गिना नहीं जाता
-        assertEquals(PrivacyGate.Gate.NotHeard, PrivacyGate.check(k, t, p, 0, "", 900, true, 2_000))
-        // दूसरा काम / समय निकल गया = फिर पूछो
-        assertEquals(PrivacyGate.Gate.Ask, PrivacyGate.check(k, "look_screen", p, 1_500, "हाँ", 0, false, 2_000))
-        assertEquals(PrivacyGate.Gate.Ask, PrivacyGate.check(k, t, p, 1_500, "हाँ", 0, false, 1_000 + PrivacyGate.WINDOW_MS + 1))
+    @Test fun explicitCommandNeedsNoAsk() {
+        // 23 नवंबर 2026 (मालिक): खुद साफ़ कहा = बिना पूछे
+        assertTrue(PrivacyGate.asksFor(PrivacyGate.Kind.CHAT, "ठीक है, WhatsApp पे जाके चेक करो और देख के बताओ कौन-कौन सा चैट है"))
+        assertTrue(PrivacyGate.asksFor(PrivacyGate.Kind.GALLERY, "गैलरी देखो"))
+        assertTrue(PrivacyGate.asksFor(PrivacyGate.Kind.GALLERY, "meri photo dekh ke batao"))
+        assertTrue(PrivacyGate.asksFor(PrivacyGate.Kind.SCREEN, "स्क्रीन देखकर बताओ"))
+        assertTrue(PrivacyGate.asksFor(PrivacyGate.Kind.SCREEN, "स्क्रीन शेयर करो"))
+        assertTrue(PrivacyGate.asksFor(PrivacyGate.Kind.CAMERA, "डीके, उह, डीके लेंस ओपन करो"))
+        assertTrue(PrivacyGate.asksFor(PrivacyGate.Kind.CAMERA, "DK scan kholo"))
+        // साफ़ नहीं / मना / दूसरी चीज़ = हुक्म नहीं (पूछेगा)
+        assertFalse(PrivacyGate.asksFor(PrivacyGate.Kind.GALLERY, "गैलरी मत देखो"))
+        assertFalse(PrivacyGate.asksFor(PrivacyGate.Kind.CHAT, "आज मौसम कैसा है"))
+        assertFalse(PrivacyGate.asksFor(PrivacyGate.Kind.GALLERY, "स्क्रीन देखकर बताओ"))
+        assertFalse(PrivacyGate.asksFor(PrivacyGate.Kind.SCREEN, "स्क्रीन"))
+        assertFalse(PrivacyGate.asksFor(PrivacyGate.Kind.CHAT, ""))
     }
 
-    @Test fun askFirstThenOnlyOnYes_andOnlyForThisTask() {
+    @Test fun yesAnswers() {
+        for (y in listOf("हाँ", "ठीक है, देख लो", "ठीक है ये देखो", "हाँ देखो", "देख लो", "ok", "कर दो", "चलो", "haan dekh lo", "theek hai"))
+            assertTrue(y, PrivacyGate.isYesAnswer(y))
+        for (n in listOf("नहीं", "मत देखो", "क्या दिखेगा?", "", "रुको", "nahi"))
+            assertFalse(n, PrivacyGate.isYesAnswer(n))
+    }
+
+    @Test fun gateDecisions() {
+        val k = PrivacyGate.Kind.GALLERY
+        val p = PrivacyGate.Pending(k, "look_photo", 1_000)
+        fun c(pending: PrivacyGate.Pending?, said: List<Pair<String, Long>>, tapAt: Long = 0, tapYes: Boolean = false, now: Long = 2_000,
+              explicit: Boolean = false, granted: Boolean = false) = PrivacyGate.check(k, explicit, granted, pending, said, tapAt, tapYes, now)
+        assertEquals(PrivacyGate.Gate.Ask, c(null, emptyList()))
+        // खुद कहा / इसी काम की हाँ पहले = सीधे
+        assertEquals(PrivacyGate.Gate.Run, c(null, emptyList(), explicit = true))
+        assertEquals(PrivacyGate.Gate.Run, c(null, emptyList(), granted = true))
+        assertEquals(PrivacyGate.Gate.Run, c(p, listOf("हाँ" to 1_500)))
+        assertEquals(PrivacyGate.Gate.Run, c(p, listOf("ठीक है, देख लो" to 1_500)))
+        assertEquals(PrivacyGate.Gate.Deny, c(p, listOf("नहीं" to 1_500)))
+        // चुप्पी / पूछने से पहले की बात = नहीं देखना (पर फिर से पूछना भी नहीं - रुको)
+        assertEquals(PrivacyGate.Gate.NotHeard, c(p, listOf("कुछ और" to 900)))
+        assertEquals(PrivacyGate.Gate.NotHeard, c(p, listOf("क्या दिखेगा?" to 1_500)))
+        // हाँ के बाद ना = ना; ना के बाद हाँ = हाँ (आख़िरी बात)
+        assertEquals(PrivacyGate.Gate.Deny, c(p, listOf("हाँ" to 1_200, "नहीं रहने दो" to 1_400)))
+        assertEquals(PrivacyGate.Gate.Run, c(p, listOf("नहीं" to 1_200, "अच्छा ठीक है देख लो" to 1_400)))
+        // कार्ड का टैप
+        assertEquals(PrivacyGate.Gate.Run, c(p, emptyList(), 1_600, true))
+        assertEquals(PrivacyGate.Gate.Deny, c(p, emptyList(), 1_600, false))
+        assertEquals(PrivacyGate.Gate.NotHeard, c(p, emptyList(), 900, true))
+        // दूसरी निजी चीज़ / समय निकल गया = फिर पूछो; उसी चीज़ का दूसरा tool = वही जवाब (दोबारा नहीं पूछता)
+        assertEquals(PrivacyGate.Gate.Ask, PrivacyGate.check(PrivacyGate.Kind.SCREEN, false, false, p, listOf("हाँ" to 1_500), 0, false, 2_000))
+        assertEquals(PrivacyGate.Gate.Ask, c(p, listOf("हाँ" to 1_500), now = 1_000 + PrivacyGate.WINDOW_MS + 1))
+        assertEquals(PrivacyGate.Gate.Run, c(PrivacyGate.Pending(k, "social_media_task", 1_000), listOf("हाँ" to 1_500)))
+        // एक काम की हाँ: नई बात = नया काम
+        assertTrue(PrivacyGate.taskGrantValid(1_000, 1_000, 2_000))
+        assertFalse(PrivacyGate.taskGrantValid(1_000, 9_000, 10_000))
+        assertFalse(PrivacyGate.taskGrantValid(1_000, 0, 1_000 + PrivacyGate.TASK_MS + 1))
+        assertFalse(PrivacyGate.taskGrantValid(null, 0, 2_000))
+    }
+
+    @Test fun explicitRunsAtOnce_vagueAsksOnce_yesRunsOnce() {
         var cards = 0
         PrivacyGate.showCard = { _, _ -> cards++ }
         val a = JSONObject()
-        // "गैलरी देखो" -> पहले पूछो, tool नहीं चला
-        DKState.user("गैलरी देखो"); Thread.sleep(3)
+        // खुद साफ़ कहा: बिना पूछे, और उसी काम के अगले कदम भी बिना पूछे
+        DKState.user("WhatsApp पे जाके चेक करो और बताओ कौन-कौन सा चैट है"); Thread.sleep(3)
+        assertNull(PrivacyGate.gate("whatsapp_task", j("action" to "read_unread")))
+        assertNull(PrivacyGate.gate("read_chat_screen", a))
+        assertEquals(0, cards)
+        // बात साफ़ नहीं (DK ने किसी मैसेज में पढ़ा) = एक बार पूछो, tool नहीं चला
+        Thread.sleep(6_000); DKState.user("अच्छा फिर क्या हुआ"); Thread.sleep(3)
         val ask = PrivacyGate.gate("look_photo", a)
         assertNotNull(ask); assertTrue(ask!!.startsWith("PRIVACY_ASK")); assertTrue(ask.contains(PrivacyGate.QUESTION))
         assertEquals(1, cards)
-        // बिना जवाब AI फिर बुलाए = नहीं
-        assertEquals(PrivacyGate.NOT_HEARD, PrivacyGate.gate("look_photo", a))
+        // जवाब अभी नहीं = नहीं देखा, और फिर से पूछना भी नहीं (कार्ड दोबारा नहीं)
+        val wait = PrivacyGate.gate("look_photo", a)
+        assertEquals(PrivacyGate.NOT_HEARD, wait); assertTrue(wait!!.contains("Do NOT ask the question again")); assertEquals(1, cards)
         // "नहीं" = नहीं देखा
         Thread.sleep(3); DKState.user("नहीं")
         assertTrue(PrivacyGate.gate("look_photo", a)!!.startsWith("PRIVACY_DENIED"))
-        // नया काम: फिर पूछो, फिर "हाँ" = चलो
+        // नया काम: फिर पूछो, फिर "ठीक है, देख लो" = पूरा काम एक बार में (उसी चीज़ के दूसरे कदम भी)
         assertTrue(PrivacyGate.gate("look_photo", a)!!.startsWith("PRIVACY_ASK"))
-        Thread.sleep(3); DKState.user("हाँ")
+        Thread.sleep(3); DKState.user("ठीक है, देख लो")
         assertNull(PrivacyGate.gate("look_photo", a))
-        // अनुमति सिर्फ़ उसी एक काम की - अगली बार फिर पूछो
+        assertNull(PrivacyGate.gate("social_media_task", j("media" to "latest_gallery")))
+        // अनुमति सिर्फ़ उसी एक काम की - यूज़र की नई बात के बाद फिर पूछो
+        Thread.sleep(6_000); DKState.user("अब कुछ और")
         assertTrue(PrivacyGate.gate("look_photo", a)!!.startsWith("PRIVACY_ASK"))
         // कार्ड पर "हाँ"
         Thread.sleep(3); PrivacyGate.tap(true)
@@ -109,14 +154,18 @@ class TabletPrivacyNov23Test {
     }
 
     @Test fun ruleInEveryPromptAndGateInCode() {
-        for (w in listOf("क्या मैं ये देखूँ?", "गैलरी", "स्क्रीन", "कैमरा", "सिर्फ़ उसी एक काम", "याद मत रखो")) assertTrue(w, PrivacyGate.RULE.contains(w))
+        for (w in listOf("क्या मैं ये देखूँ?", "गैलरी", "स्क्रीन", "कैमरा", "सिर्फ़ उसी एक काम", "याद मत रखो", "दोबारा मत पूछो", "गलती से सुना", "फिर से मत पूछो")) assertTrue(w, PrivacyGate.RULE.contains(w))
         assertEquals(5, Regex("PrivacyGate\\.RULE").findAll(src("BrainManager.kt")).count())
         val tools = src("GeminiLiveTools.kt")
         val gateAt = tools.indexOf("?: PrivacyGate.gate(name, args)")
         assertTrue(gateAt > 0 && gateAt < tools.indexOf("\"look_screen\" -> ScreenLook.liveTool"))
-        assertFalse(src("GeminiLiveTurnEnd.kt").contains("LiveVision.setScreen(svc, q.action.optBoolean(\"on\", true))"))
+        // 23 नवंबर 2026 (मालिक, दूसरी बार): तेज़ रास्ता स्क्रीन शेयर तभी चालू करे जब यूज़र ने खुद साफ़ कहा हो
+        val te = src("GeminiLiveTurnEnd.kt")
+        assertFalse(te.contains("LiveVision.setScreen(svc, q.action.optBoolean(\"on\", true))"))
+        assertTrue(te.indexOf("!PrivacyGate.asksFor(PrivacyGate.Kind.SCREEN, b)") in 1 until te.indexOf("LiveVision.setScreen(svc, on)"))
         assertTrue(src("GeminiLiveQueue.kt").contains("PrivacyGate.gate(\"camera\""))
-        assertTrue(src("DKAccessibilityYt.kt").contains("PrivacyGate.consumeGrant(PrivacyGate.Kind.CAMERA)"))
+        assertTrue(src("DKAccessibilityYt.kt").contains("!PrivacyGate.explicitNow(PrivacyGate.Kind.CAMERA) && !PrivacyGate.consumeGrant(PrivacyGate.Kind.CAMERA)"))
+        assertTrue(src("tools/ToolAgent.kt").contains("PrivacyGate.asksFor(pk, goal)"))
         assertTrue(src("tools/ToolAgent.kt").contains("PrivacyGate.askLine("))
         assertTrue(src("DKApp.kt").contains("PrivacyCard.install"))
         assertTrue(src("DKApp.kt").contains("UiFit.center(a)"))

@@ -284,19 +284,21 @@ class MainActivity : AppCompatActivity() {
 
     /** Chat से आया "स्कैन" - onResume में (DkaiScreen तैयार होने के बाद) वही नया स्कैन टैब */
     private var pendingTab: String? = null
+    private var pendingFront = false
 
     private fun openPendingTab() {
         val t = pendingTab ?: return
         pendingTab = null
         if (t != TAB_SCAN) return
         val d = dkai
-        if (d == null) openVoice(VoiceActivity.WANT_CAMERA)          // पुराना (क्लासिक) होम = पहले जैसा
-        else d.showTab(com.dk.assistant.ui.HomeTabs.Tab.SCAN)
+        val front = pendingFront; pendingFront = false
+        if (d == null) openVoice(VoiceActivity.WANT_CAMERA, front)          // पुराना (क्लासिक) होम = पहले जैसा
+        else { d.scanFront = front; d.showTab(com.dk.assistant.ui.HomeTabs.Tab.SCAN) }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        intent.getStringExtra(EXTRA_TAB)?.let { pendingTab = it; intent.removeExtra(EXTRA_TAB) }
+        intent.getStringExtra(EXTRA_TAB)?.let { pendingTab = it; pendingFront = intent.getBooleanExtra(EXTRA_FRONT, false); intent.removeExtra(EXTRA_TAB) }
         if (intent.getBooleanExtra("ask_mic", false)) checkMicPerm(force = true)
         if (intent.getBooleanExtra("ask_location", false)) askLocationNow()
     }
@@ -389,8 +391,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** want = कैमरा/स्क्रीन शेयर भी चालू करना (v3.102 होम के बटन) */
-    private fun openVoice(want: String? = null) {
-        if (ready()) startActivity(Intent(this, VoiceActivity::class.java).apply { if (want != null) putExtra(VoiceActivity.EXTRA_WANT, want) })
+    private fun openVoice(want: String? = null, front: Boolean = false) {
+        if (ready()) startActivity(Intent(this, VoiceActivity::class.java).apply {
+            if (want != null) { putExtra(VoiceActivity.EXTRA_WANT, want) }
+            if (front) { putExtra(VoiceActivity.EXTRA_FRONT, true) }
+        })
     }
 
     override fun onResume() {
@@ -415,7 +420,7 @@ class MainActivity : AppCompatActivity() {
         a11yOnOpen()
         dkai?.onResume()
         dkai?.syncTabs()
-        intent?.getStringExtra(EXTRA_TAB)?.let { pendingTab = it; intent?.removeExtra(EXTRA_TAB) }
+        intent?.getStringExtra(EXTRA_TAB)?.let { pendingTab = it; pendingFront = intent?.getBooleanExtra(EXTRA_FRONT, false) == true; intent?.removeExtra(EXTRA_TAB) }
         openPendingTab()
     }
 
@@ -513,6 +518,7 @@ class MainActivity : AppCompatActivity() {
         /** 23 नवंबर 2026: दूसरी स्क्रीन (Chat) से होम का कोई टैब सीधे खोलना - अभी सिर्फ़ स्कैन */
         const val EXTRA_TAB = "dk_open_tab"
         const val TAB_SCAN = "scan"
+        const val EXTRA_FRONT = "dk_open_front"
         @Volatile private var live: java.lang.ref.WeakReference<MainActivity>? = null
         /** Settings / DK लाइव ने होम का रूप बदला: खुली होम स्क्रीन तुरंत नई (बंद हो तो अगली बार खुलते ही) */
         fun homeChanged() {

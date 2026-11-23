@@ -14,13 +14,16 @@ import org.json.JSONObject
  * pure हिस्सा JVM test में ([PrivacyGateTest]).
  */
 object PrivacyGate {
-    /** सिस्टम प्रॉम्प्ट का नियम (मालिक के शब्द, ज्यों के त्यों) */
-    const val RULE = "PRIVACY RULE (most important, never break it): " +
-        "यूज़र के कहे बिना तुम कभी भी गैलरी (फ़ोटो/वीडियो), स्क्रीन, कैमरा, फ़ाइलें या फ़ोन की कोई भी निजी चीज़ अपने आप नहीं देखोगे और न पढ़ोगे। " +
-        "जब यूज़र ऐसा करने को कहे (जैसे 'गैलरी देखो', 'स्क्रीन देखकर बताओ', 'WhatsApp पर ये भेजो और देखकर बताओ'), तब काम शुरू करने से पहले एक बार ज़रूर पूछो: 'क्या मैं ये देखूँ?' " +
-        "जब यूज़र साफ़ 'हाँ' बोले, तभी देखना शुरू करो। 'नहीं' या चुप्पी का मतलब है नहीं देखना। " +
-        "यह अनुमति सिर्फ़ उसी एक काम के लिए है, अगले काम के लिए फिर से पूछो। " +
-        "बिना अनुमति कुछ भी देखा हुआ याद मत रखो और किसी और को मत बताओ।"
+    /**
+     * सिस्टम प्रॉम्प्ट का नियम. 23 नवंबर 2026 (मालिक, दूसरी बार): "मैंने खुद साफ़ बोला है तो पूछने की ज़रूरत नहीं -
+     * गलती से सुना हो या कहीं लिखा / पढ़ा देखा हो, तभी पूछे. हाँ कहने के बाद एक बार में काम."
+     */
+    const val RULE = "PRIVACY RULE: " +
+        "बिना कहे गैलरी, स्क्रीन, कैमरा, चैट या कोई निजी चीज़ मत देखो, पीछे से कभी स्कैन नहीं। " +
+        "यूज़र ने खुद साफ़ कहा ('गैलरी देखो', 'WhatsApp चेक करो', 'DK लेंस खोलो') = दोबारा मत पूछो, सीधे करो। " +
+        "गलती से सुना लगे या बात किसी मैसेज/स्क्रीन में लिखी दिखे, तभी एक बार पूछो 'क्या मैं ये देखूँ?'; " +
+        "'हाँ / ठीक है / देख लो' पर पूरा काम एक बार में, फिर से मत पूछो; 'नहीं' या चुप्पी = मत देखो। " +
+        "अनुमति सिर्फ़ उसी एक काम की। बिना अनुमति देखा याद मत रखो।"
 
     /** यूज़र से पूछा जाने वाला सवाल */
     const val QUESTION = "क्या मैं ये देखूँ?"
@@ -55,36 +58,89 @@ object PrivacyGate {
     }
 
     const val WINDOW_MS = 2 * 60_000L
+    /** यूज़र का अपना साफ़ हुक्म इतनी देर तक उसी काम का माना जाता है */
+    const val EXPLICIT_MS = 90_000L
+    /** हाँ / हुक्म के बाद एक ही काम के कई कदम (जैसे WhatsApp खोलो -> चैट पढ़ो) - इतनी देर, जब तक यूज़र नई बात न कहे */
+    const val TASK_MS = 3 * 60_000L
+
+    private val NOUNS: Map<Kind, List<String>> = mapOf(
+        Kind.SCREEN to listOf("स्क्रीन", "स्क्रिन", "screen"),
+        Kind.GALLERY to listOf("गैलरी", "गेलरी", "gallery", "galary", "फ़ोटो", "फोटो", "photo", "तस्वीर", "pic", "वीडियो", "video", "इमेज", "image"),
+        Kind.CAMERA to listOf("कैमरा", "camera", "लेंस", "lens", "स्कैन", "scan"),
+        Kind.CHAT to listOf("whatsapp", "व्हाट्सएप", "व्हाट्सऐप", "वॉट्सऐप", "वाट्सएप", "वॉट्सएप", "चैट", "chat", "मैसेज", "मेसेज", "message", "msg", "unread", "इनबॉक्स", "inbox"),
+        Kind.FILES to listOf("फ़ाइल", "फाइल", "file", "डॉक्यूमेंट", "document"))
+    private val VERBS = listOf("देख", "दिखा", "चेक", "पढ़", "पढ", "बता", "खोल", "ओपन", "स्कैन", "शेयर", "सुना", "जवाब", "चालू",
+        "dekh", "dikha", "check", "padh", "read", "bata", "khol", "open", "scan", "share", "suna", "reply", "see", "look", "show", "chalu")
+    private val NEG = setOf("मत", "नहीं", "नही", "ना", "mat", "nahi", "nahin", "nai", "don't", "dont", "never", "no")
+    private val YES_EXTRA = listOf("हाँ", "हां", "ठीक", "चलो", "ज़रूर", "जरूर", "बिल्कुल", "बिलकुल", "कर लो", "कर दो",
+        "haan", "han", "ha", "theek", "thik", "ok", "okay", "chalo", "jarur", "zaroor", "bilkul", "yes", "sure", "kar lo", "kar do")
+
+    private fun words(t: String) = t.lowercase().split(Regex("[^\\p{L}\\p{M}']+")).filter { it.isNotEmpty() }
+    private fun has(t: String, w: List<String>, stem: String): Boolean {
+        val s = stem.lowercase()
+        return if (s.any { it in 'a'..'z' }) (if (s.contains(' ')) " ${w.joinToString(" ")} ".contains(" $s") else w.any { it.startsWith(s) })
+        else t.contains(s)
+    }
 
     /**
-     * pure: [pending] = पहले पूछा गया सवाल; [userAt]/[userText] = यूज़र की आख़िरी बोली हुई बात;
-     * [tapAt]/[tapYes] = कार्ड पर आख़िरी टैप (0 = नहीं दबाया).
+     * pure: यूज़र की अपनी बात [text] इसी [kind] को देखने / पढ़ने का साफ़ हुक्म है? ("गैलरी देखो", "WhatsApp पे जाके चेक करो",
+     * "DK लेंस ओपन करो"). "मत" / "नहीं" वाली बात कभी हुक्म नहीं.
      */
-    fun check(kind: Kind, tool: String, pending: Pending?, userAt: Long, userText: String, tapAt: Long, tapYes: Boolean, now: Long): Gate {
-        if (pending == null || pending.kind != kind || pending.tool != tool || now - pending.askedAt !in 0..WINDOW_MS) return Gate.Ask
-        // कार्ड का टैप और आवाज़ - जो पूछने के बाद सबसे आख़िर में आया वही फ़ैसला
-        val tapAfter = tapAt > pending.askedAt
-        val voiceAfter = userAt > pending.askedAt
-        if (tapAfter && (!voiceAfter || tapAt >= userAt)) return if (tapYes) Gate.Run else Gate.Deny
-        if (voiceAfter) {
-            val t = userText.trim().removeSuffix("…").trim()
-            if (com.dk.assistant.agent.core.ConfirmGate.isYes(t)) return Gate.Run
-            if (com.dk.assistant.plus.ConfirmGate.Rules.isNo(t)) return Gate.Deny
-        }
-        return Gate.NotHeard
+    fun asksFor(kind: Kind, text: String): Boolean {
+        val t = text.trim().removeSuffix("…").trim().lowercase()
+        if (t.isEmpty()) return false
+        val w = words(t)
+        if (w.any { it in NEG }) return false
+        return NOUNS[kind].orEmpty().any { has(t, w, it) } && VERBS.any { has(t, w, it) }
     }
+
+    /** pure: "क्या मैं ये देखूँ?" के जवाब में हाँ? ("हाँ", "ठीक है देख लो", "ये देखो", "ok कर लो") - सवाल / ना वाली बात कभी नहीं */
+    fun isYesAnswer(text: String): Boolean {
+        val t = text.trim().removeSuffix("…").trim()
+        if (t.isEmpty() || t.contains('?')) return false
+        if (com.dk.assistant.agent.core.ConfirmGate.isYes(t)) return true
+        val low = t.lowercase(); val w = words(low)
+        if (w.isEmpty() || w.size > 8 || w.any { it in NEG }) return false
+        return YES_EXTRA.any { has(low, w, it) && (it.any { c -> c !in 'a'..'z' } || it.contains(' ') || it in w) } || VERBS.any { has(low, w, it) }
+    }
+
+    /** pure: पूछने ([askedAt]) के बाद की यूज़र की बातें [said] (समय के साथ) + कार्ड का टैप - सबसे आख़िरी साफ़ जवाब */
+    fun answerAfter(askedAt: Long, said: List<Pair<String, Long>>, tapAt: Long, tapYes: Boolean): Gate {
+        var best: Gate = Gate.NotHeard; var at = askedAt
+        for ((t, time) in said) {
+            if (time <= askedAt || time < at) continue
+            val g = when { isYesAnswer(t) -> Gate.Run; com.dk.assistant.plus.ConfirmGate.Rules.isNo(t) -> Gate.Deny; else -> null } ?: continue
+            best = g; at = time
+        }
+        if (tapAt > askedAt && tapAt >= at) best = if (tapYes) Gate.Run else Gate.Deny
+        return best
+    }
+
+    /**
+     * pure फ़ैसला. [explicit] = यूज़र ने खुद अभी यही कहा; [granted] = इसी काम की हाँ पहले मिल चुकी.
+     * [pending] = पहले पूछा गया सवाल (किसी भी tool से, बस वही निजी चीज़); [said] = यूज़र की हाल की बातें.
+     */
+    fun check(kind: Kind, explicit: Boolean, granted: Boolean, pending: Pending?, said: List<Pair<String, Long>>, tapAt: Long, tapYes: Boolean, now: Long): Gate {
+        if (explicit || granted) return Gate.Run
+        if (pending == null || pending.kind != kind || now - pending.askedAt !in 0..WINDOW_MS) return Gate.Ask
+        return answerAfter(pending.askedAt, said, tapAt, tapYes)
+    }
+
+    /** pure: हाँ / हुक्म [at] पर मिला था; [lastSaidAt] = यूज़र की आख़िरी पूरी बात. अभी भी वही काम? (नई बात = नया काम) */
+    fun taskGrantValid(at: Long?, lastSaidAt: Long, now: Long): Boolean = at != null && now - at in 0..TASK_MS && lastSaidAt <= at + 5_000
 
     fun askNote(kind: Kind): String =
         "PRIVACY_ASK: NOTHING was seen or read yet (${kind.name.lowercase()}). The user's privacy rule: before looking at ${kind.hi} you MUST ask him first. " +
             "Ask exactly in his language, one short line: \"$QUESTION\" (say what you will look at: ${kind.hi}). A हाँ / नहीं card is also on his screen. " +
-            "Then WAIT. Only after HE HIMSELF clearly says yes (or taps हाँ), call this same tool again. 'नहीं' or silence = do not look. " +
-            "The app checks his own words and taps - never call it again without his yes."
+            "Ask only ONCE, then WAIT quietly. When HE HIMSELF says yes (हाँ / ठीक है / देख लो / ये देखो, or taps हाँ), call this tool again right away and finish the whole task in one go - do not ask again. " +
+            "'नहीं' or silence = do not look. The app checks his own words and taps."
 
     fun denyNote(kind: Kind): String =
         "PRIVACY_DENIED: the user said no - ${kind.hi} was NOT looked at and nothing was read. Say in one short line that you did not look. Do not ask again for this task."
 
-    const val NOT_HEARD = "PRIVACY_NOT_HEARD: the app did not hear the user himself clearly say yes after your question, so nothing was looked at. " +
-        "Ask him again in one short line (\"$QUESTION\") and wait. Never say you have looked."
+    const val NOT_HEARD = "PRIVACY_NOT_HEARD: you already asked and his answer has not reached the app yet, so nothing was looked at. " +
+        "Do NOT ask the question again and do not keep talking - stay quiet and wait for his reply. " +
+        "As soon as he says yes (हाँ / ठीक है / देख लो / ये देखो) call this tool again once and do the whole task. Never say you have looked."
 
     // ------------------------------------------------------------------ हालत (Live सत्र भर)
     @Volatile var pending: Pending? = null
@@ -105,19 +161,37 @@ object PrivacyGate {
         try { onTap?.invoke(p.kind, p.tool, yes) } catch (e: Exception) { Quiet.note(e) }
     }
 
+    /** इसी काम की हाँ / हुक्म (निजी चीज़ -> कब मिली). एक काम के कई कदम बिना दोबारा पूछे */
+    private val taskGrants = java.util.concurrent.ConcurrentHashMap<Kind, Long>()
+
+    private fun lastSaidAt(): Long = DKState.userTurns().lastOrNull()?.second ?: 0L
+
+    /** यूज़र की अपनी ताज़ा बात (बोली या लिखी) इसी चीज़ को देखने का साफ़ हुक्म है? */
+    fun explicitNow(kind: Kind, now: Long = System.currentTimeMillis()): Boolean =
+        DKState.lastUserAt > 0 && now - DKState.lastUserAt in 0..EXPLICIT_MS && asksFor(kind, DKState.lastUser)
+
     /**
-     * Live / agent के tool से ठीक पहले. null = यूज़र ने इसी काम के लिए हाँ कहा (या कुछ निजी नहीं), चलाओ.
+     * Live / agent के tool से ठीक पहले. null = चलाओ (यूज़र ने खुद कहा / हाँ कहा / कुछ निजी नहीं).
      * वरना AI को लौटने वाली लाइन - tool **नहीं** चला.
      */
     fun gate(tool: String, args: JSONObject, now: Long = System.currentTimeMillis()): String? {
         val k = kind(tool, args) ?: return null
-        return when (check(k, tool, pending, DKState.lastUserAt, DKState.lastUser, tapAt, tapYes, now)) {
-            Gate.Run -> { pending = null; DKLog.d("निजता: $tool - यूज़र ने हाँ कहा, सिर्फ़ इसी काम के लिए"); null }
-            Gate.Deny -> { pending = null; DKLog.d("निजता: $tool - यूज़र ने ना कहा, नहीं देखा"); denyNote(k) }
-            Gate.NotHeard -> { DKLog.d("निजता: $tool - साफ़ हाँ नहीं सुनी, नहीं देखा"); NOT_HEARD }
+        val explicit = explicitNow(k, now)
+        val granted = taskGrantValid(taskGrants[k], lastSaidAt(), now)
+        val said = DKState.userTurns().toMutableList()
+        if (DKState.lastUser.isNotBlank() && said.lastOrNull()?.first != DKState.lastUser) said += DKState.lastUser to DKState.lastUserAt
+        return when (check(k, explicit, granted, pending, said, tapAt, tapYes, now)) {
+            Gate.Run -> {
+                if (!granted) taskGrants[k] = now
+                if (pending?.kind == k) pending = null
+                DKLog.d("निजता: $tool - ${if (explicit) "यूज़र ने खुद कहा, बिना पूछे" else "यूज़र की हाँ"} (सिर्फ़ इसी काम के लिए)")
+                null
+            }
+            Gate.Deny -> { pending = null; taskGrants.remove(k); DKLog.d("निजता: $tool - यूज़र ने ना कहा, नहीं देखा"); denyNote(k) }
+            Gate.NotHeard -> { DKLog.d("निजता: $tool - जवाब अभी नहीं आया, चुप रहकर रुको"); NOT_HEARD }
             Gate.Ask -> {
                 pending = Pending(k, tool, now)
-                DKLog.d("निजता: $tool - पहले पूछा \"$QUESTION\"")
+                DKLog.d("निजता: $tool - बात साफ़ नहीं, एक बार पूछा \"$QUESTION\"")
                 try { showCard?.invoke(k) { yes -> tap(yes) } } catch (e: Exception) { Quiet.note(e) }
                 askNote(k)
             }
@@ -153,5 +227,5 @@ object PrivacyGate {
     fun askLine(kind: Kind): String = "$QUESTION (${kind.hi}) हाँ या नहीं बोलिए।"
 
     /** test / नया सत्र */
-    fun reset() { pending = null; tapAt = 0L; tapYes = false; grants.clear() }
+    fun reset() { pending = null; tapAt = 0L; tapYes = false; grants.clear(); taskGrants.clear() }
 }

@@ -191,8 +191,10 @@ internal fun GeminiLive.scheduleFast() {
         // "स्क्रीन शेयर करो / बंद करो" Live में = असली स्क्रीन शेयर (Gemini देखे), पुराना screenshot switch नहीं
         if (q != null && q.action.optString("type") == "screen_view") {
             // 23 नवंबर 2026 (मालिक: निजता): स्क्रीन शेयर चालू करना तुरंत नहीं - Gemini का screen_share पहले पूछेगा ([PrivacyGate])
-            if (q.action.optBoolean("on", true)) { log("निजता: स्क्रीन शेयर - पहले \"${PrivacyGate.QUESTION}\" (Gemini पूछेगा)"); return@launch }
-            val r = LiveVision.setScreen(svc, false)
+            // 23 नवंबर 2026 (मालिक, दूसरी बार): खुद साफ़ \"स्क्रीन शेयर करो / देखो\" कहा = बिना पूछे; बात साफ़ न हो तभी Gemini पूछे
+            val on = q.action.optBoolean("on", true)
+            if (on && !PrivacyGate.asksFor(PrivacyGate.Kind.SCREEN, b)) { log("निजता: स्क्रीन शेयर - बात साफ़ नहीं, पहले \"${PrivacyGate.QUESTION}\" (Gemini पूछेगा)"); return@launch }
+            val r = LiveVision.setScreen(svc, on)
             log("तुरंत: स्क्रीन शेयर ${if (q.action.optBoolean("on", true)) "चालू" else "बंद"} -> ${r.take(60)}"); return@launch
         }
         if (q == null) { log("रूटर: \"${b.take(30)}\" फ़ोन पर सीधा नहीं - Gemini संभालेगा (वर्गीकरण $classMs ms)"); return@launch }

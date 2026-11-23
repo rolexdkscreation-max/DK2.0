@@ -117,10 +117,8 @@ object LiveVision {
         if (cameraOn && front == cameraFront) return "Camera is already ON (${if (front) "front" else "back"}) - you are receiving camera images."
         cameraFront = front; cameraWanted = true; changed()
         if (!VoiceActivity.visible && !com.dk.assistant.dkai.ScanPanel.onScreen()) {   // 23 नवंबर 2026: होम का स्कैन टैब भी लेंस दिखाता है
-            try {
-                c.startActivity(Intent(c, VoiceActivity::class.java).putExtra("camera", true)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
-            } catch (e: Exception) { DKLog.d("कैमरा: आवाज़ स्क्रीन नहीं खुली: ${e.message}") }
+            // 23 नवंबर 2026 (मालिक: "DK लेंस ओपन करो" = नया स्कैन टैब): होम का स्कैन टैब खोलो, पुरानी आवाज़ स्क्रीन नहीं
+            com.dk.assistant.dkai.ScanPanel.openHome(c, front)
         }
         val perm = c.checkSelfPermission(android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         return "Turning DK Lens (DK लेंस, the ${if (front) "front" else "back"} camera) ON on DK's voice screen" +
