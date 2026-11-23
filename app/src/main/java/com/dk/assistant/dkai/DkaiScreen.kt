@@ -118,6 +118,10 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     private lateinit var centerOrb: FluidOrbView
     private lateinit var centerClassic: com.dk.assistant.OrbView
     private lateinit var centerAvatar: HomeAvatarView
+    private var centerLook = ""
+    /** ऑर्ब आर्टवर्क की रंग बदली कॉपी (रंग / तस्वीर वही तो दोबारा नहीं बनती) */
+    private var tintKey = ""
+    private var tintMem: android.graphics.Bitmap? = null
     /** पूरी स्क्रीन वाला कैरेक्टर (होम टैब के पीछे) */
     private lateinit var bgAvatar: HomeAvatarView
     private lateinit var centerLogo: Logo3D
@@ -1147,9 +1151,11 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     }
 
     /** ORB = 260dp का गोला (पहले जैसा); अवतार = अभिवादन और READY कार्ड के बीच की पूरी जगह */
-    private fun avatarArea(avatar: Boolean): LinearLayout.LayoutParams =
-        if (avatar) LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = d(4f) }
-        else LinearLayout.LayoutParams(d(260f), d(260f)).apply { topMargin = d(4f) }
+    private fun avatarArea(avatar: Boolean, k: Float = 1f): LinearLayout.LayoutParams {
+        if (avatar) return LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = d(4f) }
+        val px = minOf(d(260f * k), c.resources.displayMetrics.widthPixels)
+        return LinearLayout.LayoutParams(px, px).apply { topMargin = d(4f) }
+    }
 
     /** Settings में ORB चुना = ORB; 3D अवतार चुना और तस्वीर फ़ोन में = अवतार; तस्वीर नहीं = ORB (और पीछे से डाउनलोड) */
     private fun renderCenter() {
@@ -1163,8 +1169,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         }
         val classic = DkaiOrbs.get(c) == DkaiOrbs.CLASSIC
         val sig = "${av?.id}|${bmp != null}|$classic|${DkaiOrbs.get(c)}"
-        if (sig == centerSig) return
-        centerSig = sig
+        val look = OrbLook.sig(c)                              // Settings › ORB / कैरेक्टर का साइज़ और रंग
+        if (sig == centerSig && look == centerLook) return
+        centerSig = sig; centerLook = look
         val showAv = bmp != null
         // 23 नवंबर 2026 (मालिक का कोलाज): ऐप के अंदर वाला आर्टवर्क = बीच में, कभी न कटे, पीछे रोशनी + बहती वेव
         centerAvatar.art = showAv && av?.res != null
@@ -1177,10 +1184,31 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         // 23 नवंबर 2026 (मालिक: "अवतार पूरी स्क्रीन नहीं"): अवतार सिर्फ़ अभिवादन के नीचे से READY कार्ड के ऊपर तक (बीच वाली जगह),
         // अनुपात वही (Fit), किनारे ऐप के पीछे में घुलते हुए ([HomeAvatarView.fade]). कार्ड / टॉप बार / नीचे की पट्टी पर नहीं चढ़ता.
         bgAvatar.bitmap = null
-        centerAvatar.bitmap = bmp
+        val mine = OrbLook.colors(c)
+        val k = OrbLook.factor(OrbLook.size(c))
+        centerAvatar.sizeK = k
+        centerAvatar.colors = mine
+        // ऑर्ब वाले आर्टवर्क अपने रंगों में (नई कॉपी, एक बार); कैरेक्टर की तस्वीर कभी नहीं रंगी जाती
+        val tinted = if (bmp != null && av?.orb == true && mine.isNotEmpty()) {
+            val key = "${av.id}|${bmp.width}|${OrbLook.encode(mine)}"
+            if (key != tintKey || tintMem == null) {
+                val sub = av.subject   // रंग ऑर्ब के बीच के चारों ओर घूमें (तितली ऑर्ब का गोला बाईं ओर है)
+                tintMem = OrbLook.recolor(bmp, mine, (sub.getOrElse(0) { 0f } + sub.getOrElse(2) { 1f }) / 2f,
+                    if (av.badge != null) HomeAvatars.BADGE_Y else 0.5f)
+                tintKey = key
+            }
+            tintMem
+        } else null
+        if (tinted != null) centerAvatar.bitmap = tinted else centerAvatar.bitmap = bmp
         centerAvatar.visibility = if (showAv) View.VISIBLE else View.GONE
-        centerGlow?.layoutParams = avatarArea(showAv)
+        centerGlow?.layoutParams = avatarArea(showAv, k)
+        // चलता ORB भी उसी साइज़ में (स्क्रीन की चौड़ाई से बड़ा नहीं)
+        val orbPx = minOf(d(200f * k), (c.resources.displayMetrics.widthPixels * 0.72f).toInt())
+        for (v in listOf<View>(centerOrb, centerClassic)) v.layoutParams = (v.layoutParams as FrameLayout.LayoutParams).apply { width = orbPx; height = orbPx }
+        centerLogo.layoutParams = (centerLogo.layoutParams as FrameLayout.LayoutParams).apply { width = d(92f * k); height = d(92f * k) }
         centerGlow?.background?.alpha = if (showAv) 0 else 255
+        // पीछे की गोल चमक भी ORB के साइज़ के साथ (छोटे डिब्बे में बड़ी चमक = चौकोर किनारे)
+        (centerGlow?.background as? android.graphics.drawable.GradientDrawable)?.gradientRadius = minOf(d(130f * k), c.resources.displayMetrics.widthPixels / 2).toFloat()
         liveBox.background = if (showAv) glassCard() else com.dk.assistant.ui.Clay.card(c)
         liveBox.setTag(com.dk.assistant.PlainLook.SKIP, if (showAv) true else null)   // काँच वाला कार्ड ठोस Clay में न बदले
         // कैरेक्टर के ऊपर अभिवादन साफ़ पढ़ा जाए: हल्की परछाईं (थीम का पर्दा-रंग). ऊपर की पट्टी में हो तो परछाईं नहीं

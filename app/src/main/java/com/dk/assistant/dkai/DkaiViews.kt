@@ -113,7 +113,10 @@ class FluidOrbView(c: Context) : DkaiAnimView(c) {
         }
         val R = min(w, h) / 2f * (if (glow) 0.66f else 0.86f) * (1f + breathe + lv * (if (cs == SPEAK) 0.16f else 0.12f))
         pal = DkaiOrbs.palette(st)
-        if (cs >= 0) {
+        // 23 नवंबर 2026 (मालिक): Settings › "ORB का साइज़ और रंग" में अपने रंग चुने = वही (हर orb में); नहीं = पहले जैसे
+        val mine = OrbLook.colors(context)
+        OrbLook.palette3(mine)?.let { pal = it }
+        if (cs >= 0 && mine.isEmpty()) {
             val target = when (cs) { THINK -> P_THINK; SPEAK -> P_SPEAK; else -> P_LISTEN }
             if (!curSet) { target.copyInto(cur); curSet = true }
             val k = (dt * 6f).coerceIn(0.05f, 1f)                              // ~0.2 सेकंड में नया रंग
@@ -148,7 +151,11 @@ class FluidOrbView(c: Context) : DkaiAnimView(c) {
         path.close()
 
         // घूमता cyan->violet रंग
-        val lg: Shader = if (cs == THINK) SweepGradient(cx, cy, intArrayOf(pal[0], pal[1], pal[2], pal[0]), null)
+        val many = OrbLook.bodyColors(mine)
+        val lg: Shader = if (many != null && many.size > 3) {
+            // 4-5 रंग: सारे घूमते हुए (पहला रंग आख़िर में दोबारा = बीच में कोई सीधी लकीर नहीं)
+            SweepGradient(cx, cy, many + many[0], null)
+        } else if (cs == THINK) SweepGradient(cx, cy, intArrayOf(pal[0], pal[1], pal[2], pal[0]), null)
             else LinearGradient(cx - R, cy - R, cx + R, cy + R, intArrayOf(pal[0], pal[1], pal[2]), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
         m.reset(); m.setRotate(if (cs >= 0) spin else (t * 25f) % 360f, cx, cy); lg.setLocalMatrix(m)
         body.shader = lg

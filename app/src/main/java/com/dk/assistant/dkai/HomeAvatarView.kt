@@ -52,6 +52,10 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
     var badge: String? = null
     /** तस्वीर का वह हिस्सा जो कभी न कटे (बायाँ, ऊपर, दायाँ, नीचे - 0..1) */
     var subject: List<Float> = HomeAvatars.FULL_SUBJECT
+    /** 23 नवंबर 2026 (मालिक): Settings › साइज़ (60%..140%) - 1 = पहले जैसा (कैरेक्टर पूरा अंदर) */
+    var sizeK = 1f
+    /** Settings › अपने रंग (खाली = थीम के) - पीछे की रोशनी और बहती वेव इन्हीं में */
+    var colors: List<Int> = emptyList()
     /** टैबलेट: आर्टवर्क स्क्रीन के बीच में सीमित चौड़ाई तक ([tabletScale]) */
     var tablet = false
 
@@ -133,10 +137,19 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
     private var glowNow = 0
     private var glowSet = false
 
-    private fun targetGlow(): Int = when (try { call() } catch (_: Exception) { -1 }) {
-        FluidOrbView.SPEAK -> DkaiTheme.CYAN
-        FluidOrbView.THINK -> DkaiTheme.VIOLET
-        else -> ClayTheme.t.accent
+    private fun targetGlow(): Int {
+        val mine = colors
+        val st = try { call() } catch (_: Exception) { -1 }
+        if (mine.isNotEmpty()) return when (st) {
+            FluidOrbView.SPEAK -> FluidOrbView.mix(mine.last(), 0xFFFFFFFF.toInt(), 0.15f)
+            FluidOrbView.THINK -> mine[mine.size / 2]
+            else -> mine[0]
+        }
+        return when (st) {
+            FluidOrbView.SPEAK -> DkaiTheme.CYAN
+            FluidOrbView.THINK -> DkaiTheme.VIOLET
+            else -> ClayTheme.t.accent
+        }
     }
 
     private val waveP = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
@@ -222,7 +235,9 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
             floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
         val layer = cv.saveLayer(0f, 0f, w, h, null)
         cv.drawRect(0f, 0f, w, h, stageP)
-        glowP.shader = RadialGradient(w / 2, h / 2, minOf(w, h) * (0.48f + 0.06f * lv),
+        // छोटे साइज़ पर चमक भी छोटी - वरना तस्वीर के चारों ओर चौकोर डिब्बा दिखता है
+        val small = sizeK.coerceIn(OrbLook.MIN_SIZE / 100f, 1f)
+        glowP.shader = RadialGradient(w / 2, h / 2, minOf(w, h) * (0.48f + 0.06f * lv) * small,
             intArrayOf(NeonTheme.alpha(glowNow, glowA), NeonTheme.alpha(glowNow, glowA / 3), NeonTheme.alpha(glowNow, 0)),
             floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
         cv.drawRect(0f, 0f, w, h, glowP)
@@ -231,6 +246,7 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
         if (b != null) {
             var s = artScale(w, h, b.width.toFloat(), b.height.toFloat(), subject)
             if (tablet) s = tabletScale(w, h, b.width.toFloat(), b.height.toFloat(), s)
+            s *= sizeK.coerceIn(OrbLook.MIN_SIZE / 100f, OrbLook.MAX_SIZE / 100f)
             val bw = b.width * s; val bh = b.height * s
             // कैरेक्टर का हिस्सा बीच में
             val cx = (subject.getOrElse(0) { 0f } + subject.getOrElse(2) { 1f }) / 2f
@@ -256,7 +272,7 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
                 cv.drawText(txt, px, dst.top + bh * HomeAvatars.BADGE_Y + badgeP.textSize * 0.35f, badgeP)   // ऑर्ब के ठीक बीच
             }
             cv.restore()
-            val ist = fadeStops(0.2f); val ion = ClayTheme.scrim(1f); val icols = intArrayOf(0, ion, ion, 0)
+            val ist = fadeStops(0.2f + 0.5f * (1f - small)); val ion = ClayTheme.scrim(1f); val icols = intArrayOf(0, ion, ion, 0)
             val il = dst.left - bw * (sc - 1f) / 2f; val ir = dst.right + bw * (sc - 1f) / 2f
             val it0 = dst.top - bh * (sc - 1f) / 2f; val ib = dst.bottom + bh * (sc - 1f) / 2f
             maskP.shader = LinearGradient(0f, it0, 0f, ib, icols, ist, Shader.TileMode.CLAMP)
@@ -282,7 +298,8 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
         val speed = waveSpeed(mode)
         val amp = waveAmp(mode, lv) * dp
         val baseA = waveAlpha(mode, light)
-        val col = when (mode) { 2 -> DkaiTheme.CYAN; 3 -> DkaiTheme.VIOLET; else -> glowNow }
+        val mine = colors
+        val base = when (mode) { 2 -> DkaiTheme.CYAN; 3 -> DkaiTheme.VIOLET; else -> glowNow }
         val cy = if (b0()) dst.top + dst.height() * (if (orb) 0.5f else 0.72f) else h * 0.6f
         val hole = if (orb) 0.30f else 0.22f
         val n = 56
@@ -301,6 +318,8 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
                 if (!started) { wavePath.moveTo(x, y); started = true } else wavePath.lineTo(x, y)
             }
             val a = (baseA * (1f - i * 0.25f)).toInt()
+            // अपने रंग: हर वेव अलग रंग (बोलते समय थोड़ी ज़्यादा चमक)
+            val col = if (mine.isEmpty()) base else mine[i % mine.size].let { if (mode == 2) FluidOrbView.mix(it, 0xFFFFFFFF.toInt(), 0.2f) else it }
             // पहले चौड़ी हल्की चमक, फिर पतली तेज़ रेखा
             waveP.shader = LinearGradient(0f, 0f, w, 0f,
                 intArrayOf(NeonTheme.alpha(col, 0), NeonTheme.alpha(col, a / 3), NeonTheme.alpha(col, a / 8), NeonTheme.alpha(col, a / 3), NeonTheme.alpha(col, 0)),
