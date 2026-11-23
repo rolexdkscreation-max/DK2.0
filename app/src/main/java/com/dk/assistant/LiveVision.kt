@@ -116,7 +116,7 @@ object LiveVision {
         val front = LiveConnect.wantFront(facing, DKState.lastUser.trimEnd('…')) ?: (if (cameraOn || cameraWanted) cameraFront else false)
         if (cameraOn && front == cameraFront) return "Camera is already ON (${if (front) "front" else "back"}) - you are receiving camera images."
         cameraFront = front; cameraWanted = true; changed()
-        if (!VoiceActivity.visible && !com.dk.assistant.dkai.ScanPanel.showing) {   // 23 नवंबर 2026: होम का स्कैन टैब भी लेंस दिखाता है
+        if (!VoiceActivity.visible && !com.dk.assistant.dkai.ScanPanel.onScreen()) {   // 23 नवंबर 2026: होम का स्कैन टैब भी लेंस दिखाता है
             try {
                 c.startActivity(Intent(c, VoiceActivity::class.java).putExtra("camera", true)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))

@@ -177,6 +177,11 @@ internal fun DKAccessibilityService.openLens(on: Boolean, front: Boolean): Strin
         val r = LiveVision.setCamera(this, true, facing)
         return if (r.startsWith("Turning") || r.startsWith("Camera is already ON")) r else "ERROR: $r"
     }
+    // 23 नवंबर 2026 (मालिक): होम का स्कैन टैब खुला = लेंस वहीं (DK लाइव जोड़कर), पुरानी आवाज़ स्क्रीन नहीं
+    if (com.dk.assistant.dkai.ScanPanel.again(front)) {
+        if (!DKState.live) startLive()
+        return "SAID: DK स्कैन खोल रहा हूँ (${if (front) "सामने वाला" else "पीछे वाला"} कैमरा)।"
+    }
     return try {
         startActivity(android.content.Intent(this, VoiceActivity::class.java)
             .putExtra(VoiceActivity.EXTRA_WANT, VoiceActivity.WANT_CAMERA)
