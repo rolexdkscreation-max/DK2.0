@@ -31,7 +31,7 @@ object HomeMenu {
         // अब ऊपर-नीचे स्क्रॉल होते हैं ([scroll]); कार्ड की ऊँचाई स्क्रीन के अंदर ([maxHeight]) - Settings पूरा दिखे
         val card = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
-            background = Clay.raised(a, 26f, 7f)
+            background = Clay.card(a)
             val p = (16 * dp).toInt(); setPadding(p, p, p, p)
         }
         val box = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }

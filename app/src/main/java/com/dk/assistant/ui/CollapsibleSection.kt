@@ -39,7 +39,7 @@ class CollapsibleSection private constructor(ctx: Context, title: String, sub: S
         view = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             // 23 नवंबर 2026 (Soft Clay): हर समूह = बड़ा उभरा कार्ड (कोने 26dp)
-            background = Clay.raised(ctx, 26f, 7f)
+            background = Clay.card(ctx)
             val ph = (20 * dp).toInt(); val pv = (18 * dp).toInt(); setPadding(ph, pv, ph, pv)
         }
         header = LinearLayout(ctx).apply {

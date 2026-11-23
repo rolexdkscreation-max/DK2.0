@@ -29,7 +29,7 @@ class ScanPanel(private val act: AppCompatActivity, private val startLive: () ->
     private fun d(v: Float) = (v * dp + 0.5f).toInt()
 
     val view: FrameLayout = FrameLayout(act).apply {
-        background = com.dk.assistant.ui.Clay.raised(act, 26f, 6f)
+        background = com.dk.assistant.ui.Clay.card(act)
         clipToOutline = true
         val p = d(6f); setPadding(p, p, p, p)
     }

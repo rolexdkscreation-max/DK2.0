@@ -473,7 +473,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         // लाइव टेक्स्ट बॉक्स (वही उभरा Clay कार्ड): हालत + पहले यूज़र की पूरी लाइव बात, फिर उसी डिब्बे में DK की
         liveBox = LinearLayout(c).apply {
             orientation = LinearLayout.VERTICAL
-            background = com.dk.assistant.ui.Clay.raised(c, 22f, 6f)
+            background = com.dk.assistant.ui.Clay.card(c)
             setPadding(d(18f), d(14f), d(18f), d(16f))
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
         }
@@ -508,7 +508,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         inputBox = LinearLayout(c).apply {
             orientation = LinearLayout.VERTICAL
             // 23 नवंबर 2026 (Soft Clay): लंबी गोल उभरी पट्टी (कोने 28dp)
-            background = com.dk.assistant.ui.Clay.raised(c, 28f, 6f)
+            background = com.dk.assistant.ui.Clay.card(c)
             setPadding(d(18f), d(10f), d(14f), d(14f))
         }
         attachRow = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, d(4f), 0, d(2f)) }
@@ -1122,7 +1122,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         centerAvatar.visibility = if (showAv) View.VISIBLE else View.GONE
         centerGlow?.layoutParams = avatarArea(showAv)
         centerGlow?.background?.alpha = if (showAv) 0 else 255
-        liveBox.background = if (showAv) glassCard() else com.dk.assistant.ui.Clay.raised(c, 22f, 6f)
+        liveBox.background = if (showAv) glassCard() else com.dk.assistant.ui.Clay.card(c)
         liveBox.setTag(com.dk.assistant.PlainLook.SKIP, if (showAv) true else null)   // काँच वाला कार्ड ठोस Clay में न बदले
         // कैरेक्टर के ऊपर अभिवादन साफ़ पढ़ा जाए: हल्की परछाईं (थीम का पर्दा-रंग)
         val sh = com.dk.assistant.ui.ClayTheme.scrim(if (showAv) 0.7f else 0f)

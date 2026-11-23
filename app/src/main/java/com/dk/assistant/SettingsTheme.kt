@@ -39,7 +39,7 @@ internal fun SettingsActivity.secTheme() {
         }
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            background = ClayDrawable(ClayDrawable.Style.RAISED, radiusPx = 24 * dp, depthPx = 6 * dp, selectable = true)
+            background = com.dk.assistant.ui.Clay.card(this@secTheme, selectable = true)
             val p = (18 * dp).toInt(); setPadding(p, p, p, p)
             minimumHeight = (84 * dp).toInt()
             isClickable = true; isFocusable = true
