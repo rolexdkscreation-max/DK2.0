@@ -159,19 +159,9 @@ class ClayDrawable(
         val r = radius()
         val raised = style != Style.INSET
         // ---- बाहर की दो परछाइयाँ (उभरा) - दबने पर धीमे-धीमे गायब
-        val out = if (raised) depth else 0f
-        if (card && out > 0.01f && d > 0.5f) {
-            // 23 नवंबर 2026 (मालिक: "दबाने वाला नरम रूप ही मूल रूप"): ऊपर-बाएँ हल्की चमकीली + नीचे-दाएँ हल्की गहरी परछाईं,
-            // दोनों में बड़ा धुंधलापन. परछाईं डिब्बे के अंदर ही ख़त्म (किनारे पर कटकर सख़्त रेखा न बने) - [ClayCard.shadow]
-            val (off, bl) = ClayCard.shadow(d)
-            shP.style = Paint.Style.FILL
-            shP.maskFilter = blurOf(bl)
-            shP.color = a(k.shadowDark, out * ClayCard.DARK_ALPHA)
-            tmp.set(shape); tmp.offset(off * out, off * out); drawShape(c, tmp, r, shP)
-            shP.color = a(k.shadowLight, out * ClayCard.LIGHT_ALPHA)
-            tmp.set(shape); tmp.offset(-off * out, -off * out); drawShape(c, tmp, r, shP)
-            shP.maskFilter = null
-        } else if (out > 0.01f && d > 0.5f) {
+        // 23 नवंबर 2026 (मालिक: "दबाने वाला रूप ही मूल रूप"): साझा कार्ड पर बाहर की परछाईं कभी नहीं - दबी हालत में भी नहीं थी
+        val out = if (raised && !card) depth else 0f
+        if (out > 0.01f && d > 0.5f) {
             // 23 नवंबर 2026 (मालिक: "उभार काफ़ी ज़्यादा"): आकार वही ([dist] से), सिर्फ़ परछाईं गहरी/बड़ी - [ClayTheme.LIFT] से
             val lift = ClayTheme.LIFT
             val off = d * 0.55f * lift * out
@@ -219,7 +209,7 @@ class ClayDrawable(
         }
 
         // ---- ऊपर-बाएँ की चमक (हाइलाइट): उभरा डिब्बा स्क्रीन से ऊपर उठा दिखे
-        if (raised && depth > 0.01f) {
+        if (raised && !card && depth > 0.01f) {   // कार्ड: दबी हालत में यह चमक नहीं थी, इसलिए मूल रूप में भी नहीं
             val gr = maxOf(shape.width(), shape.height()) * 0.75f
             val hl = NeonTheme.alpha(k.rim, if (style == Style.ACCENT) 0x55 else if (k.light) 0xB0 else 0x30)
             c.save(); c.clipPath(path)
@@ -231,13 +221,14 @@ class ClayDrawable(
         }
 
         // ---- अंदर की परछाईं (धँसा / दबा हुआ) - [ClayTheme.SINK] से गहरी
-        val inn = if (raised) (1f - depth) else 1f
+        // कार्ड: हमेशा पूरी (= पहले वाला दबा रूप, हूबहू वही मान); दबाने पर [ClayCard.PRESS_SINK] गुना और गहरी
+        val inn = if (card) 1f else if (raised) (1f - depth) else 1f
         if (inn > 0.01f) {
             val id = maxOf(d, 3f * (bounds.height().coerceAtLeast(1) / 48f).coerceIn(0.6f, 1.6f))
             c.save()
             c.clipPath(path)
             shP.style = Paint.Style.STROKE
-            val sink = ClayTheme.SINK
+            val sink = ClayTheme.SINK * (if (card) 1f + (ClayCard.PRESS_SINK - 1f) * (1f - depth) else 1f)
             shP.strokeWidth = id * 1.6f * sink
             shP.maskFilter = blurOf(id * 0.8f * sink)
             val off = id * 0.5f * sink
@@ -503,7 +494,16 @@ object ClayCard {
     const val DEPTH_DP = 8f
     /** दबाने पर आकार */
     const val PRESS_SCALE = 0.97f
-    /** परछाईं की दूरी / धुंधलापन (depth के हिस्से): दूरी + धुंधलापन <= depth, ताकि परछाईं किनारे पर कटे नहीं */
+    /**
+     * 23 नवंबर 2026 (मालिक: "जो रूप सिर्फ़ दबाने पर दिखता है, वही बिना छुए"): कार्ड का मूल रूप = पहले वाला दबा रूप
+     * (अंदर की परछाईं ऊपर-बाएँ गहरी, नीचे-दाएँ चमक; बाहर की परछाईं / ऊपर-बाएँ की चमक नहीं). दबाने पर अंदर की परछाईं
+     * इतने गुना और गहरी (चौड़ाई, धुंधलापन, खिसकाव) - गोलाई वही.
+     */
+    const val PRESS_SINK = 1.25f
+    /**
+     * पुराने उभरे कार्ड की बाहर वाली परछाईं के मान (अब कार्ड पर नहीं बनती - दबे रूप में नहीं थी). [shadow] वैसा ही रखा है.
+     * परछाईं की दूरी / धुंधलापन (depth के हिस्से): दूरी + धुंधलापन <= depth, ताकि परछाईं किनारे पर कटे नहीं
+     */
     const val OFFSET_K = 0.25f
     const val BLUR_K = 0.72f
     /** परछाइयों की गहराई (थीम के shadow रंग पर): हल्की */

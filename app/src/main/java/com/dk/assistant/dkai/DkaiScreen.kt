@@ -1090,7 +1090,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         val k = com.dk.assistant.ui.ClayTheme.t
         return android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
             intArrayOf(com.dk.assistant.ui.NeonTheme.alpha(com.dk.assistant.ui.NeonTheme.mix(k.surface, k.rim, 0.12f), 0xC4), com.dk.assistant.ui.NeonTheme.alpha(k.surface, 0xA8))).apply {
-            cornerRadius = d(22f).toFloat()
+            cornerRadius = d(com.dk.assistant.ui.ClayCard.RADIUS_DP).toFloat()   // गोलाई साझा कार्ड वाली ([com.dk.assistant.ui.ClayCard])
             setStroke(maxOf(1, d(1f)), com.dk.assistant.ui.NeonTheme.alpha(k.rim, 0x88))
         }
     }
