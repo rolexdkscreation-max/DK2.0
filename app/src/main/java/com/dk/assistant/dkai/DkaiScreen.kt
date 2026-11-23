@@ -353,7 +353,10 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             }
             isClickable = true; isFocusable = true
             contentDescription = "DK - टैप: आवाज़ से बात, लंबा दबाएँ: पूरी आवाज़ स्क्रीन"
-            setOnClickListener { if (::centerLogo.isInitialized && centerLogo.visibility == View.VISIBLE) centerLogo.spin(); centerTap() }
+            setOnClickListener {
+                if (::centerLogo.isInitialized && centerLogo.visibility == View.VISIBLE) { centerLogo.spin() }
+                centerTap()
+            }
             setOnLongClickListener { if (DKState.live) setState(VoiceSessionState.ACTIVE_FULL) else micTap(); true }
         }
         centerOrb = FluidOrbView(c).apply { level = homeLevel; active = homeActive; style = { DkaiOrbs.get(c) }; call = homeCall
@@ -796,7 +799,10 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
 
     /** नई चैट: अभी वाली सूची में सेव, फिर अगला नंबर (सबसे बड़े + 1) */
     fun startNewChat() {
-        if (DKState.messages.isEmpty()) { if (::input.isInitialized) input.requestFocus(); return }      // खाली चैट पर दोबारा नई नहीं
+        if (DKState.messages.isEmpty()) {
+            if (::input.isInitialized) { input.requestFocus() }
+            return
+        }      // खाली चैट पर दोबारा नई नहीं
         localJob?.cancel()
         DkaiChats.save(DkaiChats.dir(c), Dkai.chatNo(c), DKState.messages.toList())
         DKState.clearChat(); Dkai.nextChat(c)
