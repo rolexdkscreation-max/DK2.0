@@ -216,7 +216,7 @@ class SettingsActivity : AppCompatActivity() {
             val box = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 // 23 नवंबर 2026 (Soft Clay): उभरी पट्टी (दबाने पर धँसे)
-                background = com.dk.assistant.ui.Clay.raised(this@SettingsActivity, 24f, 6f)
+                background = com.dk.assistant.ui.Clay.card(this@SettingsActivity)
                 val pd = (18 * dp).toInt(); setPadding(pd, pd, pd, pd)
                 isClickable = true
                 setOnClickListener {

@@ -99,7 +99,7 @@ object DkaiUi {
     fun modal(c: Context, title: String, sub: String? = null, onX: (() -> Unit)? = null): Pair<LinearLayout, LinearLayout> {
         val card = LinearLayout(c).apply {
             orientation = LinearLayout.VERTICAL
-            background = com.dk.assistant.ui.Clay.raised(c, 28f, 6f)
+            background = com.dk.assistant.ui.Clay.card(c)
             setPadding(d(c, 22f), d(c, 18f), d(c, 22f), d(c, 20f))
         }
         card.addView(head(c, title, sub, onX))

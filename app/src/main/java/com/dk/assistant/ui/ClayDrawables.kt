@@ -35,12 +35,16 @@ class ClayDrawable(
     val depthPx: Float = 0f,
     val selectable: Boolean = false,
     /** RAISED का रंग: null = थीम का surface; बाकी = chip जैसे छोटे रूप */
-    val fill: (() -> Int)? = null
+    val fill: (() -> Int)? = null,
+    /** साझा कार्ड ([ClayCard]): नरम दो परछाइयाँ, सख़्त किनारा नहीं, दबाने पर हल्का छोटा (scale) */
+    val card: Boolean = false
 ) : Drawable() {
     enum class Style { RAISED, INSET, ACCENT }
 
     companion object {
         const val PRESS_MS = 120L
+        /** छोड़ने पर वापस उभरना (कार्ड) - आराम से */
+        const val RELEASE_MS = 180L
         const val FILL_MS = 200L
         const val FULL = 9999f
     }
@@ -70,7 +74,12 @@ class ClayDrawable(
         val p = state.contains(android.R.attr.state_pressed)
         val ch = selectable && (state.contains(android.R.attr.state_checked) || state.contains(android.R.attr.state_selected) || state.contains(android.R.attr.state_activated))
         var changed = false
-        if (p != pressed) { pressed = p; animDepth(if (p) 0f else 1f); changed = true }
+        if (p != pressed) {
+            pressed = p
+            animDepth(if (p) 0f else 1f)
+            if (card) { pressScale(p) }
+            changed = true
+        }
         if (ch != chosen) { chosen = ch; animFill(if (ch) 1f else 0f); changed = true }
         return changed
     }
@@ -84,11 +93,20 @@ class ClayDrawable(
 
     private fun reduced() = NeonTheme.reducedMotion()
 
+    /** कार्ड दबा = पूरा कार्ड हल्का छोटा ([ClayCard.PRESS_SCALE]), छोड़ा = आराम से वापस. लिखावट / आइकन वही (बस साथ में हिलते हैं) */
+    private fun pressScale(p: Boolean) {
+        val v = callback as? android.view.View ?: return
+        if (!v.isClickable && !v.isLongClickable) return
+        val to = if (p) ClayCard.PRESS_SCALE else 1f
+        if (reduced()) { v.scaleX = to; v.scaleY = to; return }
+        v.animate().scaleX(to).scaleY(to).setDuration(if (p) PRESS_MS else RELEASE_MS).setInterpolator(DecelerateInterpolator()).start()
+    }
+
     private fun animDepth(to: Float) {
         anim?.cancel()
         if (reduced() || bounds.isEmpty) { depth = to; invalidateSelf(); return }
         anim = ValueAnimator.ofFloat(depth, to).apply {
-            duration = PRESS_MS; interpolator = DecelerateInterpolator()
+            duration = if (card && to > depth) RELEASE_MS else PRESS_MS; interpolator = DecelerateInterpolator()
             addUpdateListener { depth = it.animatedValue as Float; invalidateSelf() }
             start()
         }
@@ -142,7 +160,18 @@ class ClayDrawable(
         val raised = style != Style.INSET
         // ---- बाहर की दो परछाइयाँ (उभरा) - दबने पर धीमे-धीमे गायब
         val out = if (raised) depth else 0f
-        if (out > 0.01f && d > 0.5f) {
+        if (card && out > 0.01f && d > 0.5f) {
+            // 23 नवंबर 2026 (मालिक: "दबाने वाला नरम रूप ही मूल रूप"): ऊपर-बाएँ हल्की चमकीली + नीचे-दाएँ हल्की गहरी परछाईं,
+            // दोनों में बड़ा धुंधलापन. परछाईं डिब्बे के अंदर ही ख़त्म (किनारे पर कटकर सख़्त रेखा न बने) - [ClayCard.shadow]
+            val (off, bl) = ClayCard.shadow(d)
+            shP.style = Paint.Style.FILL
+            shP.maskFilter = blurOf(bl)
+            shP.color = a(k.shadowDark, out * ClayCard.DARK_ALPHA)
+            tmp.set(shape); tmp.offset(off * out, off * out); drawShape(c, tmp, r, shP)
+            shP.color = a(k.shadowLight, out * ClayCard.LIGHT_ALPHA)
+            tmp.set(shape); tmp.offset(-off * out, -off * out); drawShape(c, tmp, r, shP)
+            shP.maskFilter = null
+        } else if (out > 0.01f && d > 0.5f) {
             // 23 नवंबर 2026 (मालिक: "उभार काफ़ी ज़्यादा"): आकार वही ([dist] से), सिर्फ़ परछाईं गहरी/बड़ी - [ClayTheme.LIFT] से
             val lift = ClayTheme.LIFT
             val off = d * 0.55f * lift * out
@@ -220,7 +249,7 @@ class ClayDrawable(
             c.restore()
         }
         // ---- ऊपर का बहुत पतला उजला किनारा (उभार को साफ़ दिखाने के लिए)
-        if (raised && depth > 0.5f) {
+        if (raised && !card && depth > 0.5f) {   // कार्ड पर सख़्त किनारे की रेखा नहीं (मालिक)
             rimP.strokeWidth = maxOf(1.2f, d * 0.16f)
             // ऊपर-बाएँ उजला किनारा -> नीचे-दाएँ हल्का गहरा किनारा (तिरछा)
             rimP.shader = LinearGradient(shape.left, shape.top, shape.right, shape.bottom,
@@ -460,4 +489,27 @@ class ClayDot(private val sizePx: Int, private val color: Int) : Drawable() {
     override fun setColorFilter(cf: ColorFilter?) { p.colorFilter = cf }
     @Deprecated("Deprecated in Java")
     override fun getOpacity() = PixelFormat.TRANSLUCENT
+}
+
+/**
+ * 23 नवंबर 2026 (मालिक: "सारे कार्ड एक जैसे - दबाने वाला नरम रूप ही मूल रूप"): पूरे ऐप के कार्ड का एक ही नाप.
+ * Settings, होम, चैट, स्कैन, मेमोरी, popup - सब [com.dk.assistant.ui.Clay.card] / [com.dk.assistant.PlainLook] से यही लेते हैं.
+ * रंग हर थीम के अपने ([ClayTheme.t]); सिर्फ़ आकार, गोलाई और परछाईं की बनावट यहाँ.
+ */
+object ClayCard {
+    /** कोनों की गोलाई - सामान्य और दबी, दोनों में बराबर (कोने कूदें नहीं) */
+    const val RADIUS_DP = 30f
+    /** परछाईं के लिए किनारे से अंदर की जगह */
+    const val DEPTH_DP = 8f
+    /** दबाने पर आकार */
+    const val PRESS_SCALE = 0.97f
+    /** परछाईं की दूरी / धुंधलापन (depth के हिस्से): दूरी + धुंधलापन <= depth, ताकि परछाईं किनारे पर कटे नहीं */
+    const val OFFSET_K = 0.25f
+    const val BLUR_K = 0.72f
+    /** परछाइयों की गहराई (थीम के shadow रंग पर): हल्की */
+    const val DARK_ALPHA = 0.85f
+    const val LIGHT_ALPHA = 0.9f
+
+    /** pure: [d] (px) depth पर परछाईं की (दूरी, धुंधलापन) */
+    fun shadow(d: Float): Pair<Float, Float> = (d * OFFSET_K) to (d * BLUR_K)
 }

@@ -301,7 +301,8 @@ object PlainLook {
         fun c(style: ClayStyle, r: Float, depth: Float = 5f, oval: Boolean = false, fill: (() -> Int)? = null) =
             com.dk.assistant.ui.ClayDrawable(style, radiusPx = if (r >= FULL) FULL else r * dp, oval = oval, depthPx = depth * dp, fill = fill)
         return when (k) {
-            Kind.CARD -> c(ClayStyle.RAISED, 22f, 6f)
+            Kind.CARD -> com.dk.assistant.ui.ClayDrawable(ClayStyle.RAISED, radiusPx = com.dk.assistant.ui.ClayCard.RADIUS_DP * dp,
+                depthPx = com.dk.assistant.ui.ClayCard.DEPTH_DP * dp, card = true)   // साझा कार्ड ([com.dk.assistant.ui.ClayCard])
             Kind.CIRCLE -> c(ClayStyle.RAISED, 0f, 4f, oval = true, fill = chip)
             Kind.ACCENT_CIRCLE -> c(ClayStyle.ACCENT, 0f, 4f, oval = true)
             Kind.PILL -> c(ClayStyle.RAISED, FULL, 4f, fill = chip)
@@ -347,6 +348,9 @@ object PlainLook {
         val depth = (if (h >= 80 * dp) 6f else if (h >= 40 * dp) 4.5f else 3f) * dp
         val style = when (k) { Kind.ACCENT, Kind.ACCENT_CIRCLE, Kind.BUBBLE_ME -> ClayStyle.ACCENT; Kind.FIELD -> ClayStyle.INSET; else -> ClayStyle.RAISED }
         val small = k == Kind.PILL || k == Kind.ROW || k == Kind.CIRCLE
+        // 23 नवंबर 2026 (मालिक): कोड में बने कार्ड (होम / मेमोरी / चैट...) भी वही साझा कार्ड
+        if (k == Kind.CARD && !oval && r < FULL && (v.height == 0 || h >= 56 * dp)) return com.dk.assistant.ui.ClayDrawable(ClayStyle.RAISED,
+            radiusPx = com.dk.assistant.ui.ClayCard.RADIUS_DP * dp, depthPx = maxOf(depth, com.dk.assistant.ui.ClayCard.DEPTH_DP * dp), card = true)
         return com.dk.assistant.ui.ClayDrawable(style, radiusPx = r, oval = oval, depthPx = depth,
             fill = if (small && style == ClayStyle.RAISED) ({ com.dk.assistant.ui.ClayTheme.t.chip }) else null)
     }

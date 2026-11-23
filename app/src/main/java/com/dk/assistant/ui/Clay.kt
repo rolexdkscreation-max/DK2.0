@@ -37,6 +37,12 @@ object Clay {
     /** उभरा कार्ड / पट्टी (कोने 20–28dp) */
     fun raised(c: Context, radiusDp: Float = 22f, depthDp: Float = 6f, selectable: Boolean = false) =
         ClayDrawable(ClayDrawable.Style.RAISED, radiusPx = dp(c, radiusDp), depthPx = dp(c, depthDp), selectable = selectable)
+    /**
+     * 23 नवंबर 2026 (मालिक): पूरे ऐप का साझा कार्ड - गोलाई [ClayCard.RADIUS_DP], नरम दो परछाइयाँ, दबाने पर हल्का धँसे.
+     * हर कार्ड / बड़ा डिब्बा यही ले, ताकि सब एक जैसे दिखें.
+     */
+    fun card(c: Context, selectable: Boolean = false) =
+        ClayDrawable(ClayDrawable.Style.RAISED, radiusPx = dp(c, ClayCard.RADIUS_DP), depthPx = dp(c, ClayCard.DEPTH_DP), selectable = selectable, card = true)
     /** उभरा छोटा चिप (कार्ड से ज़रा अलग रंग) */
     fun chip(c: Context, radiusDp: Float = ClayDrawable.FULL, depthDp: Float = 4f, selectable: Boolean = false) =
         ClayDrawable(ClayDrawable.Style.RAISED, radiusPx = if (radiusDp >= ClayDrawable.FULL) ClayDrawable.FULL else dp(c, radiusDp),
