@@ -50,6 +50,8 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
     var orb = false
     /** बीच में लिखा छोटा नाम (जैसे "DK"), null = कुछ नहीं */
     var badge: String? = null
+    /** [badge] की ऊँचाई (तस्वीर का हिस्सा) - HQ तितली ऑर्ब में गोला अलग जगह */
+    var badgeY: Float = HomeAvatars.BADGE_Y
     /** तस्वीर का वह हिस्सा जो कभी न कटे (बायाँ, ऊपर, दायाँ, नीचे - 0..1) */
     var subject: List<Float> = HomeAvatars.FULL_SUBJECT
     /** 23 नवंबर 2026 (मालिक): Settings › साइज़ (60%..140%) - 1 = पहले जैसा (कैरेक्टर पूरा अंदर) */
@@ -269,7 +271,7 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
                 badgeP.textSize = minOf(bw, bh) * 0.16f
                 badgeP.color = NeonTheme.alpha(0xFFFFFFFF.toInt(), 0xF0)
                 badgeP.setShadowLayer(badgeP.textSize * 0.45f, 0f, 0f, NeonTheme.alpha(glowNow, 0xFF))
-                cv.drawText(txt, px, dst.top + bh * HomeAvatars.BADGE_Y + badgeP.textSize * 0.35f, badgeP)   // ऑर्ब के ठीक बीच
+                cv.drawText(txt, px, dst.top + bh * badgeY + badgeP.textSize * 0.35f, badgeP)   // ऑर्ब के ठीक बीच
             }
             cv.restore()
             val ist = fadeStops(0.2f + 0.5f * (1f - small)); val ion = ClayTheme.scrim(1f); val icols = intArrayOf(0, ion, ion, 0)

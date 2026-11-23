@@ -1135,6 +1135,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     private fun centerTap() { if (DKState.live) setState(VoiceSessionState.ACTIVE_FULL) else micTap() }
 
     private var avatarTried: String? = null
+    private var hqTried: String? = null
     private var centerGlow: View? = null
 
     /**
@@ -1167,8 +1168,13 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             avatarTried = av.id
             HomeAvatars.fetch(c, av.id) { ok -> if (ok && !activity.isDestroyed) { centerSig = ""; renderCenter() } }
         }
+        // 24 नवंबर 2026 (मालिक: "धुंधला - हाई क्वालिटी, इंटरनेट से"): ऐप के अंदर वाली छोटी तस्वीर दिख रही = पीछे से HQ लाओ, आते ही बदलो
+        if (av != null && av.res != null && !HomeAvatars.hqReady(c, av) && hqTried != av.id) {
+            hqTried = av.id
+            HomeAvatars.fetchHq(c, av) { ok -> if (ok && !activity.isDestroyed) { centerSig = ""; renderCenter() } }
+        }
         val classic = DkaiOrbs.get(c) == DkaiOrbs.CLASSIC
-        val sig = "${av?.id}|${bmp != null}|$classic|${DkaiOrbs.get(c)}"
+        val sig = "${av?.id}|${bmp != null}|${bmp?.width}|$classic|${DkaiOrbs.get(c)}"
         val look = OrbLook.sig(c)                              // Settings › ORB / कैरेक्टर का साइज़ और रंग
         if (sig == centerSig && look == centerLook) return
         centerSig = sig; centerLook = look
@@ -1177,6 +1183,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         centerAvatar.art = showAv && av?.res != null
         centerAvatar.orb = av?.orb == true
         centerAvatar.badge = av?.badge
+        centerAvatar.badgeY = av?.badgeY ?: HomeAvatars.BADGE_Y
         centerAvatar.subject = av?.subject ?: HomeAvatars.FULL_SUBJECT
         centerAvatar.tablet = com.dk.assistant.UiFitRules.isTablet(c.resources.configuration.smallestScreenWidthDp)
         // आर्टवर्क READY पट्टी से नीचे की बार के ठीक ऊपर तक (नीचे की खाली पट्टी सिर्फ़ ORB के लिए)
@@ -1194,7 +1201,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             if (key != tintKey || tintMem == null) {
                 val sub = av.subject   // रंग ऑर्ब के बीच के चारों ओर घूमें (तितली ऑर्ब का गोला बाईं ओर है)
                 tintMem = OrbLook.recolor(bmp, mine, (sub.getOrElse(0) { 0f } + sub.getOrElse(2) { 1f }) / 2f,
-                    if (av.badge != null) HomeAvatars.BADGE_Y else 0.5f)
+                    if (av.badge != null) av.badgeY else 0.5f)
                 tintKey = key
             }
             tintMem

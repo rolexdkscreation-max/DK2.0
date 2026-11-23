@@ -23,7 +23,8 @@ object HomeAvatars {
      */
     data class Avatar(val id: String, val name: String, val gender: String, val file: String,
                       val res: String? = null, val orb: Boolean = false, val badge: String? = null,
-                      val subject: List<Float> = FULL_SUBJECT)
+                      val subject: List<Float> = FULL_SUBJECT,
+                      val badgeY: Float = BADGE_Y, val hqSubject: List<Float>? = null, val hqBadgeY: Float? = null)
 
     const val PREF = "home_center"
     const val ORB = "orb"
@@ -33,7 +34,18 @@ object HomeAvatars {
     /** इससे बड़ी फ़ाइल नहीं (गलत / नुकसान वाली फ़ाइल से बचाव) */
     const val MAX_BYTES = 6 * 1024 * 1024
 
+    /**
+     * 24 नवंबर 2026 (मालिक: "ORB और कैरेक्टर धुंधले - हाई क्वालिटी, इंटरनेट से डाउनलोड, APK में नहीं"):
+     * असली वजह - ऐप के अंदर वाले आर्टवर्क कोलाज से कटे सिर्फ़ 90-190px के टुकड़े हैं; बड़ा करने पर धुंधले.
+     * अब हर आर्टवर्क की 2048x2048 (2-5 MB) वाली तस्वीर repo के `avatars/<id>_hq.png` में - चुनते ही / होम पर
+     * एक बार डाउनलोड, फिर फ़ोन में. जब तक न आए (या इंटरनेट न हो) तब तक वही छोटी तस्वीर - कभी खाली नहीं.
+     */
+    const val HQ_SUFFIX = "_hq.png"
+    const val HQ_MAX_BYTES = 12 * 1024 * 1024
+
     val FULL_SUBJECT: List<Float> = listOf(0f, 0f, 1f, 1f)
+    /** HQ (2048x2048) कैरेक्टर: बीच में, नीचे से कटे - चेहरा / बाल / हाथ यहीं */
+    val HQ_CHAR: List<Float> = listOf(0.08f, 0.03f, 0.92f, 1f)
     /** तितली ऑर्ब में गोले का बीच (ऊपर से, तस्वीर की ऊँचाई का हिस्सा) - "DK" यहीं (होम और Settings प्रीव्यू दोनों) */
     const val BADGE_Y = 0.47f
 
@@ -42,20 +54,20 @@ object HomeAvatars {
      * पहले 8 कैरेक्टर, फिर 3 ऑर्ब. डाउनलोड की ज़रूरत नहीं, इंटरनेट के बिना भी.
      */
     val BUNDLED = listOf(
-        Avatar("dk_art_hearts", "दिल वाली", "girl", "dk_art_hearts.png", "dk_art_hearts", subject = listOf(0.22f, 0f, 0.82f, 1f)),
-        Avatar("dk_art_headphone_orb", "हेडफ़ोन", "girl", "dk_art_headphone_orb.png", "dk_art_headphone_orb", subject = listOf(0.14f, 0f, 0.86f, 1f)),
-        Avatar("dk_art_glasses_bun", "चश्मा", "girl", "dk_art_glasses_bun.png", "dk_art_glasses_bun", subject = listOf(0.2f, 0.05f, 0.85f, 1f)),
-        Avatar("dk_art_cat_ears", "बिल्ली-कान", "girl", "dk_art_cat_ears.png", "dk_art_cat_ears", subject = listOf(0.15f, 0f, 0.85f, 1f)),
-        Avatar("dk_art_glasses_dark", "चश्मा (काली)", "girl", "dk_art_glasses_dark.png", "dk_art_glasses_dark", subject = listOf(0.12f, 0f, 0.92f, 1f)),
-        Avatar("dk_art_butterfly_headphones", "तितली + हेडफ़ोन", "girl", "dk_art_butterfly_headphones.png", "dk_art_butterfly_headphones", subject = listOf(0.2f, 0f, 0.86f, 1f)),
-        Avatar("dk_art_sleepy", "नींद वाली", "girl", "dk_art_sleepy.png", "dk_art_sleepy", subject = listOf(0.2f, 0f, 0.92f, 1f)),
-        Avatar("dk_art_butterfly_girl", "तितली वाली", "girl", "dk_art_butterfly_girl.png", "dk_art_butterfly_girl", subject = listOf(0.15f, 0f, 0.85f, 1f)),
+        Avatar("dk_art_hearts", "दिल वाली", "girl", "dk_art_hearts.png", "dk_art_hearts", subject = listOf(0.22f, 0f, 0.82f, 1f), hqSubject = HQ_CHAR),
+        Avatar("dk_art_headphone_orb", "हेडफ़ोन", "girl", "dk_art_headphone_orb.png", "dk_art_headphone_orb", subject = listOf(0.14f, 0f, 0.86f, 1f), hqSubject = HQ_CHAR),
+        Avatar("dk_art_glasses_bun", "चश्मा", "girl", "dk_art_glasses_bun.png", "dk_art_glasses_bun", subject = listOf(0.2f, 0.05f, 0.85f, 1f), hqSubject = HQ_CHAR),
+        Avatar("dk_art_cat_ears", "बिल्ली-कान", "girl", "dk_art_cat_ears.png", "dk_art_cat_ears", subject = listOf(0.15f, 0f, 0.85f, 1f), hqSubject = HQ_CHAR),
+        Avatar("dk_art_glasses_dark", "चश्मा (काली)", "girl", "dk_art_glasses_dark.png", "dk_art_glasses_dark", subject = listOf(0.12f, 0f, 0.92f, 1f), hqSubject = HQ_CHAR),
+        Avatar("dk_art_butterfly_headphones", "तितली + हेडफ़ोन", "girl", "dk_art_butterfly_headphones.png", "dk_art_butterfly_headphones", subject = listOf(0.2f, 0f, 0.86f, 1f), hqSubject = HQ_CHAR),
+        Avatar("dk_art_sleepy", "नींद वाली", "girl", "dk_art_sleepy.png", "dk_art_sleepy", subject = listOf(0.2f, 0f, 0.92f, 1f), hqSubject = HQ_CHAR),
+        Avatar("dk_art_butterfly_girl", "तितली वाली", "girl", "dk_art_butterfly_girl.png", "dk_art_butterfly_girl", subject = listOf(0.15f, 0f, 0.85f, 1f), hqSubject = HQ_CHAR),
         Avatar("orb_art_butterfly", "तितली ऑर्ब (DK)", "orb", "orb_art_butterfly.png", "orb_art_butterfly", orb = true, badge = "DK",
-            subject = listOf(0.02f, 0f, 0.7f, 1f)),
+            subject = listOf(0.02f, 0f, 0.7f, 1f), hqSubject = listOf(0.15f, 0.1f, 0.85f, 0.9f), hqBadgeY = 0.56f),
         Avatar("orb_art_wave_rings", "वेव ऑर्ब (छल्ले)", "orb", "orb_art_wave_rings.png", "orb_art_wave_rings", orb = true,
-            subject = listOf(0.08f, 0.05f, 0.94f, 1f)),
+            subject = listOf(0.08f, 0.05f, 0.94f, 1f), hqSubject = listOf(0.12f, 0.12f, 0.88f, 0.9f)),
         Avatar("orb_art_dk_wave", "DK वेव ऑर्ब", "orb", "orb_art_dk_wave.png", "orb_art_dk_wave", orb = true,
-            subject = listOf(0.12f, 0.18f, 0.88f, 0.86f)),
+            subject = listOf(0.12f, 0.18f, 0.88f, 0.86f), hqSubject = listOf(0.18f, 0.18f, 0.82f, 0.82f)),
     )
 
     /** पहले से चुना (कुछ न चुना हो तो): DK के लोगो और साउंड-वेव वाला बड़ा ऑर्ब */
@@ -103,6 +115,12 @@ object HomeAvatars {
 
     fun prefFor(id: String?): String = if (id == null) ORB else AV + id
 
+    /** pure: ऐप के अंदर वाले आर्टवर्क की HQ फ़ाइल का नाम (repo `avatars/` और फ़ोन filesDir/avatars) - इंटरनेट वाले का null */
+    fun hqName(a: Avatar): String? = if (a.res != null && safeId(a.id)) a.id + HQ_SUFFIX else null
+
+    /** pure: HQ तस्वीर आ गई = उसी तस्वीर के हिसाब से न-कटने वाला हिस्सा और "DK" की जगह */
+    fun hqLook(a: Avatar): Avatar = a.copy(subject = a.hqSubject ?: a.subject, badgeY = a.hqBadgeY ?: a.badgeY)
+
     /** PNG फ़ाइल की शुरुआत (8 बाइट) सही? */
     fun isPng(head: ByteArray): Boolean = head.size >= 8 && head[0] == 0x89.toByte() && head[1] == 'P'.code.toByte() &&
         head[2] == 'N'.code.toByte() && head[3] == 'G'.code.toByte()
@@ -134,7 +152,14 @@ object HomeAvatars {
         return l
     }
 
-    fun byId(c: Context, id: String?): Avatar? = list(c).firstOrNull { it.id == id }
+    fun byId(c: Context, id: String?): Avatar? = list(c).firstOrNull { it.id == id }?.let { withHq(c, it) }
+
+    fun hqFile(c: Context, a: Avatar): File? = hqName(a)?.let { File(dir(c), it) }
+
+    /** HQ तस्वीर फ़ोन में आ चुकी? */
+    fun hqReady(c: Context, a: Avatar): Boolean = hqFile(c, a)?.let { it.exists() && it.length() > 64 } == true
+
+    fun withHq(c: Context, a: Avatar): Avatar = if (hqReady(c, a)) hqLook(a) else a
 
     fun file(c: Context, a: Avatar): File = File(dir(c), a.file)
 
@@ -148,7 +173,7 @@ object HomeAvatars {
      * कुछ नहीं = null (होम पर ORB). कभी क्रैश नहीं.
      */
     fun bitmap(c: Context, a: Avatar, maxPx: Int): Bitmap? {
-        if (a.res != null) return bundled(c, a, maxPx)
+        if (a.res != null) return hq(c, a, maxPx) ?: bundled(c, a, maxPx)
         val f = file(c, a)
         val key = a.file + "|" + f.lastModified() + "|" + maxPx
         if (key == memKey) mem?.let { return it }
@@ -160,6 +185,20 @@ object HomeAvatars {
             }
         } catch (e: Throwable) { com.dk.assistant.Quiet.note(e); null }
         if (b != null) { memKey = key; mem = b }
+        return b
+    }
+
+    private var hqKey: String? = null
+    private var hqMem: Bitmap? = null
+
+    /** HQ (डाउनलोड वाली 2048px) तस्वीर - स्क्रीन जितनी ज़रूरत, उतनी ही बड़ी खोलो (memory बचे); न हो = null */
+    private fun hq(c: Context, a: Avatar, maxPx: Int): Bitmap? {
+        val f = hqFile(c, a)?.takeIf { it.exists() && it.length() > 64 } ?: return null
+        val key = a.id + "|" + f.lastModified() + "|" + maxPx
+        if (key == hqKey) hqMem?.let { return it }
+        val b = try { decode(maxPx) { o -> BitmapFactory.decodeFile(f.path, o) } } catch (e: Throwable) { com.dk.assistant.Quiet.note(e); null }
+        if (b == null) { f.delete(); return null }                           // टूटी फ़ाइल = हटाओ, फिर से डाउनलोड होगी
+        hqKey = key; hqMem = b
         return b
     }
 
@@ -184,11 +223,16 @@ object HomeAvatars {
 
     /** छोटा प्रीव्यू (Settings): असली पिक्सल, बिना बदले */
     fun thumb(c: Context, a: Avatar): Bitmap? = try {
-        if (a.res != null) {
+        val hf = hqFile(c, a)?.takeIf { it.exists() && it.length() > 64 }
+        if (hf != null) decode(THUMB_PX) { o -> BitmapFactory.decodeFile(hf.path, o) }
+        else if (a.res != null) {
             val id = c.resources.getIdentifier(a.res, "drawable", c.packageName)
             if (id == 0) null else BitmapFactory.decodeResource(c.resources, id, BitmapFactory.Options().apply { inScaled = false })
         } else file(c, a).takeIf { it.exists() }?.let { BitmapFactory.decodeFile(it.path) }
     } catch (e: Throwable) { com.dk.assistant.Quiet.note(e); null }
+
+    /** Settings की छोटी जाली के लिए HQ तस्वीर इतनी (पूरी 2048px नहीं) */
+    const val THUMB_PX = 384
 
     /** pure: बड़ा करने की हद (बहुत बड़ा bitmap = ज़्यादा memory; 1440px काफ़ी) */
     fun upTarget(maxPx: Int): Int = maxPx.coerceIn(256, 1440)
@@ -242,6 +286,19 @@ object HomeAvatars {
         }.start()
     }
 
+    /** इंटरनेट से HQ तस्वीर (एक बार, फिर फ़ोन में). [done] UI thread पर (true = HQ तैयार) */
+    fun fetchHq(c: Context, a: Avatar, done: (Boolean) -> Unit = {}) {
+        val app = c.applicationContext
+        val name = hqName(a) ?: return
+        if (hqReady(app, a)) { main.post { done(true) }; return }
+        if (!busy.add("hq:" + a.id)) return
+        Thread {
+            var ok = false
+            try { ok = save(app, name, HQ_MAX_BYTES) } catch (e: Throwable) { com.dk.assistant.Quiet.note(e) } finally { busy.remove("hq:" + a.id) }
+            main.post { try { done(ok) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
+        }.start()
+    }
+
     private fun refreshIndex(c: Context) {
         val bytes = get(BASE + INDEX, 256 * 1024) ?: return
         val txt = String(bytes, Charsets.UTF_8)
@@ -250,17 +307,20 @@ object HomeAvatars {
         File(dir(c), "$INDEX.tmp").apply { writeText(txt); renameTo(f) }
     }
 
-    private fun download(c: Context, a: Avatar): Boolean {
-        if (!safeFile(a.file)) return false
-        val bytes = get(BASE + a.file, MAX_BYTES) ?: return false
+    private fun download(c: Context, a: Avatar): Boolean = save(c, a.file, MAX_BYTES)
+
+    /** repo `avatars/[name]` -> फ़ोन; सिर्फ़ सच्ची PNG जो खुलती हो */
+    private fun save(c: Context, name: String, max: Int): Boolean {
+        if (!safeFile(name)) return false
+        val bytes = get(BASE + name, max) ?: return false
         if (!isPng(bytes)) return false
-        val tmp = File(dir(c), a.file + ".tmp")
+        val tmp = File(dir(c), "$name.tmp")
         tmp.writeBytes(bytes)
         // सच में खुलने वाली तस्वीर है? तभी रखो
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(tmp.path, o)
         if (o.outWidth <= 0) { tmp.delete(); return false }
-        return tmp.renameTo(file(c, a))
+        return tmp.renameTo(File(dir(c), name))
     }
 
     private fun get(url: String, max: Int): ByteArray? {

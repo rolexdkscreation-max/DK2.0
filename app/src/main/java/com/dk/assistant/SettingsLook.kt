@@ -234,7 +234,7 @@ object SettingsThemeMode {
  */
 internal fun SettingsActivity.homeCharacterGrid(box: LinearLayout) {
     val H = com.dk.assistant.dkai.HomeAvatars
-    val items = listOf<com.dk.assistant.dkai.HomeAvatars.Avatar?>(null) + H.list(this)
+    val items = listOf<com.dk.assistant.dkai.HomeAvatars.Avatar?>(null) + H.list(this).map { H.withHq(this, it) }
     val cols = if (com.dk.assistant.UiFitRules.isTablet(resources.configuration.smallestScreenWidthDp)) 4 else 3
     val tiles = ArrayList<Pair<String, LinearLayout>>()
     fun paint(cur: String) { for ((k, v) in tiles) v.isSelected = k == cur }
@@ -256,7 +256,7 @@ internal fun SettingsActivity.homeCharacterGrid(box: LinearLayout) {
         val pic = android.widget.ImageView(this).apply {
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            val bmp = a?.let { H.thumb(this@homeCharacterGrid, it) }?.let { raw -> a.badge?.let { badgeThumb(raw, it, a.subject) } ?: raw }
+            val bmp = a?.let { H.thumb(this@homeCharacterGrid, it) }?.let { raw -> a.badge?.let { badgeThumb(raw, it, a.subject, a.badgeY) } ?: raw }
             if (bmp != null) setImageDrawable(android.graphics.drawable.BitmapDrawable(resources, bmp).apply { isFilterBitmap = true })
             else setImageResource(R.drawable.ic_dk)
             if (bmp == null) { val ip = (14 * dp).toInt(); setPadding(ip, ip, ip, ip) }
@@ -276,6 +276,10 @@ internal fun SettingsActivity.homeCharacterGrid(box: LinearLayout) {
             if (a != null && a.res == null && !H.downloaded(this, a)) {
                 toast("अवतार डाउनलोड हो रहा है…")
                 H.fetch(this, a.id) { ok -> if (!isFinishing) toast(if (ok) "अवतार तैयार - होम पर दिखेगा" else "अवतार नहीं आ पाया - इंटरनेट चालू होने पर फिर आएगा, तब तक ORB") }
+            } else if (a != null && a.res != null && !H.hqReady(this, a)) {
+                // 24 नवंबर 2026 (मालिक: "हाई क्वालिटी, इंटरनेट से डाउनलोड"): तब तक छोटी तस्वीर, आते ही होम पर HQ
+                toast(UiLang.s("होम कैरेक्टर: ") + name + " • हाई क्वालिटी तस्वीर डाउनलोड हो रही है…")
+                H.fetchHq(this, a) { ok -> if (!isFinishing) toast(if (ok) "हाई क्वालिटी तस्वीर तैयार - होम पर दिखेगी" else "हाई क्वालिटी तस्वीर नहीं आ पाई - इंटरनेट चालू होने पर होम पर अपने-आप आएगी") }
             } else toast(UiLang.s("होम कैरेक्टर: ") + name)
         }
         tiles.add(key to tile)
@@ -290,15 +294,16 @@ internal fun SettingsActivity.homeCharacterGrid(box: LinearLayout) {
 }
 
 /** प्रीव्यू पर भी ऑर्ब के बीच वही "DK" (होम जैसा) - छोटी तस्वीर को फ़िल्टर के साथ 4x करके उस पर लिखा */
-private fun badgeThumb(raw: android.graphics.Bitmap, txt: String, subject: List<Float>): android.graphics.Bitmap = try {
-    val b = android.graphics.Bitmap.createScaledBitmap(raw, raw.width * 4, raw.height * 4, true).copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+private fun badgeThumb(raw: android.graphics.Bitmap, txt: String, subject: List<Float>, badgeY: Float): android.graphics.Bitmap = try {
+    val up = if (maxOf(raw.width, raw.height) >= 300) 1 else 4                          // HQ तस्वीर = पहले से बड़ी
+    val b = android.graphics.Bitmap.createScaledBitmap(raw, raw.width * up, raw.height * up, true).copy(android.graphics.Bitmap.Config.ARGB_8888, true)
     val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
         color = 0xF0FFFFFF.toInt(); textAlign = android.graphics.Paint.Align.CENTER
         typeface = android.graphics.Typeface.DEFAULT_BOLD; textSize = minOf(b.width, b.height) * 0.16f
         setShadowLayer(textSize * 0.45f, 0f, 0f, 0xFF4FA3FF.toInt())
     }
     val cx = (subject.getOrElse(0) { 0f } + subject.getOrElse(2) { 1f }) / 2f
-    android.graphics.Canvas(b).drawText(txt, b.width * cx, b.height * com.dk.assistant.dkai.HomeAvatars.BADGE_Y + p.textSize * 0.35f, p)
+    android.graphics.Canvas(b).drawText(txt, b.width * cx, b.height * badgeY + p.textSize * 0.35f, p)
     b
 } catch (e: Throwable) { com.dk.assistant.Quiet.note(e); raw }
 
