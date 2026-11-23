@@ -125,14 +125,17 @@ object UiFit {
     fun center(a: android.app.Activity) {
         val content = a.findViewById<ViewGroup>(android.R.id.content) ?: return
         // पारदर्शी / तैरती स्क्रीनें (हाँ-ना कार्ड, शेयर, असिस्ट) को न छुओ - वे पीछे का दिखाती हैं
-        val ta = a.obtainStyledAttributes(intArrayOf(android.R.attr.windowIsTranslucent, android.R.attr.windowIsFloating))
-        val see = try { ta.getBoolean(0, false) || ta.getBoolean(1, false) } finally { ta.recycle() }
-        if (see) return
+        if (themeFlag(a, android.R.attr.windowIsTranslucent) || themeFlag(a, android.R.attr.windowIsFloating)) return
         val tablet = UiFitRules.isTablet(a.applicationContext.resources.configuration.smallestScreenWidthDp)
         val side = (UiFitRules.sideDp(tablet, a.resources.configuration.screenWidthDp) * a.resources.displayMetrics.density).toInt()
         if (content.paddingLeft == side && content.paddingRight == side) return
         content.setPadding(side, content.paddingTop, side, content.paddingBottom)
         if (side > 0) content.setBackgroundColor(com.dk.assistant.ui.ClayTheme.t.bg)
+    }
+
+    private fun themeFlag(a: android.app.Activity, attr: Int): Boolean {
+        val v = android.util.TypedValue()
+        return a.theme.resolveAttribute(attr, v, true) && v.type == android.util.TypedValue.TYPE_INT_BOOLEAN && v.data != 0
     }
 
     /** असली (बिना बढ़ाए) स्क्रीन चौड़ाई dp में - फ़ोन/टैबलेट तय करने के लिए */
