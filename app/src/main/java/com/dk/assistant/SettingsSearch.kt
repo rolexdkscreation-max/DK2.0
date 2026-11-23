@@ -19,7 +19,7 @@ object SettingsSearch {
 
     /** हिस्सों के नाम (मेनू की पंक्ति) */
     val SECTIONS: Map<String, String> = linkedMapOf(
-        "profile" to "प्रोफ़ाइल", "lang" to "भाषा / Language", "ui" to "दिखावट (UI कस्टमाइज़ेशन)", "brain" to "AI दिमाग",
+        "theme" to "Theme (थीम)", "profile" to "प्रोफ़ाइल", "lang" to "भाषा / Language", "ui" to "दिखावट (UI कस्टमाइज़ेशन)", "brain" to "AI दिमाग",
         "brain_live" to "AI दिमाग • DK लाइव", "brain_chat" to "AI दिमाग • DK चैट", "brain_coder" to "AI दिमाग • कोडिंग एजेंट",
         "brain_pc" to "AI दिमाग • DK कंप्यूटर", "voice" to "आवाज़", "orb" to "ओर्ब और चेहरा",
         "access" to "Accessibility", "phonelock" to "फ़ोन लॉक / अनलॉक", "guard" to "टच मोड", "applock" to "ऐप लॉक", "face" to "चेहरा पहचान", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
@@ -56,9 +56,10 @@ object SettingsSearch {
 
     /** हर हिस्से के आम शब्द (हिंदी + English + बोलचाल) - सर्च में मदद */
     private val SECTION_WORDS = mapOf(
+        "theme" to "theme थीम रंग color dark light clay day midnight nocturne ember abyss navy obsidian rosewood",
         "profile" to "नाम name profile असिस्टेंट assistant",
         "lang" to "भाषा language hindi english हिंदी अंग्रेज़ी",
-        "ui" to "theme थीम रंग color colour design look दिखावट animation",
+        "ui" to "design look दिखावट animation orb dark light डार्क लाइट",
         "brain" to "api key चाबी gemini ai दिमाग brain",
         "brain_live" to "live लाइव gemini key api voice search खोज tavily exa groq z.ai zai nvidia",
         "brain_chat" to "chat चैट key api openai groq openrouter z.ai zai glm nvidia एनवीडिया nim",
@@ -160,10 +161,7 @@ object SettingsSearch {
         E("orb", "DK Island", "DK से बाहर हों तो ऊपर काली गोली - टैप पर हाल के 5 काम, कॉल, YouTube / गाना, सारे notification, चार्जिंग, रील गिनती, दो कॉल अलग बुलबुले में, आकार छोटा-बड़ा, ऊपर से दूरी, नॉच (कैमरे पर छोटा, गोल / चौकोर, सूचना पर पूरा चौड़ा) notch nose"),
         E("ui", "DKAI का orb", "Fluid • Aurora • Sunset • Arc Reactor • Solar • Crystal • Particle Swarm • पुराना DK orb • orb बदलें"),
         E("ui", "झलक", "बदलाव यहीं तुरंत दिखता है"),
-        E("ui", "थीम गैलरी", "पूरी थीम: पृष्ठभूमि चित्र, काँच, रंग और ओर्ब • डाउनलोड • लागू करें • Cyber Neon • Galaxy • Emerald • Solar Gold"),
         E("ui", "डार्क / लाइट मोड", "dark light mode डार्क लाइट मोड थीम theme उजला गहरा सफ़ेद काला रंग night day"),
-        E("ui", "थीम", "पृष्ठभूमि का रंग"),
-        E("ui", "मुख्य रंग (Accent)", "किनारे, चमक, मुख्य बटन और ओर्ब का रंग"),
         E("ui", "तैरता ORB", "बोलते-सुनते समय दिखने वाला ORB — उंगली से कहीं भी खिसकाओ, आकार छोटा/बड़ा"),
         E("ui", "एनिमेशन", "ओर्ब के छल्ले, पृष्ठभूमि की रोशनी और मेनू का खुलना"),
         E("ui", "टाइपिंग एनीमेशन", "जवाब आने से पहले चैट के बुलबुले में क्या चले — जो पसंद हो चुनें"),

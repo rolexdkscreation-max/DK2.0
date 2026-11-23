@@ -19,6 +19,12 @@ object PlusBoot {
             try { com.dk.assistant.plus.models.ModelManager.cleanupRemoved(app) } catch (_: Throwable) {}
             // 15 नवंबर 2026 (मालिक): वॉलपेपर हटा - पुराना गैलरी वाला चित्र (filesDir/wallpaper) चुपचाप मिटाओ, crash नहीं
             try { java.io.File(app.filesDir, com.dk.assistant.ui.NeonTheme.LEGACY_WALL_DIR).deleteRecursively() } catch (_: Throwable) {}
+            // 23 नवंबर 2026 (मालिक): थीम गैलरी / डार्क नेवी-AMOLED / मुख्य रंग हटे - डाउनलोड की हुई थीमें और पुराने सेव मान चुपचाप मिटाओ
+            try {
+                java.io.File(app.filesDir, com.dk.assistant.ui.NeonTheme.LEGACY_PACK_DIR).deleteRecursively()
+                val e = app.getSharedPreferences("dk_prefs", android.content.Context.MODE_PRIVATE).edit()
+                com.dk.assistant.ui.NeonTheme.LEGACY.forEach { e.remove(it) }; e.apply()
+            } catch (_: Throwable) {}
         }.start()
         if (!hooked) {
             hooked = true

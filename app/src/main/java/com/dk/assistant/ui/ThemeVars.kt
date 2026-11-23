@@ -38,7 +38,9 @@ object ThemeVars {
         border = 0xFFE2E5EA.toInt(), press = 0x220F172A
     )
 
-    fun mode(light: Boolean) = if (light) LIGHT else DARK
+    /** 23 नवंबर 2026 (Soft Clay): असली रंग अब चुनी Clay थीम से ([ClayTheme]); DARK / LIGHT पुराने आधार-रंग (tests / पुराना हिसाब) */
+    @Suppress("UNUSED_PARAMETER")
+    fun mode(light: Boolean): Mode = ClayTheme.t.mode()
 
     // ------------------------------------------------------------------ साझा (दोनों मोड में एक जैसे)
     const val BLUE = 0xFF3B82F6.toInt()

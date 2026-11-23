@@ -9,6 +9,7 @@ import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.RippleDrawable
 import android.view.View
 import android.view.ViewGroup
+import com.dk.assistant.ui.ClayDrawable.Style as ClayStyle
 
 /**
  * 14 नवंबर 2026 (मालिक): "सेटिंग पैनल भी साधारण, जैसे होम पैनल है - ग्लासी टाइप का हटा के नॉर्मल वाला"।
@@ -37,12 +38,13 @@ object PlainLook {
     val L_ME = L.sel
     const val L_TEXT = 0x0F172A
     private val light get() = com.dk.assistant.dkai.DkaiTheme.light
-    private fun bg() = if (light) L_BG else BG
-    private fun card() = if (light) L_CARD else CARD
-    private fun border() = if (light) L_BORDER else BORDER
-    private fun pill() = if (light) L_PILL else PILL
-    private fun field() = if (light) L_FIELD else FIELD
-    private fun me() = if (light) L_ME else ME
+    // 23 नवंबर 2026 (Soft Clay): असली रंग चुनी थीम के 3 टोकन (bg / surface / accent) से बने
+    private fun bg() = com.dk.assistant.ui.ClayTheme.t.bg
+    private fun card() = com.dk.assistant.ui.ClayTheme.t.surface
+    private fun border() = com.dk.assistant.ui.ClayTheme.t.rim
+    private fun pill() = com.dk.assistant.ui.ClayTheme.t.chip
+    private fun field() = com.dk.assistant.ui.ClayTheme.t.well
+    private fun me() = com.dk.assistant.ui.ClayTheme.t.sel
 
     /** लाइट में: सफ़ेद-सी लिखावट -> गहरी (उतनी ही पारदर्शिता). बाकी रंग (नीला/हरा/लाल) वैसे ही. pure (JVM test) */
     fun lightText(argb: Int): Int {
@@ -95,6 +97,9 @@ object PlainLook {
 
     fun install(a: Activity) {
         val root = a.window?.decorView ?: return
+        // 23 नवंबर 2026: अब हर स्क्रीन पर अपने-आप ([com.dk.assistant.ui.Clay.Refresh]) - दो बार न लगे
+        if (root.getTag(INSTALLED) == true) return
+        root.setTag(INSTALLED, true)
         try { com.dk.assistant.dkai.DkaiTheme.load(a) } catch (e: Exception) { Quiet.note(e) }
         try { a.window?.setBackgroundDrawable(ColorDrawable(bg())) } catch (e: Exception) { Quiet.note(e) }
         var queued = false
@@ -108,8 +113,11 @@ object PlainLook {
 
     private fun walk(v: View) {
         if (v is AuroraView) { if (v.visibility != View.GONE) v.visibility = View.GONE; return }
+        if (v.getTag(SKIP) == true) return
         flatten(v)
+        clayBox(v)
         if (light) lighten(v)
+        try { com.dk.assistant.ui.Clay.decorate(v) } catch (e: Exception) { Quiet.note(e) }
         if (v is ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
     }
 
@@ -118,25 +126,23 @@ object PlainLook {
         if (v.getTag(TAG) === bg) return
         // लाइट: गहरी सपाट पृष्ठभूमि (जैसे सेटिंग की @color/bg_space_dark) -> उजली
         if (light && bg is ColorDrawable && darkSolid(bg.color)) {
-            val d = ColorDrawable(L_BG); v.background = d; v.setTag(TAG, d); return
+            val d = ColorDrawable(bg()); v.background = d; v.setTag(TAG, d); return
         }
         // 14 नवंबर 2026 (मालिक: "सारी स्क्रीन होम जैसी"): डार्क में भी पूरी स्क्रीन की गहरी-नीली पृष्ठभूमि (#0A1033 आदि) -> होम वाला रंग
-        if (!light && bg is ColorDrawable && darkSolid(bg.color) && bg.color != BG && fillsScreen(v)) {
-            val d = ColorDrawable(BG); v.background = d; v.setTag(TAG, d); return
+        // 23 नवंबर 2026: "होम वाला रंग" = चुनी Clay थीम की पृष्ठभूमि
+        if (!light && bg is ColorDrawable && darkSolid(bg.color) && bg.color != bg() && fillsScreen(v)) {
+            val d = ColorDrawable(bg()); v.background = d; v.setTag(TAG, d); return
         }
         val dp = v.resources.displayMetrics.density
         val kind = glassKind(bg)
         val flat: Drawable? = when {
             kind != null -> make(kind, dp)
-            bg is GradientDrawable && glassyGradient(bg) ->
-                GradientDrawable().apply {
-                    cornerRadius = try { bg.cornerRadius } catch (_: Exception) { 16 * dp }
-                    setColor(card()); setStroke(dp.toInt().coerceAtLeast(1), border())
-                }
+            bg is GradientDrawable && glassyGradient(bg) -> clayLike(v, bg, Kind.CARD)
             else -> null
         }
         if (flat == null) return
-        val d = if (v.isClickable) RippleDrawable(ColorStateList.valueOf(PRESS), flat, null) else flat
+        // Clay डिब्बा दबने पर खुद धँसता है (120ms) - ripple की ज़रूरत नहीं
+        val d = flat
         val l = v.paddingLeft; val t = v.paddingTop; val r = v.paddingRight; val b = v.paddingBottom
         v.background = d
         v.setPadding(l, t, r, b)
@@ -152,11 +158,11 @@ object PlainLook {
         lightBox(v)
         val under = underLight(v)
         if (v is android.widget.TextView && under == true) {
-            val c = v.currentTextColor; val n = lightText(c)
+            val c = v.currentTextColor; val n = themeText(c)
             if (n != c) v.setTextColor(n)
-            val h = v.currentHintTextColor; val nh = lightText(h)
+            val h = v.currentHintTextColor; val nh = themeText(h)
             if (nh != h) v.setHintTextColor(nh)
-            v.compoundDrawableTintList?.defaultColor?.let { t -> if (lightText(t) != t) v.compoundDrawableTintList = ColorStateList.valueOf(lightText(t)) }
+            v.compoundDrawableTintList?.defaultColor?.let { t -> if (lightText(t) != t) v.compoundDrawableTintList = ColorStateList.valueOf(themeText(t)) }
         }
         if (v is android.widget.ImageView && under == true) lightIcon(v)
     }
@@ -198,6 +204,7 @@ object PlainLook {
     /** drawable का भरा रंग: 0 = पारदर्शी, null = पता नहीं (फ़ोटो/चित्र) */
     private fun colorOf(d: Drawable?): Int? = when (d) {
         null -> 0
+        is com.dk.assistant.ui.ClayDrawable -> d.baseColor()
         is ColorDrawable -> d.color
         is GradientDrawable -> try { d.color?.defaultColor ?: d.colors?.firstOrNull() } catch (_: Exception) { null }
         is LayerDrawable -> {
@@ -233,13 +240,13 @@ object PlainLook {
         if (v.getTag(ICON_TAG) == key) return
         v.setTag(ICON_TAG, key)
         if (tint != null) {
-            if (lightText(tint) != tint) v.imageTintList = ColorStateList.valueOf(lightText(tint))
+            if (lightText(tint) != tint) v.imageTintList = ColorStateList.valueOf(themeText(tint))
             return
         }
         if (d is android.graphics.drawable.BitmapDrawable) return
         val dp = v.resources.displayMetrics.density
         if (v.width > 96 * dp || v.height > 96 * dp) return
-        if (whiteIcon(d)) v.setColorFilter(0xFF000000.toInt() or L_TEXT, android.graphics.PorterDuff.Mode.SRC_IN)
+        if (whiteIcon(d)) v.setColorFilter(com.dk.assistant.ui.ClayTheme.t.text, android.graphics.PorterDuff.Mode.SRC_IN)
     }
 
     /** drawable की प्रति 24px पर बनाकर: दिखते pixel लगभग सब सफ़ेद? */
@@ -284,22 +291,89 @@ object PlainLook {
         return null
     }
 
+    /*
+     * 23 नवंबर 2026 (मालिक: Soft 3D Clay): हर पुराना काँच वाला डिब्बा -> उभरा मिट्टी जैसा (दो परछाइयाँ, कोने 20–28dp).
+     * text box / composer = धँसा, accent = चमकदार ढलान. सारे रंग चुनी थीम ([com.dk.assistant.ui.ClayTheme]) से.
+     */
     private fun make(k: Kind, dp: Float): Drawable {
-        fun round(fill: Int, r: Float, stroke: Int = 0) = GradientDrawable().apply {
-            cornerRadius = r * dp; setColor(fill)
-            if (stroke != 0) setStroke(dp.toInt().coerceAtLeast(1), stroke)
-        }
-        fun oval(fill: Int) = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(fill) }
+        val FULL = com.dk.assistant.ui.ClayDrawable.FULL
+        val chip = { com.dk.assistant.ui.ClayTheme.t.chip }
+        fun c(style: ClayStyle, r: Float, depth: Float = 5f, oval: Boolean = false, fill: (() -> Int)? = null) =
+            com.dk.assistant.ui.ClayDrawable(style, radiusPx = if (r >= FULL) FULL else r * dp, oval = oval, depthPx = depth * dp, fill = fill)
         return when (k) {
-            Kind.CARD -> round(card(), 18f, border())
-            Kind.CIRCLE -> oval(pill())
-            Kind.ACCENT_CIRCLE -> oval(BLUE)
-            Kind.PILL -> round(pill(), 999f)
-            Kind.ACCENT -> round(BLUE, 999f)
-            Kind.ROW -> round(pill(), 12f)
-            Kind.FIELD -> round(field(), 18f, border())
-            Kind.BUBBLE_DK -> round(card(), 16f, border())
-            Kind.BUBBLE_ME -> round(me(), 16f)
+            Kind.CARD -> c(ClayStyle.RAISED, 22f, 6f)
+            Kind.CIRCLE -> c(ClayStyle.RAISED, 0f, 4f, oval = true, fill = chip)
+            Kind.ACCENT_CIRCLE -> c(ClayStyle.ACCENT, 0f, 4f, oval = true)
+            Kind.PILL -> c(ClayStyle.RAISED, FULL, 4f, fill = chip)
+            Kind.ACCENT -> c(ClayStyle.ACCENT, FULL, 4f)
+            Kind.ROW -> c(ClayStyle.RAISED, 20f, 4f, fill = chip)
+            Kind.FIELD -> c(ClayStyle.INSET, 20f, 3f)
+            Kind.BUBBLE_DK -> c(ClayStyle.RAISED, 22f, 4f)
+            Kind.BUBBLE_ME -> c(ClayStyle.ACCENT, 22f, 4f)
         }
+    }
+
+    private val INSTALLED = R.id.plain_look_installed
+    /** यह view (और अंदर का सब) अपने रूप में ही रहे - जैसे वीडियो / कैमरा / खास चित्र */
+    val SKIP = R.id.plain_look_skip
+
+    /** लाइट थीम में सफ़ेद-सी लिखावट -> थीम की गहरी लिखावट (उतनी ही पारदर्शिता); रंगीन वैसी ही */
+    private fun themeText(argb: Int): Int =
+        if (lightText(argb) != argb) (argb and 0xFF000000.toInt()) or (com.dk.assistant.ui.ClayTheme.t.text and 0xFFFFFF) else argb
+
+    /** ऐप के अपने ठोस डिब्बे (कार्ड / पिल / गहरा खाना) - किसी भी थीम के */
+    private fun surfaceColor(c: Int): Boolean = appDark(c) || com.dk.assistant.ui.ClayTheme.isSurface(c) ||
+        c == com.dk.assistant.ui.ClayTheme.t.well || c == com.dk.assistant.ui.ClayTheme.t.rim || c == L_CARD && light || c == L_PILL || c == L_FIELD || c == L_ME
+
+    /** GradientDrawable के कोने */
+    private fun radiusOf(g: GradientDrawable, dp: Float): Float = try {
+        val arr = if (android.os.Build.VERSION.SDK_INT >= 24) g.cornerRadii else null
+        arr?.maxOrNull() ?: g.cornerRadius
+    } catch (_: Exception) { 16 * dp }
+
+    /** पुराने सपाट डिब्बे जैसा ही आकार, पर Clay रूप में */
+    private fun clayLike(v: View, g: GradientDrawable, k: Kind): Drawable {
+        val dp = v.resources.displayMetrics.density
+        val FULL = com.dk.assistant.ui.ClayDrawable.FULL
+        val oval = g.shape == GradientDrawable.OVAL
+        val h = if (v.height > 0) v.height else (48 * dp).toInt()
+        val r0 = radiusOf(g, dp)
+        val r = when {
+            oval -> 0f
+            r0 >= h / 2f - 1 || r0 >= 200 * dp -> FULL
+            h >= 56 * dp -> r0.coerceIn(20 * dp, 28 * dp)
+            else -> r0.coerceAtLeast(14 * dp)
+        }
+        val depth = (if (h >= 80 * dp) 6f else if (h >= 40 * dp) 4.5f else 3f) * dp
+        val style = when (k) { Kind.ACCENT, Kind.ACCENT_CIRCLE, Kind.BUBBLE_ME -> ClayStyle.ACCENT; Kind.FIELD -> ClayStyle.INSET; else -> ClayStyle.RAISED }
+        val small = k == Kind.PILL || k == Kind.ROW || k == Kind.CIRCLE
+        return com.dk.assistant.ui.ClayDrawable(style, radiusPx = r, oval = oval, depthPx = depth,
+            fill = if (small && style == ClayStyle.RAISED) ({ com.dk.assistant.ui.ClayTheme.t.chip }) else null)
+    }
+
+    /**
+     * 23 नवंबर 2026: कोड में बने सादे डिब्बे (DkaiTheme.round / oval - कार्ड, पिल, खाना, नीला बटन) -> Clay.
+     * सिर्फ़ ऐप के अपने surface / accent रंग वाले; रंगीन (हरा / लाल / चित्र) वैसे ही.
+     */
+    private fun clayBox(v: View) {
+        val bg = v.background ?: return
+        if (v.getTag(TAG) === bg || bg is com.dk.assistant.ui.ClayDrawable) return
+        val g = (if (bg is RippleDrawable && bg.numberOfLayers > 0) bg.getDrawable(0) else bg) as? GradientDrawable ?: return
+        val c = try { g.color?.defaultColor } catch (_: Exception) { null } ?: return
+        if (((c ushr 24) and 0xFF) < 0xF0) return
+        val t = com.dk.assistant.ui.ClayTheme.t
+        val kind = when {
+            c == t.accent || c == BLUE || c == 0xFF1D4ED8.toInt() -> if (g.shape == GradientDrawable.OVAL) Kind.ACCENT_CIRCLE else Kind.ACCENT
+            c == t.well || c == FIELD || c == L_FIELD -> Kind.FIELD
+            c == t.chip || c == t.sel || c == PILL || c == ME || c == L_PILL || c == L_ME -> if (g.shape == GradientDrawable.OVAL) Kind.CIRCLE else Kind.PILL
+            surfaceColor(c) -> if (g.shape == GradientDrawable.OVAL) Kind.CIRCLE else Kind.CARD
+            else -> return
+        }
+        // पूरी स्क्रीन वाला डिब्बा = सादी पृष्ठभूमि (परछाईं नहीं)
+        if (fillsScreen(v)) { val d = ColorDrawable(bg()); v.background = d; v.setTag(TAG, d); return }
+        val d = clayLike(v, g, kind)
+        val l = v.paddingLeft; val tp = v.paddingTop; val r = v.paddingRight; val b = v.paddingBottom
+        v.background = d; v.setPadding(l, tp, r, b); v.setTag(TAG, d)
+        v.setTag(ACCENT_TAG, kind == Kind.ACCENT || kind == Kind.ACCENT_CIRCLE)
     }
 }

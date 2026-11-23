@@ -10,6 +10,13 @@ object DkaiHomeCore {
 
     enum class InputAction { VOICE, SEND }
 
+    /** 23 नवंबर 2026 (Soft Clay होम): समय के हिसाब से नमस्ते - 5–11 सुबह, 12–16 दोपहर, बाकी शाम */
+    fun greeting(hour: Int): String = when (hour) {
+        in 5..11 -> "Good morning,"
+        in 12..16 -> "Good afternoon,"
+        else -> "Good evening,"
+    }
+
     /** दाईं ओर का नीला बटन: कुछ लिखा / जुड़ा हो = भेजें, नहीं तो आवाज़ से बात. लिखवाते समय भी भेजें (✓ जैसा) */
     fun inputAction(hasText: Boolean, hasFiles: Boolean, dictating: Boolean): InputAction =
         if (hasText || hasFiles || dictating) InputAction.SEND else InputAction.VOICE

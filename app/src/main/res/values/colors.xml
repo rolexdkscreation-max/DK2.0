@@ -24,4 +24,9 @@
     <color name="metallic_gold_accent">#FFD700</color>
     <color name="text_primary">#FFFFFF</color>
     <color name="text_secondary">#94A3B8</color>
+    <!-- Soft Clay "Clay Day" (हल्की थीम) की dialog लिखावट - ClayTheme.tokens(CLAY_DAY) से निकले -->
+    <color name="clay_light_text">#FF2E3746</color>
+    <color name="clay_light_sub">#FF58606D</color>
+    <color name="clay_light_hint">#FF828995</color>
+    <color name="clay_light_accent">#FF2F7BFF</color>
 </resources>

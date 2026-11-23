@@ -25,39 +25,48 @@ object HomeMenu {
         val dp = a.resources.displayMetrics.density
         // 14 नवंबर 2026 (मालिक): काँच (ग्लासी) हटा - होम पैनल जैसा साधारण सपाट रंग
         DkaiTheme.load(a)
+        // 23 नवंबर 2026 (Soft Clay): उभरा बड़ा कार्ड, हर आइटम उभरी पट्टी (दबाने पर धँसे), नीचे ऐप version छोटे अक्षरों में
+        val k = ClayTheme.t
         val box = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
-            background = DkaiTheme.round(a, DkaiTheme.CARD, 18f, DkaiTheme.BORDER)
-            val p = (10 * dp).toInt(); setPadding(p, p, p, p)
+            background = Clay.raised(a, 26f, 7f)
+            val p = (16 * dp).toInt(); setPadding(p, p, p, p)
         }
-        val pw = PopupWindow(box, (288 * dp).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT, true)
+        val pw = PopupWindow(box, (300 * dp).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT, true)
         items.forEach { it0 ->
             val row = LinearLayout(a).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                background = DkaiTheme.press(DkaiTheme.round(a, 0, 12f), DkaiTheme.round(a, DkaiTheme.PILL, 12f))
-                minimumHeight = (56 * dp).toInt()
-                val p = (12 * dp).toInt(); setPadding(p, (8 * dp).toInt(), p, (8 * dp).toInt())
+                background = Clay.chip(a, 20f, 4f)
+                minimumHeight = (60 * dp).toInt()
+                val p = (14 * dp).toInt(); setPadding(p, (10 * dp).toInt(), p, (10 * dp).toInt())
                 isClickable = true; isFocusable = true
                 contentDescription = UiLang.s(it0.title)
                 setOnClickListener { pw.dismiss(); it0.action() }
             }
             row.addView(ImageView(a).apply {
-                setImageResource(it0.icon); background = DkaiTheme.oval(DkaiTheme.PILL)
-                val ip = (9 * dp).toInt(); setPadding(ip, ip, ip, ip)
+                setImageResource(it0.icon); background = Clay.circle(a, 3f)
+                val ip = (10 * dp).toInt(); setPadding(ip, ip, ip, ip)
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            }, LinearLayout.LayoutParams((40 * dp).toInt(), (40 * dp).toInt()).apply { marginEnd = (12 * dp).toInt() })
+            }, LinearLayout.LayoutParams((42 * dp).toInt(), (42 * dp).toInt()).apply { marginEnd = (12 * dp).toInt() })
             val col = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
             col.addView(TextView(a).apply {
-                text = UiLang.s(it0.title); textSize = 16f; setTypeface(typeface, Typeface.BOLD); setTextColor(DkaiTheme.WHITE)
+                text = UiLang.s(it0.title); textSize = 16f; setTypeface(typeface, Typeface.BOLD); setTextColor(k.text)
             })
             col.addView(TextView(a).apply {
-                text = UiLang.s(it0.sub); textSize = 12f; setTextColor(DkaiTheme.GRAY)
+                text = UiLang.s(it0.sub); textSize = 12f; setTextColor(k.gray)
             })
             row.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             box.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = (4 * dp).toInt()
+                topMargin = (8 * dp).toInt()
             })
         }
+        // सबसे नीचे: ऐप का version (छोटा, हल्का)
+        box.addView(TextView(a).apply {
+            text = try { com.dk.assistant.Updater.displayVersion(a) } catch (_: Exception) { "DK" }
+            textSize = 11f; setTextColor(k.hint); gravity = Gravity.CENTER; letterSpacing = 0.06f
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = (14 * dp).toInt() })
+        com.dk.assistant.PlainLook.apply(box)   // लाइट थीम: सफ़ेद चिह्न गहरे (रंगीन वैसे ही)
         pw.elevation = 0f
         pw.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0))
         pw.isOutsideTouchable = true

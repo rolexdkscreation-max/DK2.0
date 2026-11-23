@@ -8,4 +8,7 @@
     <item name="ui_raw" type="id" />
     <item name="dkai_root" type="id" />
     <item name="dk_home_tabs" type="id" />
+    <item name="clay_done" type="id" />
+    <item name="plain_look_installed" type="id" />
+    <item name="plain_look_skip" type="id" />
 </resources>

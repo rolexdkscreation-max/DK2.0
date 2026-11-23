@@ -3,7 +3,6 @@ package com.dk.assistant.ui
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
 import android.widget.ImageView
@@ -36,16 +35,20 @@ object HomeTabs {
     /**
      * पट्टी बनाओ. [fg] = नाम/आइकन का रंग, [accent] = चुना टैब और बीच का माइक, [bg] = पट्टी का रंग.
      * [go] को दबाया टैब मिलता है.
+     * 23 नवंबर 2026 (Soft Clay): उभरी गोल पट्टी; चुना टैब accent से भरा; बीच का माइक बड़ा गोल, बाकी से ऊपर उभरा, accent चमक.
+     * रंग ([accent] / [bg]) अब चुनी Clay थीम के ही आते हैं - टैब / क्रम / काम वही.
      */
     fun bar(c: Context, fg: Int, accent: Int, bg: Int, selected: Tab = Tab.HOME, go: (Tab) -> Unit): LinearLayout {
         val dm = c.resources.displayMetrics.density
         fun d(v: Float) = (v * dm + 0.5f).toInt()
+        val k = ClayTheme.t
         val bar = LinearLayout(c).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM
             id = R.id.dk_home_tabs
-            background = GradientDrawable().apply { setColor(bg); cornerRadius = d(22f).toFloat() }
-            setPadding(d(4f), d(4f), d(4f), d(4f))
-            elevation = d(4f).toFloat()
+            background = ClayDrawable(ClayDrawable.Style.RAISED, radiusPx = d(28f).toFloat(), depthPx = d(6f).toFloat())
+            setPadding(d(10f), d(8f), d(10f), d(10f))
+            clipChildren = false; clipToPadding = false
+            setTag(com.dk.assistant.PlainLook.SKIP, true)
         }
         for (t in TABS) {
             val on = t == selected
@@ -53,26 +56,38 @@ object HomeTabs {
             val cell = LinearLayout(c).apply {
                 orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                 isClickable = true; isFocusable = true; contentDescription = "${t.label} - ${t.desc}"
-                background = android.util.TypedValue().let { tv ->
-                    if (c.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, tv, true))
-                        androidx.core.content.ContextCompat.getDrawable(c, tv.resourceId) else null
-                }
+                // चुना टैब = accent से भरी उभरी गोली; बाकी दबाने पर धँसें (120ms)
+                background = if (mid) null else ClayDrawable(if (on) ClayDrawable.Style.ACCENT else ClayDrawable.Style.RAISED,
+                    radiusPx = d(20f).toFloat(), depthPx = if (on) d(4f).toFloat() else 0f, fill = { k.surface })
+                if (!mid) setPadding(0, d(4f), 0, d(4f))
+                clipChildren = false; clipToPadding = false
                 tag = t
                 setOnClickListener { go(t) }
             }
             val icon = ImageView(c).apply {
                 setImageResource(t.icon); scaleType = ImageView.ScaleType.FIT_CENTER
-                imageTintList = ColorStateList.valueOf(if (mid) bg else if (on) accent else fg)
-                if (mid) { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(accent) }; val p = d(9f); setPadding(p, p, p, p) }
+                imageTintList = ColorStateList.valueOf(if (mid || on) k.onAccent else fg)
+                if (mid) {
+                    background = ClayDrawable(ClayDrawable.Style.ACCENT, oval = true, depthPx = d(5f).toFloat())
+                    val p = d(17f); setPadding(p, p, p, p)
+                    // accent चमक (Android 9+: परछाईं का रंग accent)
+                    elevation = d(10f).toFloat()
+                    if (android.os.Build.VERSION.SDK_INT >= 28) { outlineSpotShadowColor = k.accent; outlineAmbientShadowColor = k.accent }
+                }
             }
-            val sz = if (mid) d(42f) else d(24f)
+            val sz = if (mid) d(66f) else d(24f)
             cell.addView(icon, LinearLayout.LayoutParams(sz, sz))
             cell.addView(TextView(c).apply {
                 text = t.label; textSize = 11f; maxLines = 1; gravity = Gravity.CENTER
-                setTextColor(if (on || mid) accent else fg)
-                if (on) setTypeface(typeface, Typeface.BOLD)
+                setTextColor(if (on) k.onAccent else if (mid) k.accent else fg)
+                if (on || mid) setTypeface(typeface, Typeface.BOLD)
             }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = d(2f) })
-            bar.addView(cell, LinearLayout.LayoutParams(0, d(if (mid) 64f else 56f), 1f))
+            // बीच का माइक: बाकी टैब से ऊपर उभरा (पट्टी से बाहर निकलता)
+            if (mid) cell.translationY = -d(18f).toFloat()
+            bar.addView(cell, LinearLayout.LayoutParams(0, if (mid) d(66f) + d(16f) else d(56f), 1f).apply {
+                if (!mid) { marginStart = d(3f); marginEnd = d(3f) }
+                if (mid) bottomMargin = -d(18f)
+            })
         }
         return bar
     }

@@ -13,8 +13,6 @@ import android.content.Context
 object NeonTheme {
 
     // ------------------------------------------------------------------ पसंद (Prefs keys)
-    const val K_THEME = "ui_theme"
-    const val K_ACCENT = "ui_accent"
     const val K_GLASS = "ui_glass"
     const val K_GLOW = "ui_glow"
     const val K_MOTION = "ui_motion"
@@ -22,55 +20,51 @@ object NeonTheme {
     const val LEGACY_WALL = "ui_wallpaper"
     /** पुराने गैलरी वाले वॉलपेपर की जगह (filesDir/wallpaper) - PlusBoot पीछे से मिटाता है */
     const val LEGACY_WALL_DIR = "wallpaper"
-    val KEYS = listOf(K_THEME, K_ACCENT, K_GLASS, K_GLOW, K_MOTION, ThemePacks.K_PACK, LEGACY_WALL)
+    /**
+     * 23 नवंबर 2026 (मालिक: "थीम गैलरी, डार्क नेवी / AMOLED काला और मुख्य रंग पूरी तरह हटाओ - कोई काम नहीं"):
+     * तीनों हटे. रंग अब सिर्फ़ Settings → Theme (ClayTheme) से. पुराने सेव मान कभी पढ़े नहीं जाते -
+     * PlusBoot पीछे से मिटाता है (और डाउनलोड की हुई थीम की जगह filesDir/themes भी).
+     */
+    const val LEGACY_THEME = "ui_theme"
+    const val LEGACY_ACCENT = "ui_accent"
+    const val LEGACY_PACK = "ui_pack"
+    const val LEGACY_PACK_DIR = "themes"
+    val LEGACY = listOf(LEGACY_THEME, LEGACY_ACCENT, LEGACY_PACK)
+    val KEYS = listOf(K_GLASS, K_GLOW, K_MOTION, LEGACY_WALL) + LEGACY
 
-    const val THEME_DARK = "dark"
-    const val THEME_AMOLED = "amoled"
     const val MOTION_STANDARD = "standard"
     const val MOTION_REDUCED = "reduced"
 
-    /** मुख्य (accent) रंग: नाम, चमकदार रंग, और उसका दूसरा (gradient) साथी */
-    enum class Accent(val key: String, val label: String, val main: Int, val partner: Int) {
-        BLUE("blue", "नियॉन नीला", 0xFF3D8BFF.toInt(), 0xFF8B5CF6.toInt()),
-        CYAN("cyan", "सियान", 0xFF22D3EE.toInt(), 0xFF3D8BFF.toInt()),
-        VIOLET("violet", "वायलेट", 0xFF8B5CF6.toInt(), 0xFF3D8BFF.toInt()),
-        PURPLE("purple", "पर्पल", 0xFFA855F7.toInt(), 0xFFE040FB.toInt()),
-        MAGENTA("magenta", "मैजेंटा", 0xFFE040FB.toInt(), 0xFF8B5CF6.toInt());
+    /** मुख्य रंग (पहले का शुरुआती "नियॉन नीला") और उसका gradient साथी - अब बदलता नहीं */
+    const val MAIN = 0xFF3D8BFF.toInt()
+    const val PARTNER = 0xFF8B5CF6.toInt()
+    /** पृष्ठभूमि (गहरा नेवी → मिडनाइट → गहरा बैंगनी), काँच, शीर्षक - पहले वाली शुरुआती "DK Futuristic" */
+    private val BG = intArrayOf(0xFF050A1F.toInt(), 0xFF0A1033.toInt(), 0xFF120A33.toInt())
+    private const val GLASS_A = 0xFF1B2A6E.toInt()
+    private const val GLASS_B = 0xFF0E1440.toInt()
+    private const val TITLE_A = 0xFFFFE7A3.toInt()
+    private const val TITLE_B = 0xFFF5B83D.toInt()
 
-        companion object {
-            fun of(k: String?) = values().firstOrNull { it.key == k } ?: BLUE
-        }
-    }
-
-    val THEMES = listOf(THEME_DARK to "डार्क नेवी (शुरुआती)", THEME_AMOLED to "AMOLED काला (बैटरी बचत)")
     val MOTIONS = listOf(MOTION_STANDARD to "सामान्य एनिमेशन", MOTION_REDUCED to "कम एनिमेशन (Reduced motion)")
 
     const val DEF_GLASS = 55
     const val DEF_GLOW = 60
 
     data class Look(
-        val theme: String = THEME_DARK,
-        val accent: Accent = Accent.BLUE,
         /** 0 = लगभग ठोस काँच, 100 = सबसे पारदर्शी */
         val glass: Int = DEF_GLASS,
         /** 0 = बिना चमक, 100 = सबसे तेज़ नियॉन चमक */
         val glow: Int = DEF_GLOW,
-        val motion: String = MOTION_STANDARD,
-        /** पूरी थीम (पृष्ठभूमि चित्र, काँच, रंग जोड़ी, शीर्षक, ORB) - ThemePacks; शुरुआती = ऐप के अंदर वाली */
-        val pack: ThemePack = ThemePacks.DEFAULT
+        val motion: String = MOTION_STANDARD
     ) {
-        private val packOn get() = pack.id != ThemePacks.DEFAULT_ID
-        /** मुख्य रंग: डिफ़ॉल्ट थीम में यूज़र का चुना रंग, दूसरी थीम में उस थीम का अपना */
-        val main: Int get() = if (packOn) pack.accent else accent.main
-        val partner: Int get() = if (packOn) pack.partner else accent.partner
+        val main: Int get() = MAIN
+        val partner: Int get() = PARTNER
         val glassF get() = glass / 100f
         val glowF get() = glow / 100f
     }
 
     /** पुरानी/गलत value आए तो भी सुरक्षित (क्रैश नहीं, शुरुआती value) */
-    fun sanitize(theme: String?, accent: String?, glass: Int, glow: Int, motion: String?) = Look(
-        theme = if (theme == THEME_AMOLED) THEME_AMOLED else THEME_DARK,
-        accent = Accent.of(accent),
+    fun sanitize(glass: Int, glow: Int, motion: String?) = Look(
         glass = glass.coerceIn(0, 100),
         glow = glow.coerceIn(0, 100),
         motion = if (motion == MOTION_REDUCED) MOTION_REDUCED else MOTION_STANDARD
@@ -88,9 +82,7 @@ object NeonTheme {
 
     fun load(c: Context) {
         val sp = c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE)
-        set(sanitize(sp.getString(K_THEME, null), sp.getString(K_ACCENT, null),
-            sp.getInt(K_GLASS, DEF_GLASS), sp.getInt(K_GLOW, DEF_GLOW), sp.getString(K_MOTION, null))
-            .copy(pack = ThemePacks.load(c, ThemePacks.selectedId(c))))
+        set(sanitize(sp.getInt(K_GLASS, DEF_GLASS), sp.getInt(K_GLOW, DEF_GLOW), sp.getString(K_MOTION, null)))
         systemNoAnim = try {
             android.provider.Settings.Global.getFloat(c.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
         } catch (_: Exception) { false }
@@ -98,7 +90,6 @@ object NeonTheme {
 
     fun save(c: Context, l: Look) {
         c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE).edit()
-            .putString(K_THEME, l.theme).putString(K_ACCENT, l.accent.key)
             .putInt(K_GLASS, l.glass).putInt(K_GLOW, l.glow).putString(K_MOTION, l.motion).apply()
         set(l)
     }
@@ -108,7 +99,7 @@ object NeonTheme {
         val e = c.getSharedPreferences("dk_prefs", Context.MODE_PRIVATE).edit()
         KEYS.forEach { e.remove(it) }
         e.apply()
-        set(Look())   // डाउनलोड की हुई थीम फ़ोन में रहती हैं, बस डिफ़ॉल्ट थीम लागू
+        set(Look())
     }
 
     fun reducedMotion(l: Look = look, systemOff: Boolean = systemNoAnim) = systemOff || l.motion == MOTION_REDUCED
@@ -148,20 +139,18 @@ object NeonTheme {
     const val TEXT2 = 0xD9E6ECFF.toInt()
     const val TEXT3 = 0xA6C4CCE6.toInt()
 
-    /** पृष्ठभूमि: ऊपर, बीच, नीचे (गहरा नेवी / मिडनाइट; AMOLED = लगभग काला) */
-    fun bg(l: Look = look): IntArray = if (l.theme == THEME_AMOLED)
-        intArrayOf(0xFF000000.toInt(), 0xFF02030A.toInt(), 0xFF060414.toInt())
-    else l.pack.bg.copyOf()   // डिफ़ॉल्ट थीम: 050A1F → 0A1033 → 120A33 (पहले जैसा)
+    /** पृष्ठभूमि: ऊपर, बीच, नीचे (गहरा नेवी → मिडनाइट → गहरा बैंगनी, पहले जैसा) */
+    fun bg(): IntArray = BG.copyOf()
 
     /** काँच का आधार रंग (नेवी) - पारदर्शिता यूज़र की पसंद से; सबसे पारदर्शी पर भी सफ़ेद text पढ़ने लायक */
     fun glassAlpha(l: Look = look, base: Float = 1f): Int {
         val a = 0xE0 - (0xE0 - 0x7A) * l.glassF          // 224 .. 122
         return (a * base).toInt().coerceIn(0x50, 0xF5)
     }
-    fun glassTop(l: Look = look, base: Float = 1f) = alpha(mix(l.pack.glassA, l.main, 0.10f), glassAlpha(l, base))
-    fun glassBottom(l: Look = look, base: Float = 1f) = alpha(mix(l.pack.glassB, l.partner, 0.08f), glassAlpha(l, base) + 0x0A)
-    fun glassPressTop(l: Look = look) = alpha(mix(mix(l.pack.glassA, 0xFFFFFFFF.toInt(), 0.07f), l.main, 0.25f), glassAlpha(l) + 0x14)
-    fun glassPressBottom(l: Look = look) = alpha(mix(mix(l.pack.glassB, 0xFFFFFFFF.toInt(), 0.04f), l.partner, 0.2f), glassAlpha(l) + 0x18)
+    fun glassTop(l: Look = look, base: Float = 1f) = alpha(mix(GLASS_A, l.main, 0.10f), glassAlpha(l, base))
+    fun glassBottom(l: Look = look, base: Float = 1f) = alpha(mix(GLASS_B, l.partner, 0.08f), glassAlpha(l, base) + 0x0A)
+    fun glassPressTop(l: Look = look) = alpha(mix(mix(GLASS_A, 0xFFFFFFFF.toInt(), 0.07f), l.main, 0.25f), glassAlpha(l) + 0x14)
+    fun glassPressBottom(l: Look = look) = alpha(mix(mix(GLASS_B, 0xFFFFFFFF.toInt(), 0.04f), l.partner, 0.2f), glassAlpha(l) + 0x18)
 
     /** मुख्य बटन / अपना संदेश: accent से partner तक नियॉन gradient (हमेशा लगभग ठोस - text साफ़) */
     // navy में 46% मिलाकर: सबसे हल्के (सियान) पर भी सफ़ेद अक्षर का contrast 4.5:1 से ऊपर (NeonThemeTest)
@@ -174,9 +163,9 @@ object NeonTheme {
     fun glowAlpha(l: Look = look, max: Int = 0x46) = (max * l.glowF).toInt()
 
     /** पृष्ठभूमि की धीमी रोशनी (accent, violet, magenta, cyan) और उनकी चमक */
-    fun auroraColors(l: Look = look) = intArrayOf(l.main, VIOLET, MAGENTA, if (l.main == Accent.CYAN.main) 0xFF3D8BFF.toInt() else CYAN)
+    fun auroraColors(l: Look = look) = intArrayOf(l.main, VIOLET, MAGENTA, CYAN)
     /** शीर्षक (जैसे CONTROL CENTER) का चमकदार ढलान */
-    fun title(l: Look = look) = intArrayOf(l.pack.titleA, l.pack.titleB)
+    fun title() = intArrayOf(TITLE_A, TITLE_B)
 
     fun auroraAlpha(l: Look = look, base: Int): Int = (base * (0.35f + 0.9f * l.glowF)).toInt().coerceIn(0, 140)
 }

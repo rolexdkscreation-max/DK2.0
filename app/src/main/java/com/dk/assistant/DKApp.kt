@@ -26,6 +26,8 @@ class DKApp : Application() {
         UiLang.load(this)     // स्क्रीनों की भाषा (शुरुआती English)
         com.dk.assistant.ui.NeonTheme.load(this)          // v4: दिखावट (रंग/काँच/चमक/एनिमेशन) - सिर्फ़ UI
         registerActivityLifecycleCallbacks(com.dk.assistant.ui.NeonRefresh)
+        com.dk.assistant.ui.ClayTheme.load(this)          // 23 नवंबर 2026: Soft Clay थीम (8 में से चुनी) - सिर्फ़ UI
+        registerActivityLifecycleCallbacks(com.dk.assistant.ui.Clay.Refresh)
         registerActivityLifecycleCallbacks(ScreenAwake)   // v4.1: DK सामने = स्क्रीन जगी (wake lock नहीं)
         StatusNotify.install(this)
         // v3.88: लोकल याददाश्त - ऐप खुलते ही सार, और रोज़ एक बार (नवंबर 2026: कुछ भी अपने-आप नहीं मिटता)
