@@ -16,7 +16,7 @@ object LeakedCall {
     val TOOLS = listOf(
         "social_media_task_control", "social_media_task", "notification_reply", "recall_conversation", "search_history",
         "computer_task", "build_website", "connector_task", "whatsapp_task", "forget_memory", "remember_fact",
-        "screen_share", "teacher_mode", "dk_settings", "dk_inspector", "current_time", "coding_task", "notifications", "dk_features",
+        "screen_share", "teacher_mode", "teacher_draw", "dk_settings", "dk_inspector", "current_time", "coding_task", "notifications", "dk_features",
         "task_status", "phone_task", "phone_call", "story_task", "web_search", "deep_think", "local_info", "camera", "image_task",
         "ai_app_prompt", "shop_search", "website_action", "make_game", "social_insights", "reel_stats",
         "look_screen", "app_studio", "ai_talk", "form_fill", "deep_research", "look_photo", "generate_image"

@@ -10,7 +10,8 @@ object TeacherBoard {
 
     enum class Action { NONE, OPEN, CLOSE }
 
-    data class Section(val question: String, val answer: String)
+    /** [figures] = 23 नवंबर 2026: DK के बनाए चित्र ([TeacherDraw] की लिखाई) - सवाल के ठीक नीचे, समझाने से पहले */
+    data class Section(val question: String, val answer: String, val figures: List<String> = emptyList())
 
     // ---------------- पहचान ----------------
 
@@ -158,6 +159,22 @@ object TeacherBoard {
         version++
     }
 
+    /**
+     * 23 नवंबर 2026 (मालिक: "DK ड्रॉ करके समझाए"): DK Live का teacher_draw - चल रहे सवाल के नीचे चित्र.
+     * कोई सवाल न हो तो [title] से नया हिस्सा. @return चित्र सही बना?
+     */
+    @Synchronized fun addFigure(title: String, spec: String): Boolean {
+        if (TeacherDraw.parse(spec) == null) return false
+        val i = sections.size - 1
+        if (i >= 0 && !replyClosed) sections[i] = sections[i].copy(figures = (sections[i].figures + spec.trim()).takeLast(4))
+        else {
+            sections += Section(title.trim().ifBlank { "चित्र" }, "", listOf(spec.trim())); replyClosed = false; capturing = true
+            while (sections.size > 12) sections.removeAt(0)
+        }
+        version++
+        return true
+    }
+
     /** पन्ने के अंदर से पूछा गया सवाल (टाइप/माइक) - सीधे जोड़ो */
     @Synchronized fun addLocal(q: String, a: String) {
         sections += Section(q.trim(), a.trim()); replyClosed = true
@@ -168,13 +185,18 @@ object TeacherBoard {
     // ---------------- लिखाई का ढाँचा ----------------
 
     data class Line(val text: String, val kind: Kind)
-    enum class Kind { QUESTION, HEADING, STEP, ANSWER, POINT }
+    /** FIGURE = 23 नवंबर 2026: [Line.text] में चित्र की लिखाई ([TeacherDraw]) */
+    enum class Kind { QUESTION, HEADING, STEP, ANSWER, POINT, FIGURE }
 
     private val STEP = Regex("(चरण|स्टेप|step)\\s*([0-9०-९]+)\\s*[:.)-]?", RegexOption.IGNORE_CASE)
     private val FINAL = Regex("^(उत्तर|जवाब|answer|अतः|इसलिए\\s+उत्तर)\\s*[:-]", RegexOption.IGNORE_CASE)
 
     /** बोला गया जवाब -> बोर्ड की लाइनें (गणित = हर चरण अलग लाइन; बाक़ी = शीर्षक + छोटे बिंदु) */
     fun format(answer: String): List<Line> {
+        // 23 नवंबर 2026: [DRAW]…[/DRAW] = उसी जगह चित्र; बाकी text पहले जैसा
+        if (answer.contains(TeacherDraw.OPEN, ignoreCase = true)) return TeacherDraw.split(answer).flatMap { p ->
+            if (p.figure) (if (TeacherDraw.parse(p.text) != null) listOf(Line(p.text, Kind.FIGURE)) else emptyList()) else format(p.text)
+        }
         var a = answer.replace(Regex("[*#`_]{1,3}"), "").replace("\r", "").trim()
         if (a.isBlank()) return emptyList()
         // हर "चरण N" नई लाइन से
@@ -223,6 +245,7 @@ object TeacherBoard {
         val out = ArrayList<Line>()
         for (s in sections()) {
             out += Line("प्रश्न: " + s.question, Kind.QUESTION)
+            out += s.figures.map { Line(it, Kind.FIGURE) }
             out += format(s.answer)
         }
         return out
@@ -239,6 +262,10 @@ object TeacherBoard {
             "The board writes exactly what you say, in step with your voice - do not say you are writing anything, just teach. Teach like a good teacher in simple words: " +
             "MATHS: solve it step by step, every step one short spoken line that starts with \"चरण 1:\", \"चरण 2:\" … and end with \"उत्तर: …\". " +
             "OTHER SUBJECTS: first a short heading line, then simple points, each point one short sentence. " +
+            "TEACH IN FINE DETAIL, step by step like a real teacher: what it is, how and why it happens, where it happens / is used, " +
+            "one everyday example (Indian life) for every idea, then check: \"यहाँ तक समझ आया?\". If he says he did not understand, never repeat the same words - " +
+            "explain again more simply, smaller steps, a new example or a drawing, as many times as he needs, with patience. " +
+            TeacherDraw.LIVE_RULE +
             "Stay in this teaching style until the study talk is over. If he gives a phone task in between (alarm, message), do it with the WORK rules, then go back to teaching if he wants. " +
             "The board closes only when he himself says \"बंद करो\" or \"वापस जाओ\"."
 }

@@ -180,6 +180,15 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
             .put("parameters", JSONObject().put("type", "OBJECT")
                 .put("properties", JSONObject().put("on", JSONObject().put("type", "BOOLEAN")))
                 .put("required", JSONArray().put("on"))))
+        // 23 नवंबर 2026 (मालिक: "जो समझ न आए, DK ड्रॉ करके समझाए"): टीचर बोर्ड पर चित्र ([TeacherDraw])
+        .put(JSONObject().put("name", "teacher_draw")
+            .put("description", "Draw a diagram on the Teacher board to explain a topic visually, then explain it part by part. " +
+                "figure = drawing lines: " + TeacherDraw.GRAMMAR)
+            .put("parameters", JSONObject().put("type", "OBJECT")
+                .put("properties", JSONObject()
+                    .put("title", JSONObject().put("type", "STRING").put("description", "Short Hindi name of the picture"))
+                    .put("figure", JSONObject().put("type", "STRING").put("description", "The drawing, one item per line, e.g. circle 50 30 12 orange fill")))
+                .put("required", JSONArray().put("figure"))))
         // v5 (मालिक): DK को सारी सेटिंग्स पता हों और वह उन्हें ऑन-ऑफ कर सके - हर बदलाव से पहले दो बार पक्का
         .put(JSONObject().put("name", "dk_settings")
             .put("description", "Know, open and switch DK's own settings. action=list: all switchable settings with their current ON/OFF state and all parts of Settings. " +

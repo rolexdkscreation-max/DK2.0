@@ -27,7 +27,7 @@ object LiveConnect {
         appendLine("7a. App Studio (apps built right on the phone - web app, PWA, Android/Flutter app - with a live preview; DK Computer and the Coding Agent both build there) -> app_studio: status = what is being built now, which step is running, files, result; open = show the studio screen; change = change the current app; stop; build = a new app. task_status also shows it.")
         appendLine("7b. Games -> make_game: DK Computer makes a playable HTML5 game exactly as asked; DK opens it in Chrome and tells what is in it.")
         appendLine("8. Story Mode (Story Writer Agent: long emotional Hindi stories of 10, 15, 20, 25 or 30 minutes, written part by part) -> story_task.")
-        appendLine("9. Teacher Mode (whiteboard page; what you explain is written there) -> teacher_mode. It opens ONLY when the user himself asks (टीचर मोड खोलो) - never by itself for a study question.")
+        appendLine("9. Teacher Mode (whiteboard page; what you explain is written there) -> teacher_mode. It opens ONLY when the user himself asks (टीचर मोड खोलो) - never by itself for a study question. On it DK can also draw diagrams -> teacher_draw.")
         appendLine("10. Autonomous Mode: " + (if (autoOn) "ON" + (if (autoKinds.isNotEmpty()) " for: " + autoKinds.joinToString(", ") else "") + " - phone_task requests of these kinds are planned and done by it automatically."
             else "OFF - the user can turn it on in Settings -> ऑटोनोमस मोड. Never claim it is on."))
         appendLine("10b. Touch Mode (टच मोड, old name स्क्रीन गार्ड, anti-theft) ON -> screen_guard (only ON, and only when the owner himself says \"टच मोड ऑन करो\"; OFF only by the owner: unlock phone / face / secret word).")
@@ -80,8 +80,16 @@ object LiveConnect {
         if (ok) "SYSTEM NOTE: Website Forge has really finished the website (\"${prompt.take(100)}\"). It is shown on the Forge screen. Tell the user briefly that the website is ready, and that he can ask for changes, to open it in Chrome, to send its link, or to deploy it (website_action)."
         else "SYSTEM NOTE: Website Forge could NOT finish the website (\"${prompt.take(100)}\"). Problem: \"${(error ?: "-").take(200)}\". Tell the user this briefly. Do NOT say it is ready."
 
+    /** 23 नवंबर 2026 (मालिक: "DK ड्रॉ करके समझाए"): teacher_draw का नतीजा मॉडल को */
+    fun drawResult(ok: Boolean, opened: Boolean): String = when {
+        ok -> "drawn: the figure is on the Teacher board" + (if (opened) " (the board was opened for it)" else "") +
+            ". Now explain it part by part in short simple lines, like a teacher pointing at the board. Do not read the drawing code."
+        else -> "not_drawn: nothing could be drawn from that figure. Use exactly this format and call teacher_draw again - " + TeacherDraw.GRAMMAR
+    }
+
     fun teacherResult(on: Boolean, wasOpen: Boolean): String = when {
-        on -> "teacher_opened: Teacher Mode page is open. Whatever you explain now is written on it. Tell the user briefly and ask what to study."
+        on -> "teacher_opened: Teacher Mode page is open. Whatever you explain now is written on it. Tell the user briefly and ask what to study. " +
+            TeacherDraw.LIVE_RULE + "teacher_draw figure format - " + TeacherDraw.GRAMMAR
         wasOpen -> "teacher_closed: Teacher Mode page closed. Tell the user briefly."
         else -> "Teacher Mode was not open."
     }
