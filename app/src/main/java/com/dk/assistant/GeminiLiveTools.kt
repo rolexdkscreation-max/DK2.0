@@ -686,5 +686,5 @@ internal fun GeminiLive.ignoreTools(calls: JSONArray) {
 
 /** 23 नवंबर 2026: निजता कार्ड पर टैप - Live को SYSTEM NOTE (हाँ = वही tool दोबारा, ना = नहीं देखना) */
 internal fun privacyTapNote(tool: String, yes: Boolean): String =
-    if (yes) "SYSTEM NOTE: the user tapped हाँ on DK's privacy card (\"${PrivacyGate.QUESTION}\"). Now call $tool again for this one task only."
+    if (yes) "SYSTEM NOTE: the user tapped हाँ on DK's privacy card (\"${PrivacyGate.QUESTION}\"). Now call $tool again right away and finish this one task in one go - do not ask again."
     else "SYSTEM NOTE: the user tapped नहीं on DK's privacy card - do NOT look. Tell him in one short line that you did not look."

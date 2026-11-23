@@ -168,7 +168,8 @@ internal fun DKAccessibilityService.openLens(on: Boolean, front: Boolean): Strin
     val facing = if (front) "front" else "back"
     if (!on) { LiveVision.setCamera(this, false); return "SAID: DK स्कैन बंद कर दिया।" }
     // 23 नवंबर 2026 (मालिक: निजता): कैमरा खोलने से पहले "क्या मैं ये देखूँ?" - हाँ (कार्ड / आवाज़) के बाद ही
-    if (!PrivacyGate.consumeGrant(PrivacyGate.Kind.CAMERA)) {
+    // 23 नवंबर 2026 (मालिक): "DK लेंस खोलो" खुद कहा = बिना पूछे सीधे; बात साफ़ न हो तभी पूछो
+    if (!PrivacyGate.explicitNow(PrivacyGate.Kind.CAMERA) && !PrivacyGate.consumeGrant(PrivacyGate.Kind.CAMERA)) {
         val asked = PrivacyGate.askThen(PrivacyGate.Kind.CAMERA) { openLens(true, front) }
         return if (asked) "SAID: ${PrivacyGate.QUESTION} (कैमरा) - स्क्रीन पर हाँ या नहीं दबाइए।"
         else "SAID: कैमरा खोलने से पहले मुझे आपसे पूछना है - DK ऐप खोलकर फिर कहिए।"
@@ -182,11 +183,9 @@ internal fun DKAccessibilityService.openLens(on: Boolean, front: Boolean): Strin
         if (!DKState.live) startLive()
         return "SAID: DK स्कैन खोल रहा हूँ (${if (front) "सामने वाला" else "पीछे वाला"} कैमरा)।"
     }
+    // 23 नवंबर 2026 (मालिक: "DK लेंस ओपन करो बोलूँ तो पुरानी विंडो नहीं"): होम का नया स्कैन टैब (उसी में लेंस), पुरानी आवाज़ स्क्रीन नहीं
     return try {
-        startActivity(android.content.Intent(this, VoiceActivity::class.java)
-            .putExtra(VoiceActivity.EXTRA_WANT, VoiceActivity.WANT_CAMERA)
-            .putExtra(VoiceActivity.EXTRA_FRONT, front)
-            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP))
+        if (!com.dk.assistant.dkai.ScanPanel.openHome(this, front)) throw IllegalStateException("होम नहीं खुला")
         "SAID: DK स्कैन खोल रहा हूँ (${if (front) "सामने वाला" else "पीछे वाला"} कैमरा)।"
     } catch (e: Exception) { "ERROR: DK स्कैन नहीं खुला: ${e.message}" }
 }

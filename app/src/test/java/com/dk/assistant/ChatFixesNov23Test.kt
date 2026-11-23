@@ -83,13 +83,30 @@ class ChatFixesNov23Test {
         assertTrue(d.contains("scanPanel?.leaveTab()"))
         assertTrue(src("LiveVision.kt").contains("!VoiceActivity.visible && !com.dk.assistant.dkai.ScanPanel.onScreen()"))
         val yt = src("DKAccessibilityYt.kt")
-        assertTrue(yt.indexOf("ScanPanel.again(front)") in 1 until yt.indexOf("VoiceActivity.WANT_CAMERA"))
+        // 23 नवंबर 2026 (मालिक: "DK लेंस ओपन करो" बोलने पर भी पुरानी विंडो): टैब खुला = वहीं, वरना होम का स्कैन टैब - आवाज़ स्क्रीन कभी नहीं
+        assertTrue(yt.indexOf("ScanPanel.again(front)") in 1 until yt.indexOf("ScanPanel.openHome(this, front)"))
+        assertFalse(yt.contains("VoiceActivity.WANT_CAMERA"))
+        val lv = src("LiveVision.kt")
+        assertTrue(lv.contains("com.dk.assistant.dkai.ScanPanel.openHome(c, front)"))
+        assertFalse(lv.contains("VoiceActivity::class.java"))
         val sp = src("dkai/ScanPanel.kt")
         assertTrue(sp.contains("a.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)"))
         // Chat स्क्रीन से स्कैन = होम का वही नया स्कैन टैब
         assertTrue(src("ChatActivity.kt").contains(".putExtra(MainActivity.EXTRA_TAB, MainActivity.TAB_SCAN)"))
         val m = src("MainActivity.kt")
-        assertTrue(m.contains("else d.showTab(com.dk.assistant.ui.HomeTabs.Tab.SCAN)"))
+        assertTrue(m.contains("else { d.scanFront = front; d.showTab(com.dk.assistant.ui.HomeTabs.Tab.SCAN) }"))
+        assertTrue(d.contains("scanPanel?.show(front = f, userTap = true)"))
         assertTrue(m.contains("openPendingTab()"))
+    }
+
+    @Test fun voiceLensOpensHomeScanTab() {
+        val c = org.robolectric.RuntimeEnvironment.getApplication()
+        val i = ScanPanel.homeIntent(c, true)
+        assertEquals(com.dk.assistant.MainActivity::class.java.name, i.component?.className)
+        assertEquals(com.dk.assistant.MainActivity.TAB_SCAN, i.getStringExtra(com.dk.assistant.MainActivity.EXTRA_TAB))
+        assertTrue(i.getBooleanExtra(com.dk.assistant.MainActivity.EXTRA_FRONT, false))
+        assertFalse(ScanPanel.homeIntent(c, false).getBooleanExtra(com.dk.assistant.MainActivity.EXTRA_FRONT, true))
+        assertTrue(i.flags and android.content.Intent.FLAG_ACTIVITY_NEW_TASK != 0)
+        assertTrue(i.flags and android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP != 0)
     }
 }

@@ -34,7 +34,10 @@ class DkLensTest {
         // 23 नवंबर 2026 (मालिक): स्कैन टैब चुना = पुरानी आवाज़ वाली विंडो कभी नहीं (पल भर रुकी स्क्रीन पर भी)
         assertTrue(src("LiveVision.kt").contains("!com.dk.assistant.dkai.ScanPanel.onScreen()"))
         assertFalse(d.contains("VoiceActivity.WANT_CAMERA"))
-        assertTrue(src("DKAccessibilityYt.kt").contains(".putExtra(VoiceActivity.EXTRA_FRONT, front)"))
+        // 23 नवंबर 2026 (मालिक: "DK लेंस ओपन करो" = नया स्कैन टैब): सामने / पीछे वाला कैमरा होम टैब तक, पुरानी (क्लासिक) होम पर आवाज़ स्क्रीन तक
+        assertTrue(src("DKAccessibilityYt.kt").contains("ScanPanel.openHome(this, front)"))
+        assertTrue(src("dkai/ScanPanel.kt").contains(".putExtra(com.dk.assistant.MainActivity.EXTRA_FRONT, front)"))
+        assertTrue(src("MainActivity.kt").contains("if (front) { putExtra(VoiceActivity.EXTRA_FRONT, true) }"))
         assertTrue(src("VoiceActivity.kt").contains("if (i.getBooleanExtra(EXTRA_FRONT, false)) \"front\" else \"back\""))
     }
 }

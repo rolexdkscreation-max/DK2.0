@@ -96,6 +96,9 @@ object DKState {
     }
     const val OWNER_SAID_MS = 60_000L
 
+    /** 23 नवंबर 2026 ([PrivacyGate]): मालिक की पिछली पूरी बातें (पुरानी से नई, समय के साथ) */
+    fun userTurns(): List<Pair<String, Long>> = synchronized(recentUser) { recentUser.toList() }
+
     fun user(t: String) {
         lastUser = t
         if (t.isNotBlank()) ChatGreet.disarm()     // 19 नवंबर 2026: यूज़र पहले बोला = अलग से "नमस्ते" नहीं
