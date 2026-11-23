@@ -97,10 +97,17 @@ object GeminiTts {
         val order = (listOfNotNull(workingModel) + NEW_MODELS + OLD_MODELS).distinct()
             .filter { it !in missing && !blocked(key, it, now) }
         if (order.isEmpty()) throw AiException(429, "Gemini TTS की आज की फ्री लिमिट खत्म")
+        // 23 नवंबर 2026 (मालिक: इंसान जैसा बोलना - धीरे से / चिल्लाकर / गाना): बातचीत की आवाज़ में टुकड़े का अंदाज़.
+        // FREE (कहानी / Broadcast का अपना style) और JARVIS वैसे ही
+        val d = if (style.startsWith(FREE) || style == JarvisMode.STYLE_ID) com.dk.assistant.voice.engine.VoiceFeel.Delivery.NORMAL
+            else com.dk.assistant.voice.engine.VoiceFeel.current(text)
+        val st = if (d == com.dk.assistant.voice.engine.VoiceFeel.Delivery.NORMAL) style else FREE + com.dk.assistant.voice.engine.VoiceFeel.ttsStyle(d, styleText(style))
         var last: Exception? = null
         for (m in order) {
             try {
-                val wav = if (m in OLD_MODELS) legacy(key, m, text, voice, style) else interactions(key, m, text, voice, style)
+                val said = if (d == com.dk.assistant.voice.engine.VoiceFeel.Delivery.NORMAL) text
+                    else com.dk.assistant.voice.engine.VoiceFeel.ttsText(text, d, m !in OLD_MODELS && m.startsWith("gemini-3.8"))
+                val wav = if (m in OLD_MODELS) legacy(key, m, said, voice, st) else interactions(key, m, said, voice, st)
                 workingModel = m
                 return wav
             } catch (e: AiException) {
