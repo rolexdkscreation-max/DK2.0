@@ -22,6 +22,12 @@ import kotlin.math.sin
 class HomeAvatarView(c: Context) : DkaiAnimView(c) {
     var bitmap: Bitmap? = null
         set(v) { field = v; invalidate() }
+    /**
+     * 23 नवंबर 2026 (मालिक: "कैरेक्टर पूरी स्क्रीन के बैकग्राउंड में, दूर या छोटा नहीं"): true = तस्वीर पूरी view भरे
+     * (अनुपात वही, किनारे कटें - [cover]), हर चुने कैरेक्टर पर एक जैसा.
+     */
+    var cover = false
+        set(v) { field = v; invalidate() }
     /** [FluidOrbView.LISTEN] / [FluidOrbView.THINK] / [FluidOrbView.SPEAK], -1 = शांत */
     var call: () -> Int = { -1 }
 
@@ -30,6 +36,11 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
 
         /** pure: साँस का ऊपर-नीचे (px), t सेकंड पर */
         fun breath(t: Float, amp: Float): Float = (sin(2 * PI * t / BREATH_S) * amp).toFloat()
+
+        /**
+         * pure: पूरी स्क्रीन भरने का पैमाना - तस्वीर (bw x bh) view (w x h) को पूरा ढके, अनुपात वही.
+         */
+        fun coverScale(w: Float, h: Float, bw: Float, bh: Float): Float = if (bw <= 0f || bh <= 0f) 1f else maxOf(w / bw, h / bh)
 
         /** pure: बोलते समय झूमना (डिग्री) - आवाज़ जितनी तेज़ उतना, पर 4° से ज़्यादा नहीं */
         fun sway(t: Float, level: Float): Float = (sin(t * 7.0) * 4.0 * level.coerceIn(0f, 1f)).toFloat()
@@ -70,11 +81,13 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
 
         val b = bitmap ?: return
         // तस्वीर view में पूरी (अनुपात वही), नीचे-बीच
-        val s = minOf(w * 0.92f / b.width, h * 0.96f / b.height)
+        val s = if (cover) coverScale(w, h, b.width.toFloat(), b.height.toFloat()) * 1.02f else minOf(w * 0.92f / b.width, h * 0.96f / b.height)
         val bw = b.width * s; val bh = b.height * s
         val dy = if (calm) 0f else breath(t, 4f * dp)
         val scale = 1f + (if (calm) 0f else 0.012f * sin(2 * PI.toFloat() * t / BREATH_S)) + if (speaking) 0.03f * lv else 0f
-        dst.set((w - bw) / 2, h - bh + dy, (w + bw) / 2, h + dy)
+        // पूरी स्क्रीन: चेहरा ऊपर के हिस्से में रहे (ऊपर से टिकी, नीचे कटे); बाकी: नीचे-बीच
+        if (cover) dst.set((w - bw) / 2, minOf(0f, h - bh) * 0.25f + dy, (w + bw) / 2, minOf(0f, h - bh) * 0.25f + bh + dy)
+        else dst.set((w - bw) / 2, h - bh + dy, (w + bw) / 2, h + dy)
         cv.save()
         cv.scale(scale, scale, w / 2, h)
         if (speaking && !calm) cv.rotate(sway(t, lv), w / 2, h)

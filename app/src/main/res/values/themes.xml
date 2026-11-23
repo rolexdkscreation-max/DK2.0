@@ -37,7 +37,8 @@
         <item name="android:textColorSecondary">#D9FFFFFF</item>
         <item name="android:textColorAlertDialogListItem">#FFFFFFFF</item>
         <item name="android:textColorHint">#99FFFFFF</item>
-        <item name="android:backgroundDimAmount">0.32</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.6</item>
         <item name="android:windowAnimationStyle">@style/DK.DialogAnim</item>
         <item name="android:buttonBarButtonStyle">@style/DK.DialogButton</item>
     </style>
@@ -47,7 +48,8 @@
         <item name="colorPrimary">#FFFFFFFF</item>
         <item name="android:textColorPrimary">#FFFFFFFF</item>
         <item name="android:textColorSecondary">#D9FFFFFF</item>
-        <item name="android:backgroundDimAmount">0.32</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.6</item>
     </style>
     <style name="DK.DialogButton" parent="android:Widget.Material.Button.Borderless.Colored">
         <item name="android:textColor">#FFFFFFFF</item>

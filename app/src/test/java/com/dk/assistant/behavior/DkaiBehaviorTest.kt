@@ -54,7 +54,17 @@ class DkaiBehaviorTest {
         val t = texts(s.root)
         assertTrue("DKAI" in t)
         assertTrue(t.any { it.contains("READY") || it.contains("SETUP") })
-        assertTrue("+ New" in t || t.any { it.trim() == "New" })
+        // 23 नवंबर 2026 (मालिक): ऊपर की पट्टी से "+ New"/कैमरा हटे - चैट टैब उसी जगह खुलता है, वहाँ सब मौजूद
+        assertFalse("+ New" in t)
+        assertNull(byDesc(s.root, "DK लेंस"))
+        assertTrue(s.showTab(com.dk.assistant.ui.HomeTabs.Tab.CHAT)); idle()
+        assertEquals(com.dk.assistant.ui.HomeTabs.Tab.CHAT, s.tabNow)
+        val tc = texts(s.root)
+        assertTrue("+ New" in tc || tc.any { it.trim() == "New" })
+        assertNotNull(byDesc(s.root, "पुरानी सारी चैट देखें"))
+        assertNotNull(byDesc(s.root, "आवाज़ से बात (DK लाइव)"))
+        assertTrue(s.showTab(com.dk.assistant.ui.HomeTabs.Tab.HOME)); idle()
+        assertEquals(com.dk.assistant.ui.HomeTabs.Tab.HOME, s.tabNow)
         // 14 नवंबर 2026 (मालिक: "नया UI हटाओ, होम Perplexity जैसा"): मोड, quick कार्ड, 6 टैब (Terminal समेत) नहीं
         for (c in listOf("Builder", "Agent", "Pipeline", "Broadcast", "Chat ▾")) assertFalse("$c अब होम पर नहीं होना चाहिए", c in t)
         for (tab in listOf("Files", "Editor", "Terminal", "Preview", "GitHub")) assertFalse("टैब $tab अब नहीं होना चाहिए", tab in t)
@@ -146,6 +156,7 @@ class DkaiBehaviorTest {
             DkaiChats.save(dir, 2, listOf(com.dk.assistant.DKState.Msg("u", "पुरानी बेकरी वाली चैट", 1000), com.dk.assistant.DKState.Msg("d", "पुराना जवाब", 2000)))
             Dkai.setChat(a, 5)
             com.dk.assistant.DKState.replaceChat(listOf(com.dk.assistant.DKState.Msg("u", "अभी की बात", 3000)))
+            s.showTab(com.dk.assistant.ui.HomeTabs.Tab.CHAT); idle()   // 23 नवंबर 2026: चैट टैब उसी जगह
             byDesc(s.root, "पुरानी सारी चैट देखें")!!.performClick(); idle()
             val t = texts(s.root)
             assertTrue("सभी चैट" in t)
@@ -156,8 +167,12 @@ class DkaiBehaviorTest {
             assertEquals(2, Dkai.chatNo(a))
             assertEquals(listOf("पुरानी बेकरी वाली चैट", "पुराना जवाब"), com.dk.assistant.DKState.messages.map { it.text })
             // पूरी पुरानी बातचीत Chat स्क्रीन पर (23 नवंबर 2026: बातचीत की सूची होम से Chat पर)
-            assertEquals(com.dk.assistant.ChatActivity::class.java.name, shadowOf(a).nextStartedActivity?.component?.className)
-            assertTrue("पुराना जवाब" in texts(openChatPage().second.root))
+            // 23 नवंबर 2026 (मालिक: "कोई अलग विंडो नहीं"): पुरानी बातचीत उसी होम जगह के चैट टैब में
+            generateSequence { shadowOf(a).nextStartedActivity }.forEach {
+                assertNotEquals("अलग Chat विंडो नहीं खुलनी चाहिए", com.dk.assistant.ChatActivity::class.java.name, it.component?.className)
+            }
+            assertEquals(com.dk.assistant.ui.HomeTabs.Tab.CHAT, s.tabNow)
+            assertTrue("पुराना जवाब" in texts(s.root))
             assertEquals(listOf("अभी की बात"), DkaiChats.load(dir, 5).map { it.text })   // छोड़ी हुई चैट सेव
             assertFalse(com.dk.assistant.dkai.DkaiUi.anyOpen(s.root))                 // सूची बंद
             // back से भी बंद

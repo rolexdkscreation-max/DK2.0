@@ -32,7 +32,8 @@ object DkaiUi {
         val c = root.context
         val layer = FrameLayout(c).apply {
             isClickable = true; isFocusable = true
-            setBackgroundColor(if (place == Place.FULL) DkaiTheme.BG else if (place == Place.ANCHOR) 0x33000000 else 0x99000000.toInt())
+            // 23 नवंबर 2026 (मालिक: "पॉपअप के पीछे हल्का काला पर्दा"): साझा पर्दा [com.dk.assistant.ui.ClayTheme.scrim]
+            setBackgroundColor(if (place == Place.FULL) DkaiTheme.BG else com.dk.assistant.ui.ClayTheme.scrim(if (place == Place.ANCHOR) 0.35f else com.dk.assistant.ui.ClayPopup.DIM))
         }
         val lp = when (place) {
             Place.BOTTOM -> FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM)

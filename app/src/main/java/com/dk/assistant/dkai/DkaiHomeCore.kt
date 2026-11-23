@@ -10,12 +10,22 @@ object DkaiHomeCore {
 
     enum class InputAction { VOICE, SEND }
 
-    /** 23 नवंबर 2026 (Soft Clay होम): समय के हिसाब से नमस्ते - 5–11 सुबह, 12–16 दोपहर, बाकी शाम */
+    /**
+     * 23 नवंबर 2026 (मालिक: "फ़ोन के समय के हिसाब से बदले"): 5–11 सुबह, 12–16 दोपहर, 17–20 शाम, 21–4 रात.
+     */
     fun greeting(hour: Int): String = when (hour) {
         in 5..11 -> "Good morning,"
         in 12..16 -> "Good afternoon,"
-        else -> "Good evening,"
+        in 17..20 -> "Good evening,"
+        else -> "Good night,"
     }
+
+    /** अभिवादन में नाम: Profile में भरा नाम, खाली हो तभी "boss" */
+    const val NO_NAME = "boss"
+    fun greetName(saved: String?): String = saved?.trim().orEmpty().ifBlank { NO_NAME }
+
+    /** पूरी एक लाइन (जैसे "Good evening, Rahul") */
+    fun greetLine(hour: Int, saved: String?): String = greeting(hour) + " " + greetName(saved)
 
     /** दाईं ओर का नीला बटन: कुछ लिखा / जुड़ा हो = भेजें, नहीं तो आवाज़ से बात. लिखवाते समय भी भेजें (✓ जैसा) */
     fun inputAction(hasText: Boolean, hasFiles: Boolean, dictating: Boolean): InputAction =

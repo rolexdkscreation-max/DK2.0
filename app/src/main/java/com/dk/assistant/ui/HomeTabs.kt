@@ -45,28 +45,31 @@ object HomeTabs {
         val bar = LinearLayout(c).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM
             id = R.id.dk_home_tabs
-            background = ClayDrawable(ClayDrawable.Style.RAISED, radiusPx = d(28f).toFloat(), depthPx = d(6f).toFloat())
             setPadding(d(10f), d(8f), d(10f), d(10f))
             clipChildren = false; clipToPadding = false
             setTag(com.dk.assistant.PlainLook.SKIP, true)
         }
+        // 23 नवंबर 2026 (मालिक: "नीला तरल जैसा चयन-निशान जिस पर टैप करें उसी पर सरक कर आए"): उभरी पट्टी + एक ही accent बूँद
+        val liquid = LiquidTabs(bar, selected, d(28f).toFloat(), d(6f).toFloat(), d(4f).toFloat()).also { it.fg = fg }
+        bar.background = liquid
+        bar.setTag(R.id.dk_home_tabs, liquid)
+        bar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> liquid.invalidateSelf() }
         for (t in TABS) {
-            val on = t == selected
             val mid = t == Tab.MIC
             val cell = LinearLayout(c).apply {
                 orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                 isClickable = true; isFocusable = true; contentDescription = "${t.label} - ${t.desc}"
-                // चुना टैब = accent से भरी उभरी गोली; बाकी दबाने पर धँसें (120ms)
-                background = if (mid) null else ClayDrawable(if (on) ClayDrawable.Style.ACCENT else ClayDrawable.Style.RAISED,
-                    radiusPx = d(20f).toFloat(), depthPx = if (on) d(4f).toFloat() else 0f, fill = { k.surface })
+                // बाकी टैब दबाने पर धँसें (120ms); चुने टैब के नीचे तरल बूँद ([LiquidTabs])
+                background = if (mid) null else android.graphics.drawable.StateListDrawable().apply {
+                    addState(intArrayOf(android.R.attr.state_pressed), ClayDrawable(ClayDrawable.Style.INSET, radiusPx = d(20f).toFloat()))
+                }
                 if (!mid) setPadding(0, d(4f), 0, d(4f))
                 clipChildren = false; clipToPadding = false
                 tag = t
-                setOnClickListener { go(t) }
+                setOnClickListener { if (!mid) select(bar, t); go(t) }
             }
             val icon = ImageView(c).apply {
                 setImageResource(t.icon); scaleType = ImageView.ScaleType.FIT_CENTER
-                imageTintList = ColorStateList.valueOf(if (mid || on) k.onAccent else fg)
                 if (mid) {
                     background = ClayDrawable(ClayDrawable.Style.ACCENT, oval = true, depthPx = d(5f).toFloat())
                     val p = d(17f); setPadding(p, p, p, p)
@@ -79,8 +82,6 @@ object HomeTabs {
             cell.addView(icon, LinearLayout.LayoutParams(sz, sz))
             cell.addView(TextView(c).apply {
                 text = t.label; textSize = 11f; maxLines = 1; gravity = Gravity.CENTER
-                setTextColor(if (on) k.onAccent else if (mid) k.accent else fg)
-                if (on || mid) setTypeface(typeface, Typeface.BOLD)
             }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = d(2f) })
             // बीच का माइक: बाकी टैब से ऊपर उभरा (पट्टी से बाहर निकलता)
             if (mid) cell.translationY = -d(18f).toFloat()
@@ -89,9 +90,106 @@ object HomeTabs {
                 if (mid) bottomMargin = -d(18f)
             })
         }
+        paint(bar, selected, fg)
         return bar
+    }
+
+    /** अभी चुना टैब (पट्टी पर) */
+    fun selected(bar: View?): Tab? = (bar?.getTag(R.id.dk_home_tabs) as? LiquidTabs)?.sel
+
+    /** चुना टैब बदलो: तरल बूँद उसी पर सरके, लिखावट/आइकन के रंग बदलें (माइक चुनाव नहीं बदलता) */
+    fun select(bar: View?, t: Tab) {
+        if (bar !is LinearLayout || t == Tab.MIC) return
+        val l = bar.getTag(R.id.dk_home_tabs) as? LiquidTabs ?: return
+        if (l.sel == t) return
+        l.moveTo(t)
+        paint(bar, t, l.fg)
+    }
+
+    private fun paint(bar: LinearLayout, sel: Tab, fg: Int) {
+        val k = ClayTheme.t
+        for (i in 0 until bar.childCount) {
+            val cell = bar.getChildAt(i) as? LinearLayout ?: continue
+            val t = cell.tag as? Tab ?: continue
+            val on = t == sel; val mid = t == Tab.MIC
+            (cell.getChildAt(0) as? ImageView)?.imageTintList = ColorStateList.valueOf(if (mid || on) k.onAccent else fg)
+            (cell.getChildAt(1) as? TextView)?.apply {
+                setTextColor(if (on) k.onAccent else if (mid) k.accent else fg)
+                setTypeface(Typeface.create(typeface, if (on || mid) Typeface.BOLD else Typeface.NORMAL))
+            }
+            cell.isSelected = on
+        }
     }
 
     /** पट्टी है तो दिखाओ/छुपाओ (Settings बदलने के बाद onResume पर) */
     fun sync(c: Context, bar: View?) { bar?.visibility = if (visible(c)) View.VISIBLE else View.GONE }
+}
+
+/**
+ * नीचे की पट्टी का पीछा: उभरी Clay पट्टी + चुने टैब के नीचे एक accent "तरल" बूँद.
+ * टैब बदलते ही बूँद सरकती है - आगे वाला सिरा तेज़, पीछे वाला ज़रा देर से (खिंचकर फिर गोल = तरल जैसा).
+ * रंग [ClayTheme.t] से ([ClayDrawable]), कम-एनिमेशन चालू हो तो सीधे पहुँचती है.
+ */
+class LiquidTabs(private val bar: LinearLayout, var sel: HomeTabs.Tab, radius: Float, depth: Float, blobDepth: Float) : android.graphics.drawable.Drawable() {
+    private val base = ClayDrawable(ClayDrawable.Style.RAISED, radiusPx = radius, depthPx = depth)
+    private val blob = ClayDrawable(ClayDrawable.Style.ACCENT, radiusPx = ClayDrawable.FULL, depthPx = blobDepth)
+    private var l = Float.NaN
+    private var r = Float.NaN
+    private var fromL = 0f
+    private var fromR = 0f
+    private var anim: android.animation.ValueAnimator? = null
+    /** न चुने टैब की लिखावट का रंग */
+    var fg: Int = ClayTheme.t.gray
+
+    private fun target(): android.graphics.RectF? {
+        for (i in 0 until bar.childCount) {
+            val v = bar.getChildAt(i)
+            if (v.tag == sel && v.width > 0) return android.graphics.RectF(v.left.toFloat(), v.top.toFloat(), v.right.toFloat(), v.bottom.toFloat())
+        }
+        return null
+    }
+
+    fun moveTo(t: HomeTabs.Tab) {
+        sel = t
+        val to = target() ?: run { invalidateSelf(); return }
+        anim?.cancel()
+        if (l.isNaN() || NeonTheme.reducedMotion()) { l = to.left; r = to.right; invalidateSelf(); return }
+        fromL = l; fromR = r
+        val right = to.left > fromL
+        anim = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = DURATION_MS
+            interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener { va ->
+                val f = va.animatedFraction
+                // आगे वाला सिरा जल्दी (तेज़ ढलान), पीछे वाला देर से - बीच में बूँद खिंची हुई
+                val lead = LEAD.getInterpolation(f); val lag = LAG.getInterpolation(f)
+                val fl = if (right) lag else lead
+                val fr = if (right) lead else lag
+                l = fromL + (to.left - fromL) * fl
+                r = fromR + (to.right - fromR) * fr
+                invalidateSelf()
+            }
+            start()
+        }
+    }
+
+    override fun draw(c: android.graphics.Canvas) {
+        base.bounds = bounds
+        base.draw(c)
+        val to = target() ?: return
+        if (l.isNaN() || (anim?.isRunning != true)) { l = to.left; r = to.right }
+        blob.setBounds(l.toInt(), to.top.toInt(), r.toInt(), to.bottom.toInt())
+        blob.draw(c)
+    }
+
+    override fun setAlpha(alpha: Int) { base.alpha = alpha; blob.alpha = alpha }
+    override fun setColorFilter(cf: android.graphics.ColorFilter?) = Unit
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
+
+    companion object {
+        const val DURATION_MS = 380L
+        private val LEAD = android.view.animation.DecelerateInterpolator(2.2f)
+        private val LAG = android.view.animation.AccelerateDecelerateInterpolator()
+    }
 }

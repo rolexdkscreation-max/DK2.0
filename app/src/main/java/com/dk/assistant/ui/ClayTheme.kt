@@ -108,6 +108,11 @@ object ClayTheme {
         fun mode(): ThemeVars.Mode = modeV
     }
 
+    /** पूरे ऐप का एक उभार-माप: उभरी परछाईं कितनी दूर/फैली ([ClayDrawable]) - आकार नहीं बदलता */
+    const val LIFT = 1.45f
+    /** धँसे (input / दबा) हिस्से की अंदर वाली परछाईं कितनी गहरी */
+    const val SINK = 1.35f
+
     private val WHITE = 0xFFFFFFFF.toInt()
     private val BLACK = 0xFF000000.toInt()
 
@@ -120,8 +125,9 @@ object ClayTheme {
         val hint = m(text, th.surface, 0.44f)
         val well = if (light) m(th.bg, BLACK, 0.045f) else m(th.bg, BLACK, 0.28f)
         val chip = if (light) m(th.surface, th.bg, 0.4f) else m(th.surface, WHITE, 0.035f)
-        val shL = if (light) NeonTheme.alpha(WHITE, 0xF0) else NeonTheme.alpha(m(th.surface, WHITE, 0.22f), 0x70)
-        val shD = if (light) NeonTheme.alpha(m(th.bg, m(BLACK, th.accent, 0.15f), 0.42f), 0xB0) else NeonTheme.alpha(m(th.bg, BLACK, 0.75f), 0xE0)
+        // 23 नवंबर 2026 (मालिक: "उभार काफ़ी ज़्यादा, लाइट थीम में भी साफ़"): छाया गहरी, चमक तेज़
+        val shL = if (light) WHITE else NeonTheme.alpha(m(th.surface, WHITE, 0.30f), 0x90)
+        val shD = if (light) NeonTheme.alpha(m(th.bg, m(BLACK, th.accent, 0.15f), 0.58f), 0xD8) else NeonTheme.alpha(m(th.bg, BLACK, 0.88f), 0xFF)
         val aTop = m(th.accent, WHITE, 0.18f)
         val aBot = m(th.accent, BLACK, 0.18f)
         val aMid = m(aTop, aBot, 0.5f)
@@ -132,6 +138,9 @@ object ClayTheme {
         val sel = m(th.surface, th.accent, if (light) 0.14f else 0.20f)
         return Tokens(th, th.bg, th.surface, th.accent, text, sub, gray, hint, well, chip, shL, shD, aTop, aBot, on, glow, rim, press, sel)
     }
+
+    /** पॉपअप / शीट के पीछे का काला पर्दा ([f] = 0..1 गहराई) - हर थीम में एक जैसा */
+    fun scrim(f: Float): Int = NeonTheme.alphaF(BLACK, f.coerceIn(0f, 1f))
 
     /** pure: रंग किसी थीम की किसी सतह (bg/surface/chip/well) जैसा है? - पुराने डिब्बे पहचानने के लिए */
     fun isSurface(argb: Int, k: Tokens = t): Boolean = argb == k.surface || argb == k.chip || argb == k.bg || argb == k.sel

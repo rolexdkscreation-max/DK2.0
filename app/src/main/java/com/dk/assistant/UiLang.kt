@@ -126,7 +126,7 @@ class UiDialog(c: Context, theme: Int = 0) : android.app.AlertDialog.Builder(c, 
         super.setSingleChoiceItems(items?.map { UiLang.t(it) ?: "" }?.toTypedArray(), checked, l)
     override fun create(): android.app.AlertDialog {
         val d = super.create()
-        d.window?.decorView?.let { v -> v.post { UiLang.watch(v) } }
+        d.window?.decorView?.let { v -> v.post { UiLang.watch(v); com.dk.assistant.ui.ClayPopup.style(v) } }
         return d
     }
 }

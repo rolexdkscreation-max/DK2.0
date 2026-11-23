@@ -191,7 +191,7 @@ class DkaiVoice(private val s: DkaiScreen) {
             FrameLayout.LayoutParams(d(56f), d(56f), Gravity.END or Gravity.CENTER_VERTICAL))
         col.addView(bottom, LinearLayout.LayoutParams(-1, -2))
 
-        menuLayer = FrameLayout(c).apply { visibility = View.GONE; isClickable = true; setBackgroundColor(0x66000000); setOnClickListener { closeMenu() } }
+        menuLayer = FrameLayout(c).apply { visibility = View.GONE; isClickable = true; setBackgroundColor(com.dk.assistant.ui.ClayTheme.scrim(com.dk.assistant.ui.ClayPopup.DIM)); setOnClickListener { closeMenu() } }
         sheet.addView(menuLayer, FrameLayout.LayoutParams(-1, -1))
     }
 

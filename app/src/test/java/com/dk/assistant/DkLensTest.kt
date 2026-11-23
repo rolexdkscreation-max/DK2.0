@@ -1,6 +1,7 @@
 package com.dk.assistant
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -25,7 +26,12 @@ class DkLensTest {
 
     @Test fun homeHasLensButton() {
         val d = src("dkai/DkaiScreen.kt")
-        assertTrue(d.contains("headIcon(DkaiIcon.Kind.CAMERA, \"DK लेंस"))
+        // 23 नवंबर 2026 (मालिक): ऊपर का कैमरा हटा - लेंस नीचे के स्कैन टैब से उसी जगह खुलता है
+        assertFalse(d.contains("headIcon(DkaiIcon.Kind.CAMERA, \"DK लेंस"))
+        assertTrue(d.contains("ScanPanel(it) { startLive() }"))
+        val sp = src("dkai/ScanPanel.kt")
+        assertTrue(sp.contains("LiveVision.setCamera(act, true, if (front) \"front\" else \"back\")"))
+        assertTrue(src("LiveVision.kt").contains("!com.dk.assistant.dkai.ScanPanel.showing"))
         assertTrue(d.contains("putExtra(com.dk.assistant.VoiceActivity.EXTRA_FRONT, front)"))
         assertTrue(src("VoiceActivity.kt").contains("if (i.getBooleanExtra(EXTRA_FRONT, false)) \"front\" else \"back\""))
     }

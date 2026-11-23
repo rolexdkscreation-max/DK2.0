@@ -79,7 +79,7 @@ class CodeLivePanel(
         visibility = View.GONE
         UiLang.keep(code)
         // बाहर छुआ = बंद (फ़ोन पर). पैनल दाईं ओर
-        setBackgroundColor(0x66000000)
+        setBackgroundColor(com.dk.assistant.ui.ClayTheme.scrim(com.dk.assistant.ui.ClayPopup.DIM))
         setOnClickListener { close() }
         val wide = resources.configuration.screenWidthDp >= 720
         val w = (resources.displayMetrics.widthPixels * if (wide) 0.48f else 0.94f).toInt()
