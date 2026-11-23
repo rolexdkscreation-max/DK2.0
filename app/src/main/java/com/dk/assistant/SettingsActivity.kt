@@ -129,6 +129,7 @@ class SettingsActivity : AppCompatActivity() {
             "st3" -> { title.text = "आवाज़ें (Supertonic 3)"; secSt3() }
             "orb" -> { title.text = "ओर्ब और चेहरा"; secOrb(); secIsland() }
             "ui" -> { title.text = "दिखावट"; secUi() }
+            "theme" -> { title.text = "Theme"; secTheme() }   // 23 नवंबर 2026: Soft Clay की 8 थीम
             "access" -> { title.text = "Accessibility"; secAccess(); secPayGuard(); secDriving(); secEvents() }
             "phonelock" -> { title.text = "फ़ोन लॉक / अनलॉक"; secPhoneLock() }   // 22 नवंबर 2026 (मालिक): रिकॉर्ड करके सिखाने वाला हिस्सा हटा
             "guard" -> { title.text = "टच मोड"; secGuard(); secPrivacy(); secSos() }
@@ -191,6 +192,8 @@ class SettingsActivity : AppCompatActivity() {
         if (cat == null) {
             // 15 नवंबर 2026 (मालिक: "अपडेट का सेक्शन सबसे नीचे दिखना चाहिए"): मुख्य पन्ने पर एक ही जगह, सबसे नीचे
             // (किसी श्रेणी के अंदर नहीं). नया अपडेट आया हो तो होम पर चमकती पट्टी + popup ([UpdatePrompt])
+            // 23 नवंबर 2026 (Soft Clay): सबसे ऊपर "Theme" पट्टी - दबाओ = 8 थीम वाला पेज
+            menuRow("theme", "Theme", "अभी: ${com.dk.assistant.ui.ClayTheme.current.name} • Clay Day • Midnight • Nocturne • Ember • Abyss • Gehra navy • Obsidian • Rosewood")
             SettingsSearch.CATEGORIES.forEach { (c, _) -> menuRow(c.first, c.second, c.third) }
             // 15 नवंबर 2026 (मालिक): "DK AI Plus" का अलग पन्ना हटाया - उसकी असली सुविधाएँ अपनी पुरानी जगह ([secSos] वगैरह, SettingsExtra.kt)
             items.firstOrNull { it.first == "license" }?.let { (id, t, sub) -> menuRow(id, t, sub) }
@@ -210,7 +213,8 @@ class SettingsActivity : AppCompatActivity() {
         run {
             val box = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                setBackgroundResource(R.drawable.glass_card)
+                // 23 नवंबर 2026 (Soft Clay): उभरी पट्टी (दबाने पर धँसे)
+                background = com.dk.assistant.ui.Clay.raised(this@SettingsActivity, 24f, 6f)
                 val pd = (18 * dp).toInt(); setPadding(pd, pd, pd, pd)
                 isClickable = true
                 setOnClickListener {
@@ -234,8 +238,8 @@ class SettingsActivity : AppCompatActivity() {
             // दोनों मोड में वही कार्ड; light में PlainLook बस कार्ड सफ़ेद और लिखावट गहरी करता है
             val txt = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
             txt.addView(TextView(this).apply { text = t; textSize = 17f; setTypeface(typeface, Typeface.BOLD)
-                setTextColor(0xFFFFFFFF.toInt()) })
-            val subTv = TextView(this).apply { text = sub; textSize = 12.5f; setTextColor(0x99FFFFFF.toInt()); setPadding(0, (3 * dp).toInt(), 0, 0) }
+                setTextColor(com.dk.assistant.ui.ClayTheme.t.text) })
+            val subTv = TextView(this).apply { text = sub; textSize = 12.5f; setTextColor(com.dk.assistant.ui.ClayTheme.t.gray); setPadding(0, (3 * dp).toInt(), 0, 0) }
             txt.addView(subTv)
             box.addView(txt, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             // नवंबर 2026 (मालिक, संदर्भ चित्र): कार्ड पर ही असली स्विच / slider - बाकी पर ›
@@ -248,11 +252,11 @@ class SettingsActivity : AppCompatActivity() {
                         subTv.text = (if (on) "✓ चालू" else "✗ बंद") + sub.substringAfter(" • ", "").let { if (it.isEmpty()) "" else " • $it" }
                     }
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, (48 * dp).toInt()).apply { marginStart = (6 * dp).toInt() })
-            } else box.addView(TextView(this).apply { text = "›"; textSize = 28f; setTextColor(0x99FFFFFF.toInt()) })
+            } else box.addView(TextView(this).apply { text = "›"; textSize = 28f; setTextColor(com.dk.assistant.ui.ClayTheme.t.gray) })
             // 14 नवंबर 2026 (मालिक): काँच (ग्लासी) हर जगह से हटा - इसलिए "दिखावट" पर काँच वाला slider भी नहीं
             // 14 नवंबर 2026 (मालिक): डार्क / लाइट मोड सेटिंग खोलते ही दिखे (अंदर जाए बिना)
             if (id == "ui" && searchHit == null) txt.addView(SwitchCompat(this).apply {
-                text = "लाइट मोड (बंद = डार्क)"; textSize = 13f; setTextColor(0xCCFFFFFF.toInt())
+                text = "लाइट मोड (बंद = डार्क)"; textSize = 13f; setTextColor(com.dk.assistant.ui.ClayTheme.t.sub)
                 isChecked = com.dk.assistant.dkai.DkaiTheme.light
                 setOnCheckedChangeListener { _, on -> com.dk.assistant.dkai.DkaiTheme.setLight(this@SettingsActivity, on); save(false); recreate() }
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (44 * dp).toInt()))

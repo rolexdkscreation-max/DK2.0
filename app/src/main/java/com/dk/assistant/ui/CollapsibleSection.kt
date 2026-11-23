@@ -29,7 +29,7 @@ class CollapsibleSection private constructor(ctx: Context, title: String, sub: S
     val body: LinearLayout
 
     private val header: LinearLayout
-    private val arrow: TextView
+    private lateinit var arrow: TextView
     private var anim: ValueAnimator? = null
     var isOpen: Boolean = startOpen
         private set
@@ -38,8 +38,9 @@ class CollapsibleSection private constructor(ctx: Context, title: String, sub: S
         val dp = ctx.resources.displayMetrics.density
         view = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundResource(R.drawable.glass_card)
-            val ph = (18 * dp).toInt(); val pv = (16 * dp).toInt(); setPadding(ph, pv, ph, pv)
+            // 23 नवंबर 2026 (Soft Clay): हर समूह = बड़ा उभरा कार्ड (कोने 26dp)
+            background = Clay.raised(ctx, 26f, 7f)
+            val ph = (20 * dp).toInt(); val pv = (18 * dp).toInt(); setPadding(ph, pv, ph, pv)
         }
         header = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -47,25 +48,28 @@ class CollapsibleSection private constructor(ctx: Context, title: String, sub: S
             minimumHeight = (32 * dp).toInt()
             contentDescription = title
         }
-        header.addView(TextView(ctx).apply {
-            text = title; textSize = 18f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt())
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val k = ClayTheme.t
+        // ऊपर बाईं ओर गोल उभरा icon-बटन (खुलने का तीर) + शीर्षक
         arrow = TextView(ctx).apply {
-            text = "›"; textSize = 26f; setTextColor(0x99FFFFFF.toInt()); gravity = Gravity.CENTER
+            text = "›"; textSize = 22f; setTextColor(k.accent); gravity = Gravity.CENTER
+            background = Clay.circle(ctx, 3f)
             rotation = if (startOpen) 90f else 0f
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
-        header.addView(arrow, LinearLayout.LayoutParams((32 * dp).toInt(), (32 * dp).toInt()))
+        header.addView(arrow, LinearLayout.LayoutParams((40 * dp).toInt(), (40 * dp).toInt()).apply { marginEnd = (14 * dp).toInt() })
+        header.addView(TextView(ctx).apply {
+            text = title; textSize = 18f; setTypeface(typeface, Typeface.BOLD); setTextColor(k.text)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         view.addView(header, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         body = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             visibility = if (startOpen) View.VISIBLE else View.GONE
-            setPadding(0, (4 * dp).toInt(), 0, 0)
+            setPadding(0, (10 * dp).toInt(), 0, 0)
         }
         if (sub != null) body.addView(TextView(ctx).apply {
-            text = sub; textSize = 13f; setTextColor(0x99FFFFFF.toInt())
+            text = sub; textSize = 13f; setTextColor(k.gray)
             setPadding(0, 0, 0, (6 * dp).toInt())
         })
         view.addView(body, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))

@@ -15,24 +15,30 @@ import android.widget.TextView
 object DkaiTheme {
     /** 13 नवंबर 2026 (मालिक): IDE Settings में Obsidian Dark / Luminous Light - रंग अब चुनी थीम से */
     const val PREF_THEME = "dkai_theme"
-    @Volatile var light = false
-    fun load(c: Context) { light = com.dk.assistant.Prefs.str(c, PREF_THEME, "dark") == "light" }
-    fun setLight(c: Context, on: Boolean) { com.dk.assistant.Prefs.edit(c) { putString(PREF_THEME, if (on) "light" else "dark") }; light = on }
-    /** 15 नवंबर 2026: सारे रंग एक ही जगह से ([com.dk.assistant.ui.ThemeVars]) - Light/Dark में सिर्फ़ bg / card / text */
+    /** 23 नवंबर 2026 (Soft Clay): हल्की/गहरी अब चुनी Clay थीम से (Clay Day = हल्की) */
+    val light: Boolean get() = com.dk.assistant.ui.ClayTheme.current.light
+    fun load(c: Context) { com.dk.assistant.ui.ClayTheme.load(c) }
+    /** पुराना "लाइट मोड" switch: on = Clay Day, off = पिछली गहरी थीम (काम वैसा ही - याद भी रहता है) */
+    fun setLight(c: Context, on: Boolean) {
+        com.dk.assistant.Prefs.edit(c) { putString(PREF_THEME, if (on) "light" else "dark") }
+        com.dk.assistant.ui.ClayTheme.save(c, com.dk.assistant.ui.ClayTheme.forLight(c, on))
+    }
+    /** 15 नवंबर 2026: सारे रंग एक ही जगह से - 23 नवंबर 2026: अब चुनी Clay थीम के 3 टोकन (bg / surface / accent) से */
     private val m get() = com.dk.assistant.ui.ThemeVars.mode(light)
     private val V = com.dk.assistant.ui.ThemeVars
 
     val BG get() = m.bg
     val CARD get() = m.card
     val BORDER get() = m.border
-    const val BLUE = 0xFF3B82F6.toInt()
+    /** मुख्य रंग = चुनी थीम का accent */
+    val BLUE get() = com.dk.assistant.ui.ClayTheme.t.accent
     /** साझा - दोनों मोड में वही चमकीला सियान (पहले light में फीका था) */
     val CYAN get() = V.CYAN
     const val VIOLET = 0xFFA855F7.toInt()
     /** लिखावट का मुख्य रंग (अँधेरे में सफ़ेद, उजाले में गहरा) */
     val WHITE get() = m.text
     /** नीले/लाल बटन के ऊपर - हमेशा सफ़ेद */
-    const val ON = 0xFFFFFFFF.toInt()
+    val ON get() = com.dk.assistant.ui.ClayTheme.t.onAccent
     val GRAY get() = m.gray
     const val GREEN = 0xFF22C55E.toInt()
     const val MINT = 0xFFA7F3D0.toInt()

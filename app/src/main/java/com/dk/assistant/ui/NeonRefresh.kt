@@ -14,11 +14,8 @@ object NeonRefresh : Application.ActivityLifecycleCallbacks {
     private val seen = java.util.WeakHashMap<Activity, Int>()
 
     fun bars(a: Activity) {
-        try {
-            val bg = NeonTheme.bg()
-            a.window?.statusBarColor = bg[0]
-            a.window?.navigationBarColor = bg[2]
-        } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
+        // 23 नवंबर 2026: ऊपर/नीचे की सिस्टम पट्टी = चुनी Clay थीम की पृष्ठभूमि
+        Clay.Refresh.bars(a)
     }
 
     fun invalidateAll(v: View?) {

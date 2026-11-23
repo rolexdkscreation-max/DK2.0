@@ -98,8 +98,8 @@ object DkaiUi {
     fun modal(c: Context, title: String, sub: String? = null, onX: (() -> Unit)? = null): Pair<LinearLayout, LinearLayout> {
         val card = LinearLayout(c).apply {
             orientation = LinearLayout.VERTICAL
-            background = DkaiTheme.round(c, DkaiTheme.CARD, 22f, DkaiTheme.BORDER)
-            setPadding(d(c, 18f), d(c, 14f), d(c, 18f), d(c, 16f)); elevation = d(c, 10f).toFloat()
+            background = com.dk.assistant.ui.Clay.raised(c, 28f, 6f)
+            setPadding(d(c, 22f), d(c, 18f), d(c, 22f), d(c, 20f))
         }
         card.addView(head(c, title, sub, onX))
         val body = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
@@ -118,7 +118,7 @@ object DkaiUi {
         val right = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         bar.addView(right)
         col.addView(bar, LinearLayout.LayoutParams(-1, -2))
-        col.addView(View(c).apply { setBackgroundColor(DkaiTheme.BORDER) }, LinearLayout.LayoutParams(-1, 1))
+        col.addView(View(c), LinearLayout.LayoutParams(-1, d(c, 4f)))
         val body = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
         col.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
         return Triple(col, body, right)
@@ -137,7 +137,9 @@ object DkaiUi {
     fun iconBtn(c: Context, kind: DkaiIcon.Kind, desc: String, tint: Int = DkaiTheme.WHITE, sizeDp: Float = 44f, fill: Int = 0, onTap: () -> Unit): ImageView = ImageView(c).apply {
         setImageDrawable(DkaiIcon(kind, tint)); scaleType = ImageView.ScaleType.CENTER_INSIDE
         val p = d(c, sizeDp * 0.25f); setPadding(p, p, p, p)
-        background = DkaiTheme.press(DkaiTheme.oval(fill), DkaiTheme.oval(0xFFFFFFFF.toInt()))
+        // 23 नवंबर 2026 (Soft Clay): गोल उभरा बटन (दबाने पर धँसे); भरा रंग दिया हो तो वही (जैसे लाल)
+        background = if (fill == 0 || fill == DkaiTheme.PILL || fill == DkaiTheme.CARD) com.dk.assistant.ui.Clay.circle(c, if (sizeDp >= 40f) 3.5f else 2.5f)
+            else DkaiTheme.press(DkaiTheme.oval(fill), DkaiTheme.oval(0xFFFFFFFF.toInt()))
         contentDescription = desc; isClickable = true; isFocusable = true
         setOnClickListener { onTap() }
         layoutParams = LinearLayout.LayoutParams(d(c, sizeDp), d(c, sizeDp))
@@ -148,7 +150,11 @@ object DkaiUi {
             danger: Boolean = false, onTap: () -> Unit): LinearLayout = LinearLayout(c).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; minimumHeight = d(c, 52f)
         setPadding(d(c, 12f), d(c, 8f), d(c, 12f), d(c, 8f))
-        background = DkaiTheme.press(DkaiTheme.round(c, if (selected) DkaiTheme.SEL else DkaiTheme.FIELD, 14f, if (selected) DkaiTheme.BLUE else DkaiTheme.BORDER, if (selected) 1.5f else 1f))
+        // 23 नवंबर 2026 (Soft Clay): उभरी पट्टी; चुनी = accent का चमकदार ढलान + दाईं ओर सफ़ेद ✓ वाला गोल खाना
+        background = com.dk.assistant.ui.ClayDrawable(com.dk.assistant.ui.ClayDrawable.Style.RAISED, radiusPx = DkaiTheme.dpf(c, 20f),
+            depthPx = DkaiTheme.dpf(c, 4.5f), selectable = true, fill = { com.dk.assistant.ui.ClayTheme.t.chip })
+        isSelected = selected
+        setPadding(d(c, 14f), d(c, 10f), d(c, 14f), d(c, 10f))
         isClickable = true; isFocusable = true; contentDescription = title + (sub?.let { ", $it" } ?: "")
         if (kind != null) {
             val ic = FrameLayout(c).apply { background = DkaiTheme.round(c, (if (danger) DkaiTheme.RED else tint) and 0x26FFFFFF, 12f) }
@@ -156,10 +162,11 @@ object DkaiUi {
             addView(ic, LinearLayout.LayoutParams(d(c, 38f), d(c, 38f)).apply { rightMargin = d(c, 12f) })
         }
         val col = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
-        col.addView(DkaiTheme.text(c, title, 14.5f, if (danger) DkaiTheme.RED else DkaiTheme.WHITE, DkaiTheme.SANS_MED))
-        if (!sub.isNullOrBlank()) col.addView(DkaiTheme.text(c, sub, 12f, DkaiTheme.GRAY).apply { setPadding(0, d(c, 3f), 0, 0) })
+        col.addView(DkaiTheme.text(c, title, 14.5f, if (danger) DkaiTheme.RED else if (selected) DkaiTheme.ON else DkaiTheme.WHITE, DkaiTheme.SANS_MED))
+        if (!sub.isNullOrBlank()) col.addView(DkaiTheme.text(c, sub, 12f, if (selected) com.dk.assistant.ui.NeonTheme.alpha(DkaiTheme.ON, 0xD9) else DkaiTheme.GRAY).apply { setPadding(0, d(c, 3f), 0, 0) })
         addView(col, LinearLayout.LayoutParams(0, -2, 1f))
-        if (selected) addView(ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.CHECK, DkaiTheme.BLUE)) }, LinearLayout.LayoutParams(d(c, 20f), d(c, 20f)))
+        if (selected) addView(ImageView(c).apply { setImageDrawable(com.dk.assistant.ui.ClayCheckDrawable(d(c, 24f))); isDuplicateParentStateEnabled = true },
+            LinearLayout.LayoutParams(d(c, 24f), d(c, 24f)).apply { leftMargin = d(c, 8f) })
         setOnClickListener { onTap() }
         layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = d(c, 8f) }
     }
@@ -172,7 +179,13 @@ object DkaiUi {
     fun button(c: Context, s: String, fill: Int = DkaiTheme.BLUE, color: Int = DkaiTheme.ON, kind: DkaiIcon.Kind? = null, onTap: () -> Unit): TextView =
         DkaiTheme.text(c, s, 14f, color, DkaiTheme.SANS_BOLD).apply {
             gravity = Gravity.CENTER; minHeight = d(c, 46f); setPadding(d(c, 16f), d(c, 10f), d(c, 16f), d(c, 10f))
-            background = DkaiTheme.press(DkaiTheme.round(c, fill, 14f, if (fill == DkaiTheme.FIELD || fill == DkaiTheme.PILL) DkaiTheme.BORDER else 0))
+            // चौड़े एक्शन बटन: उभरे, दबाने पर धँसें; accent वाले चमकदार ढलान में
+            background = when (fill) {
+                DkaiTheme.BLUE -> com.dk.assistant.ui.Clay.accent(c, 22f, 4f)
+                DkaiTheme.FIELD, DkaiTheme.PILL, DkaiTheme.CARD -> com.dk.assistant.ui.Clay.chip(c, 22f, 4f)
+                else -> DkaiTheme.press(DkaiTheme.round(c, fill, 22f))
+            }
+            minHeight = d(c, 50f)
             isClickable = true; isFocusable = true
             if (kind != null) { setCompoundDrawablesRelative(DkaiTheme.icon(c, kind, color, 18f), null, null, null); compoundDrawablePadding = d(c, 8f) }
             setOnClickListener { onTap() }
@@ -189,8 +202,8 @@ object DkaiUi {
         this.hint = hint; setText(start); textSize = 14f
         setTextColor(DkaiTheme.WHITE); setHintTextColor(DkaiTheme.HINT)
         if (mono) typeface = DkaiTheme.MONO
-        background = DkaiTheme.round(c, DkaiTheme.FIELD, 12f, DkaiTheme.BORDER)
-        setPadding(d(c, 12f), d(c, 11f), d(c, 12f), d(c, 11f))
+        background = com.dk.assistant.ui.Clay.inset(c, 18f, 3f)   // धँसा खाना
+        setPadding(d(c, 14f), d(c, 12f), d(c, 14f), d(c, 12f))
         inputType = if (multi) InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
             else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         if (multi) { minLines = 3; maxLines = 6; gravity = Gravity.TOP or Gravity.START } else setSingleLine()

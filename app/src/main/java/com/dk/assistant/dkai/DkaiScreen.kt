@@ -93,10 +93,13 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     private lateinit var searchSeg: ImageView
     private lateinit var compSeg: FrameLayout
     private lateinit var compEyes: ComputerEyes
+    private var segBar: LinearLayout? = null
     private lateinit var attachRow: LinearLayout
     private lateinit var attachScroll: HorizontalScrollView
     private lateinit var heroBox: LinearLayout
     private lateinit var hero: Logo3D
+    private lateinit var greetTxt: TextView
+    private lateinit var nameTxt: TextView
     lateinit var voice: DkaiVoice; private set
 
     /** + से चुनी फोटो / फ़ाइल (भेजने तक यहीं, ✕ से हटाओ) */
@@ -185,8 +188,11 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     }
 
     // ================================================================== State 1: ऊपर
-    private fun headIcon(kind: DkaiIcon.Kind, desc: String, tint: Int = DkaiTheme.GRAY, fill: Int = 0, go: (View) -> Unit): ImageView =
-        DkaiUi.iconBtn(c, kind, desc, tint, 38f, fill) {}.apply { setOnClickListener { v -> go(v) } }
+    private fun headIcon(kind: DkaiIcon.Kind, desc: String, tint: Int = DkaiTheme.WHITE, fill: Int = 0, go: (View) -> Unit): ImageView =
+        DkaiUi.iconBtn(c, kind, desc, tint, 46f, fill) {}.apply {
+            setOnClickListener { v -> go(v) }
+            layoutParams = LinearLayout.LayoutParams(d(46f), d(46f)).apply { leftMargin = d(8f) }
+        }
 
     /** DK लेंस: आवाज़ स्क्रीन खुले, DK लाइव जुड़ते ही लेंस चालू और जो दिखे तुरंत बोले */
     private fun openLens(front: Boolean) {
@@ -198,18 +204,21 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
 
     private fun buildHeader() {
         // ☰  [DK लोगो] DKAI          ▶  ⚙
-        val head = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(d(4f), d(6f), d(6f), 0) }
-        head.addView(ImageView(c).apply {
-            setImageDrawable(DkaiIcon(DkaiIcon.Kind.MENU, DkaiTheme.GRAY)); scaleType = ImageView.ScaleType.CENTER_INSIDE
-            val p = d(11f); setPadding(p, p, p, p); contentDescription = "मेन्यू"
-            background = DkaiTheme.press(DkaiTheme.oval(0)); isClickable = true
+        // 23 नवंबर 2026 (Soft Clay): बाईं ओर गोल उभरा ☰, बीच में ऐप का नाम, दाईं ओर गोल उभरे बटन (वही लेंस / ⚙ - कोई नया नहीं)
+        val headF = FrameLayout(c).apply { setPadding(d(14f), d(8f), d(14f), 0); clipChildren = false; clipToPadding = false }
+        headF.addView(ImageView(c).apply {
+            setImageDrawable(DkaiIcon(DkaiIcon.Kind.MENU, DkaiTheme.WHITE)); scaleType = ImageView.ScaleType.CENTER_INSIDE
+            val p = d(12f); setPadding(p, p, p, p); contentDescription = "मेन्यू"
+            background = com.dk.assistant.ui.Clay.circle(c, 4f); isClickable = true
             setOnClickListener { v -> host.moreMenu(v) }
-        }, LinearLayout.LayoutParams(d(42f), d(42f)))
-        head.addView(ImageView(c).apply { setImageResource(R.drawable.ic_dk); contentDescription = "DK लोगो"
+        }, FrameLayout.LayoutParams(d(46f), d(46f), Gravity.START or Gravity.CENTER_VERTICAL))
+        val title = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        title.addView(ImageView(c).apply { setImageResource(R.drawable.ic_dk); contentDescription = "DK लोगो"
             background = DkaiTheme.round(c, DkaiTheme.LOGO_TILE, 10f, DkaiTheme.LOGO_TILE_EDGE); val p = d(4f); setPadding(p, p, p, p) },
-            LinearLayout.LayoutParams(d(32f), d(32f)).apply { leftMargin = d(2f) })
-        head.addView(DkaiTheme.text(c, "DKAI", 21f, DkaiTheme.WHITE, DkaiTheme.SANS_BOLD).apply { letterSpacing = 0.04f; setPadding(d(8f), 0, 0, 0); maxLines = 1 },
-            LinearLayout.LayoutParams(0, -2, 1f))
+            LinearLayout.LayoutParams(d(28f), d(28f)))
+        title.addView(DkaiTheme.text(c, "DKAI", 20f, DkaiTheme.WHITE, DkaiTheme.SANS_BOLD).apply { letterSpacing = 0.06f; setPadding(d(8f), 0, 0, 0); maxLines = 1 })
+        headF.addView(title, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+        val head = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; clipChildren = false }
         // 14 नवंबर 2026 (मालिक): आवाज़ वाला बटन अब नीचे "Ask anything" डिब्बे में (Perplexity जैसा) - ऊपर सिर्फ़ ⚙
         // 14 नवंबर 2026 (मालिक): ⚙ दबाते ही सीधे Settings खुले. लंबा दबाओ = पुरानी छोटी सूची (प्रोफ़ाइल / थीम / बाकी रास्ते)
         // 14 नवंबर 2026 (मालिक): DK लेंस - दबाओ = पीछे वाला लेंस (चीज़ दिखाओ), लंबा दबाओ = आगे वाला (आपको देखे)
@@ -219,15 +228,16 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         head.addView(headIcon(DkaiIcon.Kind.GEAR, "Settings - सब कुछ एक जगह") { openSettings() }.apply {
             setOnLongClickListener { settingsList(); true }
         })
-        content.addView(head, LinearLayout.LayoutParams(-1, d(52f)))
+        headF.addView(head, FrameLayout.LayoutParams(-2, -2, Gravity.END or Gravity.CENTER_VERTICAL))
+        content.addView(headF, LinearLayout.LayoutParams(-1, d(62f)))
 
         // Chat #1  • READY            🔍  ⧉  ↗  + New
-        val sub = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(d(10f), d(2f), d(10f), d(6f)) }
+        val sub = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(d(12f), d(8f), d(12f), d(6f)) }
         chatLabel = DkaiTheme.text(c, DkaiCore.chatLabel(Dkai.chatNo(c)), 13f, DkaiTheme.GRAY, DkaiTheme.SANS_MED).apply {
             // 13 नवंबर 2026 (मालिक): टैप = पुरानी सारी चैट की सूची (Claude के Recents जैसी)
             setCompoundDrawablesRelative(null, null, DkaiTheme.icon(c, DkaiIcon.Kind.DOWN, DkaiTheme.GRAY, 14f), null); compoundDrawablePadding = d(3f)
             gravity = Gravity.CENTER_VERTICAL; minHeight = d(36f); setPadding(d(6f), 0, d(6f), 0)
-            background = DkaiTheme.press(DkaiTheme.round(c, 0, 10f), DkaiTheme.round(c, 0xFFFFFFFF.toInt(), 10f))
+            background = com.dk.assistant.ui.Clay.chip(c); setPadding(d(14f), 0, d(12f), 0)
             isClickable = true; isFocusable = true; contentDescription = "पुरानी सारी चैट देखें"
             setOnClickListener { DkaiSheets.history(this@DkaiScreen) }
         }
@@ -252,7 +262,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             minHeight = d(36f); contentDescription = "नई चैट"; setOnClickListener { newChat() }
         }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = d(4f) })
         content.addView(sub, LinearLayout.LayoutParams(-1, -2))
-        content.addView(View(c).apply { setBackgroundColor(DkaiTheme.BORDER) }, LinearLayout.LayoutParams(-1, 1))
+        // (पहले यहाँ पतली किनारी-रेखा थी - Clay रूप में खाली जगह)
+        content.addView(View(c), LinearLayout.LayoutParams(-1, d(2f)))
 
         alertRow = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE; setPadding(d(12f), d(8f), d(12f), 0) }
         content.addView(alertRow)
@@ -276,13 +287,38 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             .setItems(items.map { it.first }.toTypedArray()) { _, i -> items.getOrNull(i)?.second?.invoke() }.show()
     }
 
+    /** Good morning / afternoon / evening + नाम (प्रोफ़ाइल बदले तो लौटते ही नया) */
+    private fun renderGreeting() {
+        if (!::greetTxt.isInitialized) return
+        greetTxt.text = DkaiHomeCore.greeting(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY))
+        val n = try { Prefs.userName(c).trim() } catch (_: Exception) { "" }
+        nameTxt.text = n
+        DkaiTheme.gone(nameTxt, n.isBlank())
+    }
+
     // ================================================================== State 1: बीच (3D लोगो + चैट)
     private fun buildHome() {
         homeCol = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(0, d(8f), 0, d(16f)) }
         // 14 नवंबर 2026 (मालिक: "Perplexity जैसा"): चैट खाली = बीच में घूमता 3D DK लोगो (टैप = फिर घूमे). quick कार्ड / Broadcast हटे
         heroBox = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
+        // 23 नवंबर 2026 (Soft Clay): समय के हिसाब से नमस्ते + नीचे आपका नाम बड़े मोटे अक्षरों में (नाम = Settings › प्रोफ़ाइल वाला)
+        greetTxt = DkaiTheme.text(c, DkaiHomeCore.greeting(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)), 16f, DkaiTheme.GRAY, DkaiTheme.SANS_MED).apply { gravity = Gravity.CENTER }
+        nameTxt = DkaiTheme.text(c, "", 30f, DkaiTheme.WHITE, DkaiTheme.SANS_BOLD).apply { gravity = Gravity.CENTER; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(d(16f), d(4f), d(16f), 0) }
+        UiLang.keep(greetTxt); UiLang.keep(nameTxt)
+        heroBox.addView(greetTxt, LinearLayout.LayoutParams(-1, -2))
+        heroBox.addView(nameTxt, LinearLayout.LayoutParams(-1, -2))
+        renderGreeting()
+        // बीच में DK का वही 3D लोगो - बड़ा, बिना डिब्बे के, पीछे हल्की accent चमक
+        val glow = FrameLayout(c).apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                gradientType = android.graphics.drawable.GradientDrawable.RADIAL_GRADIENT
+                colors = intArrayOf(com.dk.assistant.ui.ClayTheme.t.glow, com.dk.assistant.ui.NeonTheme.alpha(com.dk.assistant.ui.ClayTheme.t.accent, 0x00))
+                gradientRadius = d(130f).toFloat()
+            }
+        }
         hero = Logo3D(c, R.drawable.ic_dk).apply { setOnClickListener { spin() } }
-        heroBox.addView(hero, LinearLayout.LayoutParams(d(120f), d(120f)))
+        glow.addView(hero, FrameLayout.LayoutParams(d(170f), d(170f), Gravity.CENTER))
+        heroBox.addView(glow, LinearLayout.LayoutParams(d(260f), d(260f)).apply { topMargin = d(4f) })
         homeCol.addView(heroBox, LinearLayout.LayoutParams(-1, 0, 1f))
         chatList = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(d(14f), d(14f), d(14f), 0) }
         UiLang.keep(chatList)
@@ -297,8 +333,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     private fun buildInput() {
         inputBox = LinearLayout(c).apply {
             orientation = LinearLayout.VERTICAL
-            background = DkaiTheme.round(c, DkaiTheme.CARD, 24f, DkaiTheme.BORDER)
-            setPadding(d(12f), d(6f), d(8f), d(8f))
+            // 23 नवंबर 2026 (Soft Clay): लंबी गोल उभरी पट्टी (कोने 28dp)
+            background = com.dk.assistant.ui.Clay.raised(c, 28f, 6f)
+            setPadding(d(18f), d(10f), d(14f), d(14f))
         }
         attachRow = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, d(4f), 0, d(2f)) }
         attachScroll = HorizontalScrollView(c).apply { isHorizontalScrollBarEnabled = false; visibility = View.GONE; addView(attachRow) }
@@ -324,15 +361,17 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         row.addView(ImageView(c).apply {
             setImageDrawable(DkaiIcon(DkaiIcon.Kind.PLUS, DkaiTheme.WHITE)); scaleType = ImageView.ScaleType.CENTER_INSIDE
             val p = d(9f); setPadding(p, p, p, p); contentDescription = "फोटो / फ़ाइल जोड़ें (5 तक)"
-            background = DkaiTheme.press(DkaiTheme.oval(DkaiTheme.PILL, DkaiTheme.BORDER, 1)); isClickable = true
+            background = com.dk.assistant.ui.Clay.circle(c, 3f); isClickable = true
             setOnClickListener { v -> DkaiSheets.attach(this@DkaiScreen, v) }
             setOnLongClickListener { pickImages(); true }
         }, LinearLayout.LayoutParams(d(38f), d(38f)))
         // 🔍 | 🖥  - खोज / चैट या DK Computer
         val seg = LinearLayout(c).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(d(3f), d(3f), d(3f), d(3f))
-            background = DkaiTheme.round(c, DkaiTheme.PILL, 19f, DkaiTheme.BORDER)
         }
+        // Segmented पट्टी: धँसी पट्टी + चुना (🔍 या 🖥) उभरा accent बटन जो 200ms में खिसकता है
+        seg.background = com.dk.assistant.ui.ClaySegmentDrawable(seg) { if (computerMode) 1 else 0 }
+        segBar = seg
         searchSeg = ImageView(c).apply {
             scaleType = ImageView.ScaleType.CENTER_INSIDE; val p = d(7f); setPadding(p, p, p, p)
             contentDescription = "खोज / चैट"; isClickable = true; setOnClickListener { setComputer(false) }
@@ -361,15 +400,17 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         row.addView(dictBtn, LinearLayout.LayoutParams(d(40f), d(40f)).apply { rightMargin = d(6f) })
         // 〰 = सीधी आवाज़ में बातचीत (DK लाइव). कुछ लिखा हो तो यही ↑ भेजें
         micBtn = FrameLayout(c).apply {
-            background = DkaiTheme.press(DkaiTheme.oval(DkaiTheme.BLUE), DkaiTheme.oval(0xFFFFFFFF.toInt()))
-            elevation = d(3f).toFloat(); isClickable = true; isFocusable = true
+            // accent से भरा उभरा गोल (दबाने पर धँसे) + हल्की accent चमक
+            background = com.dk.assistant.ui.Clay.circle(c, 3f, accent = true)
+            elevation = d(6f).toFloat(); isClickable = true; isFocusable = true
+            if (android.os.Build.VERSION.SDK_INT >= 28) { outlineSpotShadowColor = DkaiTheme.BLUE; outlineAmbientShadowColor = DkaiTheme.BLUE }
             setOnClickListener { if (input.text.isNotBlank() || attached.isNotEmpty()) send() else micTap() }
         }
         micIcon = ImageView(c).apply { setImageDrawable(DkaiIcon(DkaiIcon.Kind.WAVE, DkaiTheme.ON)) }      // नीले बटन पर हमेशा सफ़ेद
         micBtn.addView(micIcon, FrameLayout.LayoutParams(d(22f), d(22f), Gravity.CENTER))
         row.addView(micBtn, LinearLayout.LayoutParams(d(44f), d(44f)))
         inputBox.addView(row, LinearLayout.LayoutParams(-1, -2))
-        content.addView(inputBox, LinearLayout.LayoutParams(-1, -2).apply { setMargins(d(12f), d(6f), d(12f), d(10f)) })
+        content.addView(inputBox, LinearLayout.LayoutParams(-1, -2).apply { setMargins(d(12f), d(6f), d(12f), d(12f)) })
         micOrSend()
     }
 
@@ -381,7 +422,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         val bar = com.dk.assistant.ui.HomeTabs.bar(c, DkaiTheme.GRAY, DkaiTheme.BLUE, DkaiTheme.CARD) { t -> onTab(t) }
         tabsBar = bar
         com.dk.assistant.ui.HomeTabs.sync(c, bar)
-        content.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { setMargins(d(12f), 0, d(12f), d(8f)) })
+        content.clipChildren = false; content.clipToPadding = false
+        content.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { setMargins(d(12f), d(4f), d(12f), d(10f)) })
     }
 
     /** पट्टी का टैब: होम = ऊपर / खुला sheet बंद, स्कैन = DK लेंस, माइक = DK लाइव, चैट/मेमोरी = MainActivity की स्क्रीन */
@@ -411,8 +453,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         computerMode = on
         if (!::searchSeg.isInitialized) return
         searchSeg.setImageDrawable(DkaiIcon(DkaiIcon.Kind.SEARCH, if (on) DkaiTheme.GRAY else DkaiTheme.ON))
-        searchSeg.background = if (on) null else DkaiTheme.round(c, DkaiTheme.BLUE, 16f)
-        compSeg.background = if (on) DkaiTheme.round(c, DkaiTheme.BLUE, 16f) else null
+        searchSeg.background = null; compSeg.background = null
+        segBar?.invalidate()   // उभरा accent बटन खिसके (200ms)
         compEyes.color = if (on) DkaiTheme.ON else DkaiTheme.GRAY
         input.hint = if (on) "DK Computer को काम दीजिए…" else "Ask anything…"
     }
@@ -795,10 +837,13 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
 
     /** किस रंग (लाइट/डार्क) में बना था - सेटिंग में बदला हो तो लौटते ही नए रंग में (14 नवंबर 2026) */
     private var builtLight = false
+    private var builtTheme = com.dk.assistant.ui.ClayTheme.version
 
     fun onResume() {
         DkaiTheme.load(c)
         if (DkaiTheme.light != builtLight) { activity.recreate(); return }
+        if (com.dk.assistant.ui.ClayTheme.version != builtTheme) { activity.recreate(); return }   // Settings › Theme में थीम बदली
+        renderGreeting()
         resumed = true
         ui.removeCallbacks(eyesTick); ui.post(eyesTick)
         DKState.listen(stateL); com.dk.assistant.LiveVision.listen(visionL)
@@ -854,6 +899,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             val pill = if (upd) DkaiTheme.pill(c, t, DkaiTheme.UPDATE_BG, DkaiTheme.UPDATE_TEXT, 13f).apply { setTypeface(typeface, android.graphics.Typeface.BOLD) }
                 else DkaiTheme.pill(c, t, DkaiTheme.ALERT_BG, DkaiTheme.ALERT_TEXT, 12f)
             pill.setOnClickListener { go() }
+            // सूचना = छोटा चमकता गोल बिंदु (लाल / नारंगी)
+            pill.setCompoundDrawablesRelative(com.dk.assistant.ui.ClayDot(d(10f), if (upd) DkaiTheme.RED else DkaiTheme.AMBER), null, null, null)
+            pill.compoundDrawablePadding = d(8f)
             alertRow.addView(pill, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = d(6f) })
             if (upd) com.dk.assistant.UpdatePrompt.pulse(pill)
         }

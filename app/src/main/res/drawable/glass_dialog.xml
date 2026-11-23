@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Glass dialog: Liquid Glass kinara + gehra neela kaanch (Android 12+ par peeche asli blur) -->
+<!-- Soft Clay dialog: थीम की surface वाला उभरा कार्ड (ClayDialogDrawable) -->
 <inset xmlns:android="http://schemas.android.com/apk/res/android"
     android:insetLeft="18dp" android:insetRight="18dp" android:insetTop="24dp" android:insetBottom="24dp">
-    <drawable class="com.dk.assistant.GlassDialogDrawable" />
+    <drawable class="com.dk.assistant.ui.ClayDialogDrawable" />
 </inset>

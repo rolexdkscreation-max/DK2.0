@@ -73,4 +73,32 @@
         <item name="android:windowEnterAnimation">@anim/glass_dialog_in</item>
         <item name="android:windowExitAnimation">@anim/glass_dialog_out</item>
     </style>
+    <!-- Soft Clay: हल्की थीम (Clay Day) में dialog / सिस्टम लिखावट गहरी. रंग ClayTheme के Clay Day अक्षर-रंग जैसे -->
+    <style name="DK.ClayLightOverlay" parent="">
+        <item name="android:textColorPrimary">@color/clay_light_text</item>
+        <item name="android:textColorSecondary">@color/clay_light_sub</item>
+        <item name="android:textColorHint">@color/clay_light_hint</item>
+        <item name="colorControlNormal">@color/clay_light_sub</item>
+        <item name="android:alertDialogTheme">@style/Theme.DK.Dialog.ClayLight</item>
+        <item name="alertDialogTheme">@style/Theme.DK.Dialog.Compat.ClayLight</item>
+    </style>
+    <style name="Theme.DK.Dialog.ClayLight" parent="Theme.DK.Dialog">
+        <item name="android:textColorPrimary">@color/clay_light_text</item>
+        <item name="android:textColorSecondary">@color/clay_light_sub</item>
+        <item name="android:textColorAlertDialogListItem">@color/clay_light_text</item>
+        <item name="android:textColorHint">@color/clay_light_hint</item>
+        <item name="android:colorAccent">@color/clay_light_accent</item>
+        <item name="android:colorControlActivated">@color/clay_light_accent</item>
+        <item name="android:colorControlNormal">@color/clay_light_sub</item>
+        <item name="android:buttonBarButtonStyle">@style/DK.DialogButton.ClayLight</item>
+    </style>
+    <style name="Theme.DK.Dialog.Compat.ClayLight" parent="Theme.DK.Dialog.Compat">
+        <item name="colorAccent">@color/clay_light_accent</item>
+        <item name="colorPrimary">@color/clay_light_accent</item>
+        <item name="android:textColorPrimary">@color/clay_light_text</item>
+        <item name="android:textColorSecondary">@color/clay_light_sub</item>
+    </style>
+    <style name="DK.DialogButton.ClayLight" parent="DK.DialogButton">
+        <item name="android:textColor">@color/clay_light_accent</item>
+    </style>
 </resources>

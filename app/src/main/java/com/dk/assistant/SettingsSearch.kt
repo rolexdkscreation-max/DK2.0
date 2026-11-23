@@ -19,7 +19,7 @@ object SettingsSearch {
 
     /** हिस्सों के नाम (मेनू की पंक्ति) */
     val SECTIONS: Map<String, String> = linkedMapOf(
-        "profile" to "प्रोफ़ाइल", "lang" to "भाषा / Language", "ui" to "दिखावट (UI कस्टमाइज़ेशन)", "brain" to "AI दिमाग",
+        "theme" to "Theme (थीम)", "profile" to "प्रोफ़ाइल", "lang" to "भाषा / Language", "ui" to "दिखावट (UI कस्टमाइज़ेशन)", "brain" to "AI दिमाग",
         "brain_live" to "AI दिमाग • DK लाइव", "brain_chat" to "AI दिमाग • DK चैट", "brain_coder" to "AI दिमाग • कोडिंग एजेंट",
         "brain_pc" to "AI दिमाग • DK कंप्यूटर", "voice" to "आवाज़", "orb" to "ओर्ब और चेहरा",
         "access" to "Accessibility", "phonelock" to "फ़ोन लॉक / अनलॉक", "guard" to "टच मोड", "applock" to "ऐप लॉक", "face" to "चेहरा पहचान", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
@@ -56,6 +56,7 @@ object SettingsSearch {
 
     /** हर हिस्से के आम शब्द (हिंदी + English + बोलचाल) - सर्च में मदद */
     private val SECTION_WORDS = mapOf(
+        "theme" to "theme थीम रंग color dark light clay day midnight nocturne ember abyss navy obsidian rosewood",
         "profile" to "नाम name profile असिस्टेंट assistant",
         "lang" to "भाषा language hindi english हिंदी अंग्रेज़ी",
         "ui" to "theme थीम रंग color colour design look दिखावट animation",
