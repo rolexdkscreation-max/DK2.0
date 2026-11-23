@@ -72,7 +72,8 @@ class DkaiBehaviorTest {
         // 23 नवंबर 2026 (मालिक): इनपुट बॉक्स होम से हटा - वही बॉक्स Chat स्क्रीन पर, सारे बटन के साथ
         assertNull("होम पर इनपुट बॉक्स नहीं होना चाहिए", byDesc(s.root, "आवाज़ से बात (DK लाइव)"))
         val (_, ch) = openChatPage()
-        assertEquals("Ask anything…", ch.input.hint.toString())
+        // 23 नवंबर 2026 (मालिक): hint "Ask anything…" की जगह "DK AI से कुछ भी पूछो"
+        assertEquals("DK AI से कुछ भी पूछो", ch.input.hint.toString())
         for (d in listOf("फोटो / फ़ाइल जोड़ें (5 तक)", "खोज / चैट", "DK Computer (टैप = चालू)", "AI मॉडल चुनें", "बोलकर लिखें", "आवाज़ से बात (DK लाइव)"))
             assertNotNull("$d बटन नहीं", byDesc(ch.root, d))
         assertEquals(VoiceSessionState.INACTIVE, s.voiceSessionState)
@@ -91,7 +92,12 @@ class DkaiBehaviorTest {
 
         s.setState(DkaiCore.next(s.voiceSessionState, VoiceEvent.MINIMIZE), animate = false)
         assertEquals(VoiceSessionState.ACTIVE_MINIMIZED, s.voiceSessionState)
+        // 23 नवंबर 2026 (मालिक: "Home पर नीचे वाली छोटी पट्टी बिल्कुल न दिखे"): होम टैब पर छिपी, Chat टैब पर दिखे
+        assertEquals(View.GONE, s.voice.mini.visibility)
+        assertTrue(s.showTab(com.dk.assistant.ui.HomeTabs.Tab.CHAT))
         assertEquals(View.VISIBLE, s.voice.mini.visibility)
+        assertTrue(s.showTab(com.dk.assistant.ui.HomeTabs.Tab.HOME))
+        assertEquals(View.GONE, s.voice.mini.visibility)
         assertEquals(View.GONE, s.voice.sheet.visibility)
         // पट्टी के रहते भी लिखना चलता है (इनपुट बॉक्स अब Chat स्क्रीन पर)
         val (_, ch) = openChatPage()
@@ -144,7 +150,7 @@ class DkaiBehaviorTest {
         assertEquals("DK Computer को काम दीजिए…", s.input.hint.toString())
         byDesc(s.root, "खोज / चैट")!!.performClick(); idle()
         assertFalse(s.computerMode)
-        assertEquals("Ask anything…", s.input.hint.toString())
+        assertEquals("DK AI से कुछ भी पूछो", s.input.hint.toString())
     }
 
 

@@ -44,7 +44,9 @@ object HomeMenu {
         items.forEach { it0 ->
             val row = LinearLayout(a).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                background = Clay.chip(a, 20f, 4f)
+                // 23 नवंबर 2026 (मालिक: "मेन्यू के आठों आइटम पर वही साझा कार्ड स्टाइल"): बड़ी नरम गोलाई, सख़्त रेखा / गहरी
+                // छाया नहीं, दबाने पर हल्का धँसे और 180ms में चिकनी वापसी - सब [Clay.card] ([ClayCard]) से
+                background = Clay.card(a)
                 minimumHeight = (60 * dp).toInt()
                 val p = (14 * dp).toInt(); setPadding(p, (10 * dp).toInt(), p, (10 * dp).toInt())
                 isClickable = true; isFocusable = true
@@ -65,15 +67,31 @@ object HomeMenu {
             })
             row.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             box.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = (8 * dp).toInt()
+                topMargin = (ROW_GAP_DP * dp).toInt()
             })
         }
-        // सबसे नीचे: ऐप का version (छोटा, हल्का) - स्क्रॉल के बाहर, हमेशा दिखे
-        card.addView(TextView(a).apply {
-            text = try { com.dk.assistant.Updater.displayVersion(a) } catch (_: Exception) { "DK" }
-            textSize = 11f; setTextColor(k.hint); gravity = Gravity.CENTER; letterSpacing = 0.06f
+        // सबसे नीचे (स्क्रॉल के बाहर, हमेशा दिखे). 23 नवंबर 2026 (मालिक): version नंबर की जगह दो पंक्तियाँ बीच में -
+        // "DK AI" (सुनहरा, Settings के शीर्षक वाला ही [com.dk.assistant.FutureViews.goldShader]; लाइट थीम पर ज़रा गहरा)
+        // और ठीक नीचे "By Dhiraj Kumar Singh". version नंबर "ऐप के बारे में" में ही रहता है
+        val sign = LinearLayout(a).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+            contentDescription = BRAND + ", " + BYLINE
+            setTag(com.dk.assistant.PlainLook.SKIP, true)        // रंग अपने हैं - लाइट थीम वाला रंग-बदलाव इन पर नहीं
+        }
+        sign.addView(TextView(a).apply {
+            text = BRAND; textSize = 16f; gravity = Gravity.CENTER; letterSpacing = BRAND_SPACING
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)          // आधा-मोटा
+            setTextColor(NeonTheme.title()[1]); includeFontPadding = false
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = (14 * dp).toInt() })
+            com.dk.assistant.FutureViews.goldShader(this, goldDeeper(k.light))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        sign.addView(TextView(a).apply {
+            text = BYLINE; textSize = 10.5f; gravity = Gravity.CENTER; letterSpacing = 0.04f; includeFontPadding = false
+            setTypeface(Typeface.create(Typeface.SANS_SERIF, Typeface.ITALIC))
+            setTextColor(bylineColor(k.light))
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = (2 * dp).toInt() })
+        card.addView(sign, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = (14 * dp).toInt() })
         // कितनी ऊँचाई मिले: anchor के नीचे से स्क्रीन के नीचे तक (थोड़ी जगह छोड़कर)
         val loc = IntArray(2); anchor.getLocationInWindow(loc)
         val screenH = anchor.rootView?.height?.takeIf { it > 0 } ?: a.resources.displayMetrics.heightPixels
@@ -87,6 +105,22 @@ object HomeMenu {
         pw.isOutsideTouchable = true
         if (!NeonTheme.reducedMotion()) pw.animationStyle = android.R.style.Animation_Dialog else pw.animationStyle = 0
         pw.showAsDropDown(anchor, 0, (6 * dp).toInt())
+    }
+
+    /** मेन्यू के नीचे की दो पंक्तियाँ (23 नवंबर 2026, मालिक) */
+    const val BRAND = "DK AI"
+    const val BYLINE = "By Dhiraj Kumar Singh"
+    /** "letter spacing लगभग 2" - 16sp पर ~2sp (em में) */
+    const val BRAND_SPACING = 0.125f
+    /** पंक्तियों के बीच बराबर जगह (dp) - कार्ड की अपनी परछाईं-जगह के साथ पहले जितनी ही */
+    const val ROW_GAP_DP = 4f
+    /** लाइट थीम पर सुनहरा इतना गहरा (डार्क = Settings वाला हूबहू) - pure */
+    fun goldDeeper(light: Boolean): Float = if (light) 0.32f else 0f
+    /** नीचे वाली पंक्ति: हल्का सुनहरा ~70% (लाइट थीम पर गहरा सुनहरा, ताकि पढ़ा जाए) - pure */
+    fun bylineColor(light: Boolean): Int {
+        val g = NeonTheme.title()
+        val base = if (light) NeonTheme.mix(g[1], android.graphics.Color.BLACK, goldDeeper(true)) else g[0]
+        return (0xB3 shl 24) or (base and 0x00FFFFFF)
     }
 
     /** pure (JVM test): पैनल की सबसे ज़्यादा ऊँचाई = anchor के नीचे से स्क्रीन के नीचे तक, [margin] छोड़कर (कम से कम 200px) */

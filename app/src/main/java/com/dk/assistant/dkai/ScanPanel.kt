@@ -36,6 +36,7 @@ class ScanPanel(private val act: AppCompatActivity, private val startLive: () ->
     private val cam = PreviewView(act).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE; scaleType = PreviewView.ScaleType.FILL_CENTER }
     private val holo = HoloScanView(act)
     private val status: TextView
+    private val shareBtn: ImageView
     private var faces: LensFaces? = null
     private var feed: CameraFeed? = null
     private var wantJob: Runnable? = null
@@ -50,14 +51,58 @@ class ScanPanel(private val act: AppCompatActivity, private val startLive: () ->
             textSize = 14f; gravity = Gravity.CENTER; setTextColor(k.text)
             background = com.dk.assistant.ui.Clay.chip(act); setPadding(d(14f), d(8f), d(14f), d(8f))
         }
-        view.addView(status, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = d(12f) })
-        view.addView(ImageView(act).apply {
-            setImageResource(R.drawable.ic_flip); scaleType = ImageView.ScaleType.FIT_CENTER
-            background = com.dk.assistant.ui.Clay.circle(act, 3f); val p = d(10f); setPadding(p, p, p, p)
-            imageTintList = android.content.res.ColorStateList.valueOf(k.text)
-            contentDescription = "DK लेंस बदलें (आगे/पीछे)"; isClickable = true
-            setOnClickListener { if (liveReady()) LiveVision.flipCamera(act) }
-        }, FrameLayout.LayoutParams(d(44f), d(44f), Gravity.BOTTOM or Gravity.END).apply { val m = d(12f); setMargins(m, m, m, m) })
+        // 23 नवंबर 2026 (मालिक: "ऊपर दो बटन ज़रूर दिखें और काम करें"): ऊपर-बाएँ स्क्रीन शेयर, ऊपर-दाएँ कैमरा आगे/पीछे.
+        // हालत वाली पट्टी इनके बीच (दोनों तरफ़ बटन जितनी जगह छोड़कर)
+        view.addView(status, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+            topMargin = d(12f); leftMargin = d(TOP_BTN_DP + 18f); rightMargin = d(TOP_BTN_DP + 18f)
+        })
+        shareBtn = topBtn(R.drawable.ic_screen_share, "स्क्रीन शेयर (चालू / बंद)") { shareTap() }
+        view.addView(shareBtn, FrameLayout.LayoutParams(d(TOP_BTN_DP), d(TOP_BTN_DP), Gravity.TOP or Gravity.START).apply { val m = d(12f); setMargins(m, m, m, m) })
+        view.addView(topBtn(R.drawable.ic_flip, "DK लेंस बदलें (आगे/पीछे)") { flipTap() },
+            FrameLayout.LayoutParams(d(TOP_BTN_DP), d(TOP_BTN_DP), Gravity.TOP or Gravity.END).apply { val m = d(12f); setMargins(m, m, m, m) })
+    }
+
+    /** ऊपर का गोल बटन (वही उभरा गोल [com.dk.assistant.ui.Clay.circle] जो पहले नीचे वाले पलटने के बटन पर था) */
+    private fun topBtn(icon: Int, desc: String, onTap: () -> Unit) = ImageView(act).apply {
+        val k = com.dk.assistant.ui.ClayTheme.t
+        setImageResource(icon); scaleType = ImageView.ScaleType.FIT_CENTER
+        background = com.dk.assistant.ui.Clay.circle(act, 3f); val p = d(10f); setPadding(p, p, p, p)
+        imageTintList = android.content.res.ColorStateList.valueOf(k.text)
+        contentDescription = desc; isClickable = true; isFocusable = true
+        setOnClickListener { onTap() }
+    }
+
+    /** कैमरा आगे / पीछे - DK लाइव जुड़ी न हो तो बताओ (चुपचाप कुछ न करना नहीं) */
+    private fun flipTap() {
+        if (liveReady()) { LiveVision.flipCamera(act); return }
+        UiLang.toast(act, "DK लाइव जुड़ते ही कैमरा पलटेगा — थोड़ा रुकिए", Toast.LENGTH_SHORT).show()
+        if (!DKState.live) startLive()
+    }
+
+    /** स्क्रीन शेयर चालू / बंद - वही रास्ता जो आवाज़ स्क्रीन पर ([LiveVision.toggleScreen]) */
+    private fun shareTap() {
+        if (!liveReady()) {
+            UiLang.toast(act, "DK लाइव जुड़ते ही स्क्रीन शेयर होगी — थोड़ा रुकिए", Toast.LENGTH_SHORT).show()
+            if (!DKState.live) { startLive() }
+            return
+        }
+        val on = !(LiveVision.screenOn || LiveVision.asking)
+        val r = LiveVision.toggleScreen(act)
+        val msg = when {
+            on && r.startsWith("This Live model") -> "यह Gemini Live मॉडल तस्वीर नहीं लेता — सेटिंग्स में दूसरा मॉडल चुनें"
+            on -> "Android पूछेगा — \"Start / शुरू करें\" दबाते ही DK आपकी स्क्रीन देखेगा"
+            else -> "स्क्रीन शेयर बंद"
+        }
+        UiLang.toast(act, msg, Toast.LENGTH_SHORT).show()
+        paintShare()
+    }
+
+    /** स्क्रीन शेयर चालू = बटन accent रंग में */
+    private fun paintShare() {
+        val k = com.dk.assistant.ui.ClayTheme.t
+        val on = LiveVision.screenOn || LiveVision.asking
+        shareBtn.imageTintList = android.content.res.ColorStateList.valueOf(if (on) k.accent else k.text)
+        shareBtn.contentDescription = if (on) "स्क्रीन शेयर बंद करें" else "स्क्रीन शेयर (चालू / बंद)"
     }
 
     /** अभी होम पर स्कैन दिख रहा है (तब [LiveVision] आवाज़ स्क्रीन नहीं खोलता) */
@@ -106,6 +151,7 @@ class ScanPanel(private val act: AppCompatActivity, private val startLive: () ->
     /** LiveVision की चाह -> असली कैमरा (आवाज़ स्क्रीन वाला ही तरीका) */
     fun sync() {
         if (!shown || act.isFinishing || act.isDestroyed) return
+        paintShare()
         val f = feed
         if (!LiveVision.cameraWanted) {
             if (f?.running == true) { f.stop(); LiveVision.onCameraStopped("स्कैन बंद") }
@@ -148,6 +194,8 @@ class ScanPanel(private val act: AppCompatActivity, private val startLive: () ->
 
     companion object {
         const val REQ_CAM = 4219
+        /** ऊपर के दो बटन (स्क्रीन शेयर, कैमरा पलटना) का आकार dp */
+        const val TOP_BTN_DP = 44f
         /** होम का स्कैन सामने है - [LiveVision.setCamera] तब अलग आवाज़ स्क्रीन नहीं खोलता */
         @Volatile var showing = false
             private set

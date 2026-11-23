@@ -50,7 +50,8 @@ object HomeTabs {
             setTag(com.dk.assistant.PlainLook.SKIP, true)
         }
         // 23 नवंबर 2026 (मालिक: "नीला तरल जैसा चयन-निशान जिस पर टैप करें उसी पर सरक कर आए"): उभरी पट्टी + एक ही accent बूँद
-        val liquid = LiquidTabs(bar, selected, d(28f).toFloat(), d(6f).toFloat(), d(4f).toFloat()).also { it.fg = fg }
+        // 23 नवंबर 2026 (मालिक: "नीचे की बार पर वही साझा कार्ड स्टाइल"): गोलाई / गहराई साझा कार्ड ([ClayCard]) से
+        val liquid = LiquidTabs(bar, selected, d(ClayCard.RADIUS_DP).toFloat(), d(ClayCard.DEPTH_DP).toFloat(), d(4f).toFloat()).also { it.fg = fg }
         bar.background = liquid
         bar.setTag(R.id.dk_home_tabs, liquid)
         bar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> liquid.invalidateSelf() }
@@ -59,9 +60,11 @@ object HomeTabs {
             val cell = LinearLayout(c).apply {
                 orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                 isClickable = true; isFocusable = true; contentDescription = "${t.label} - ${t.desc}"
-                // बाकी टैब दबाने पर धँसें (120ms); चुने टैब के नीचे तरल बूँद ([LiquidTabs])
+                // बाकी टैब दबाने पर धँसें (120ms में धीरे से, छोड़ने पर 180ms में चिकनी वापसी); गोलाई साझा कार्ड वाली.
+                // चुने टैब के नीचे तरल बूँद ([LiquidTabs])
                 background = if (mid) null else android.graphics.drawable.StateListDrawable().apply {
-                    addState(intArrayOf(android.R.attr.state_pressed), ClayDrawable(ClayDrawable.Style.INSET, radiusPx = d(20f).toFloat()))
+                    addState(intArrayOf(android.R.attr.state_pressed), ClayDrawable(ClayDrawable.Style.INSET, radiusPx = d(ClayCard.RADIUS_DP).toFloat()))
+                    setEnterFadeDuration(ClayDrawable.PRESS_MS.toInt()); setExitFadeDuration(ClayDrawable.RELEASE_MS.toInt())
                 }
                 if (!mid) setPadding(0, d(4f), 0, d(4f))
                 clipChildren = false; clipToPadding = false
@@ -74,7 +77,7 @@ object HomeTabs {
             val icon = ImageView(c).apply {
                 setImageResource(t.icon); scaleType = ImageView.ScaleType.FIT_CENTER
                 if (mid) {
-                    background = ClayDrawable(ClayDrawable.Style.ACCENT, oval = true, depthPx = d(5f).toFloat())
+                    background = micBg(c, false)
                     val p = d(17f); setPadding(p, p, p, p)
                     // accent चमक (Android 9+: परछाईं का रंग accent)
                     elevation = d(10f).toFloat()
@@ -97,6 +100,43 @@ object HomeTabs {
         return bar
     }
 
+    /**
+     * 23 नवंबर 2026 (मालिक: "माइक वाला बटन ही कॉल कट बटन - एक बटन, दो हालत"): DK लाइव चालू = लाल कॉल-कट (टैप = लाइव बंद),
+     * बंद = वही नीला माइक. pure: (नाम, बताने वाला text, लाल?)
+     */
+    data class MicLook(val label: String, val desc: String, val endCall: Boolean)
+    fun micLook(live: Boolean): MicLook =
+        if (live) MicLook("कॉल कट", "कॉल कट - DK लाइव बंद करें", true) else MicLook(Tab.MIC.label, "${Tab.MIC.label} - ${Tab.MIC.desc}", false)
+
+    /** बीच का बटन: नीला (accent) माइक या लाल कॉल-कट - दोनों नरम छाया वाले ([ClayDrawable.soft]) */
+    private fun micBg(c: Context, endCall: Boolean): ClayDrawable {
+        val depth = 5f * c.resources.displayMetrics.density
+        return if (endCall) ClayDrawable(ClayDrawable.Style.RAISED, oval = true, depthPx = depth, fill = { com.dk.assistant.dkai.DkaiTheme.RED }, soft = true)
+        else ClayDrawable(ClayDrawable.Style.ACCENT, oval = true, depthPx = depth, soft = true)
+    }
+
+    /** DK लाइव चालू / बंद के हिसाब से बीच का बटन (बार-बार बुलाने पर भी, हालत बदले तभी नया) */
+    fun live(bar: View?, live: Boolean) {
+        if (bar !is LinearLayout) return
+        for (i in 0 until bar.childCount) {
+            val cell = bar.getChildAt(i) as? LinearLayout ?: continue
+            if (cell.tag != Tab.MIC) continue
+            val icon = cell.getChildAt(0) as? ImageView ?: return
+            if (icon.getTag(R.id.dk_home_tabs) == live) return
+            icon.setTag(R.id.dk_home_tabs, live)
+            val m = micLook(live)
+            val k = ClayTheme.t
+            icon.background = micBg(bar.context, m.endCall)
+            if (m.endCall) icon.setImageDrawable(com.dk.assistant.dkai.DkaiIcon(com.dk.assistant.dkai.DkaiIcon.Kind.CALL_END, android.graphics.Color.WHITE))
+            else icon.setImageResource(Tab.MIC.icon)
+            icon.imageTintList = ColorStateList.valueOf(if (m.endCall) android.graphics.Color.WHITE else k.onAccent)
+            if (android.os.Build.VERSION.SDK_INT >= 28) { val sc = if (m.endCall) com.dk.assistant.dkai.DkaiTheme.RED else k.accent; icon.outlineSpotShadowColor = sc; icon.outlineAmbientShadowColor = sc }
+            (cell.getChildAt(1) as? TextView)?.apply { text = m.label; setTextColor(if (m.endCall) com.dk.assistant.dkai.DkaiTheme.RED else k.accent) }
+            cell.contentDescription = m.desc
+            return
+        }
+    }
+
     /** अभी चुना टैब (पट्टी पर) */
     fun selected(bar: View?): Tab? = (bar?.getTag(R.id.dk_home_tabs) as? LiquidTabs)?.sel
 
@@ -115,6 +155,7 @@ object HomeTabs {
             val cell = bar.getChildAt(i) as? LinearLayout ?: continue
             val t = cell.tag as? Tab ?: continue
             val on = t == sel; val mid = t == Tab.MIC
+            if (mid && cell.getChildAt(0)?.getTag(R.id.dk_home_tabs) == true) continue   // लाइव चालू = लाल कॉल-कट ([live]) वैसा ही
             (cell.getChildAt(0) as? ImageView)?.imageTintList = ColorStateList.valueOf(if (mid || on) k.onAccent else fg)
             (cell.getChildAt(1) as? TextView)?.apply {
                 setTextColor(if (on) k.onAccent else if (mid) k.accent else fg)
@@ -134,8 +175,9 @@ object HomeTabs {
  * रंग [ClayTheme.t] से ([ClayDrawable]), कम-एनिमेशन चालू हो तो सीधे पहुँचती है.
  */
 class LiquidTabs(private val bar: LinearLayout, var sel: HomeTabs.Tab, radius: Float, depth: Float, blobDepth: Float) : android.graphics.drawable.Drawable() {
-    private val base = ClayDrawable(ClayDrawable.Style.RAISED, radiusPx = radius, depthPx = depth)
-    private val blob = ClayDrawable(ClayDrawable.Style.ACCENT, radiusPx = ClayDrawable.FULL, depthPx = blobDepth)
+    // 23 नवंबर 2026 (मालिक): पट्टी = साझा कार्ड ([ClayCard], card = true); चुना टैब = उतने ही गोल किनारे, बारीक नरम उभार + हल्की चमक
+    private val base = ClayDrawable(ClayDrawable.Style.RAISED, radiusPx = radius, depthPx = depth, card = true)
+    private val blob = ClayDrawable(ClayDrawable.Style.ACCENT, radiusPx = radius, depthPx = blobDepth, soft = true)
     private var l = Float.NaN
     private var r = Float.NaN
     private var fromL = 0f

@@ -377,6 +377,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             else -> homeScroll.post { homeScroll.smoothScrollTo(0, 0) }
         }
         com.dk.assistant.ui.HomeTabs.select(tabsBar, t)
+        if (::voice.isInitialized) { voice.syncMini(); padForMini() }      // छोटी पट्टी: होम पर नहीं, Chat टैब पर हाँ
         speakSw?.let { sw -> sw.isChecked = ChatSpeak.on(c); DkaiTheme.gone(sw, t != com.dk.assistant.ui.HomeTabs.Tab.CHAT) }
         renderBack()
         return true
@@ -515,7 +516,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         attachScroll = HorizontalScrollView(c).apply { isHorizontalScrollBarEnabled = false; visibility = View.GONE; addView(attachRow) }
         inputBox.addView(attachScroll, LinearLayout.LayoutParams(-1, -2))
         input = EditText(c).apply {
-            hint = "Ask anything…"; textSize = 15.5f
+            hint = DkaiHomeCore.HINT; textSize = 15.5f      // 23 नवंबर 2026 (मालिक): "DK AI से कुछ भी पूछो"
             setTextColor(DkaiTheme.WHITE); setHintTextColor(DkaiTheme.HINT); background = null
             setPadding(d(4f), d(10f), d(4f), d(6f)); maxLines = 6; minHeight = d(44f)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
@@ -607,6 +608,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
      * उसी बीच वाली जगह में ([showTab]); माइक = DK लाइव. Chat स्क्रीन (दूसरे रास्तों से खुली) पर पहले जैसा.
      */
     fun onTab(t: com.dk.assistant.ui.HomeTabs.Tab) {
+        // 23 नवंबर 2026 (मालिक: "माइक वाला बटन ही कॉल कट बटन"): DK लाइव चालू = बीच का बटन लाल कॉल-कट, टैप = सीधे लाइव बंद
+        if (t == com.dk.assistant.ui.HomeTabs.Tab.MIC && DKState.live) { voice.endCall(); com.dk.assistant.ui.HomeTabs.live(tabsBar, false); return }
         if (!chatPage) {
             when (t) {
                 com.dk.assistant.ui.HomeTabs.Tab.MIC -> micTap()
@@ -645,7 +648,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         searchSeg.background = null; compSeg.background = null
         segBar?.invalidate()   // उभरा accent बटन खिसके (200ms)
         compEyes.color = if (on) DkaiTheme.ON else DkaiTheme.GRAY
-        input.hint = if (on) "DK Computer को काम दीजिए…" else "Ask anything…"
+        input.hint = if (on) "DK Computer को काम दीजिए…" else DkaiHomeCore.HINT
     }
 
     // ================================================================== 🎤 लिखवाना
@@ -714,8 +717,39 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         }.start()
     }
 
+    /**
+     * 23 नवंबर 2026 (मालिक: "लाइव के दौरान फोटो अटैच = सीधे DK को, DK देखकर जवाब दे; text / फ़ाइल = उसका लिखा DK पढ़े"):
+     * DK लाइव जुड़ी हो तो फ़ाइलें उसी लाइव बातचीत में - फोटो तस्वीर की तरह ([com.dk.assistant.GeminiLive.sendFrame]) और
+     * look_photo के लिए याद ([DkaiChatFiles.remember]), text फ़ाइल का लिखा SYSTEM NOTE में ([DkaiChatFiles.liveNote]).
+     * सत्र नहीं टूटता (वही connection). false = लाइव नहीं - पहले वाला चैट रास्ता.
+     */
+    private fun liveFiles(pics: List<android.net.Uri>, t: String): Boolean {
+        val g = DKAccessibilityService.instance?.gemLive
+        val can = try { g?.canTalk() == true } catch (_: Exception) { false }
+        if (g == null || !DkaiHomeCore.attachToLive(DKState.live, can, pics.size)) return false
+        val n = pics.size.coerceAtMost(DkaiHomeCore.MAX_ATTACH)
+        DKState.userNow("📎 $n फ़ाइल" + if (t.isNotBlank()) " • $t" else "")
+        val app = c.applicationContext
+        activity.lifecycleScope.launch {
+            try {
+                DKState.hint("फ़ाइल DK लाइव को दे रहा हूँ…")
+                val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { DkaiChatFiles.prepare(app, pics) }
+                if (r.imageB64 == null && r.texts.isEmpty()) { DKState.hint(""); toast("यह फ़ाइल नहीं खुल पाई — फोटो (JPG/PNG), PDF या text फ़ाइल जोड़िए।"); return@launch }
+                DkaiChatFiles.remember(r.imageB64)
+                r.imageB64?.let { b64 -> kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    try { g.sendFrame(android.util.Base64.decode(b64, android.util.Base64.NO_WRAP)) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
+                } }
+                g.pushNote(DkaiChatFiles.liveNote(t, r.names, r.texts, r.images))
+                DKState.hint("")
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Exception) { com.dk.assistant.Quiet.note(e); DKState.hint("") }
+        }
+        return true
+    }
+
     /** 14 नवंबर 2026 (मालिक): चैट में जुड़ी फोटो / फ़ाइल चैट में ही - AI देखकर यहीं जवाब दे */
     private fun sendChatFiles(pics: List<android.net.Uri>, t: String): Boolean {
+        if (liveFiles(pics, t)) return true   // लाइव चालू: फ़ाइल/फ़ोटो सीधे DK लाइव को, सत्र नहीं टूटता
         if (!Prefs.hasAnyKey(c)) { toast("पहले सेटिंग्स में किसी AI की API key डालकर सेव कीजिए।"); host.ready(); return false }
         val n = pics.size.coerceAtMost(DkaiHomeCore.MAX_ATTACH)
         DKState.userNow("📎 $n फ़ाइल" + if (t.isNotBlank()) " • $t" else "")
@@ -1021,8 +1055,11 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         render()
     }
 
+    /** छोटी तैरती पट्टी यहाँ दिख सकती है? (होम पर नहीं - सिर्फ़ Chat स्क्रीन / Chat टैब) */
+    fun miniAllowed(): Boolean = DkaiHomeCore.miniShown(chatPage, tabNow == com.dk.assistant.ui.HomeTabs.Tab.CHAT)
+
     private fun padForMini() {
-        val extra = if (voiceSessionState == VoiceSessionState.ACTIVE_MINIMIZED) d(84f) else 0
+        val extra = if (voiceSessionState == VoiceSessionState.ACTIVE_MINIMIZED && miniAllowed()) d(84f) else 0
         homeScroll.setPadding(0, 0, 0, extra)          // चैट का आख़िरी संदेश पट्टी के नीचे न छिपे (scroll करके दिखे)
     }
 
@@ -1136,6 +1173,13 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     /** लाइव टेक्स्ट बॉक्स: हालत + यूज़र की पूरी लाइव बात, फिर उसी डिब्बे में DK की लाइव बात */
     private fun renderLive(st: DkaiCore.Status) {
         if (chatPage || !::liveBox.isInitialized) return
+        // 23 नवंबर 2026 (मालिक): कार्ड सिर्फ़ DK लाइव चलते समय - बंद होते ही छिपे, कोई डिफ़ॉल्ट लाइन नहीं
+        val show = DkaiHomeCore.liveCardShown(DKState.live)
+        DkaiTheme.gone(liveBox, !show)
+        if (!show) {
+            if (liveTxt.text.isNotEmpty()) { liveTxt.text = "" }
+            return
+        }
         val col = statusColor(st)
         if (liveState.text.toString() != st.label) liveState.text = st.label
         liveState.setTextColor(col); liveDot.color = col
@@ -1150,7 +1194,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             DkaiCore.Status.THINKING -> DKState.hintText.ifBlank { "सोच रहा हूँ…" }
             DkaiCore.Status.RESEARCHING -> DKState.hintText.ifBlank { "रिसर्च कर रहा हूँ…" }
             DkaiCore.Status.PROCESSING -> DKState.hintText.ifBlank { "काम कर रहा हूँ…" }
-            else -> "बीच में या नीचे माइक पर टैप करके बात कीजिए — आपकी और DK की बात यहाँ लाइव दिखेगी"
+            else -> ""
         }
         val who = when (t?.second) { true -> "आप"; false -> Prefs.assistantName(c); null -> "" }
         if (liveWho.text.toString() != who) liveWho.text = who
@@ -1232,6 +1276,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         renderAlerts()
         renderChat()
         voice.render()
+        com.dk.assistant.ui.HomeTabs.live(tabsBar, DKState.live)       // बीच का बटन: माइक / लाल कॉल-कट
     }
 
     private var alertSig = ""

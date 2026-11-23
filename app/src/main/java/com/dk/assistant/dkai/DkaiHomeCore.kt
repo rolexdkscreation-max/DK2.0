@@ -8,6 +8,21 @@ object DkaiHomeCore {
     /** एक बार में कितनी फोटो / फ़ाइल */
     const val MAX_ATTACH = 5
 
+    /** 23 नवंबर 2026 (मालिक): इनपुट बॉक्स का hint (DK Computer चालू हो तो उसका अलग hint, पहले जैसा) */
+    const val HINT = "DK AI से कुछ भी पूछो"
+
+    /**
+     * 23 नवंबर 2026 (मालिक: "Home पर लाइव चालू होते ही नीचे वाली छोटी पट्टी बिल्कुल न दिखे; Chat टैब पर जैसी है वैसी"):
+     * छोटी तैरती पट्टी सिर्फ़ Chat स्क्रीन या होम के Chat टैब पर. pure
+     */
+    fun miniShown(chatPage: Boolean, chatTab: Boolean): Boolean = chatPage || chatTab
+
+    /** 23 नवंबर 2026 (मालिक): होम का लाइव टेक्स्ट कार्ड सिर्फ़ DK लाइव चलते समय - बंद = कार्ड छिपा, कोई डिफ़ॉल्ट text नहीं. pure */
+    fun liveCardShown(live: Boolean): Boolean = live
+
+    /** 23 नवंबर 2026 (मालिक): DK लाइव चल रही हो तो जुड़ी फोटो / फ़ाइल उसी लाइव बातचीत में (सत्र टूटे नहीं). pure */
+    fun attachToLive(live: Boolean, canTalk: Boolean, files: Int): Boolean = live && canTalk && files > 0
+
     enum class InputAction { VOICE, SEND }
 
     /**

@@ -178,7 +178,8 @@ class MainActivity : AppCompatActivity() {
                         if (Setup.hasMic(this)) "अनुमति मिली हुई है" else "माइक की अनुमति दें") { askPerms() },
                     com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_s_teacher, "DK टीचर", "व्हाइटबोर्ड पर कदम-दर-कदम पढ़ाई") { startActivity(Intent(this, TeacherActivity::class.java)) },
                 // 15 नवंबर 2026: स्कैन (कैमरे से पढ़ना/पहचानना). 3D कैरेक्टर मालिक के कहने पर पूरा हटाया
-                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_camera, "स्कैन", "कैमरे से कॉपी, स्क्रीन या चीज़ पढ़वाएँ") { openVoice(VoiceActivity.WANT_CAMERA) },
+                // 23 नवंबर 2026 (मालिक: "दूसरी काली कैमरा विंडो न खुले"): DKAI होम के ☰ से स्कैन = नीचे वाला वही स्कैन टैब (उसी जगह)
+                com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_camera, "स्कैन", "कैमरे से कॉपी, स्क्रीन या चीज़ पढ़वाएँ") { openScanTab() },
                     com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_globe, "वेबसाइट", "वेबसाइट बनाने वाला Forge") { startActivity(Intent(this, com.dk.assistant.forge.ForgeActivity::class.java)) },
                     com.dk.assistant.ui.HomeMenu.Item(R.drawable.ic_settings, "सेटिंग्स", "दिखावट, आवाज़, AI दिमाग और बाकी सब") { openSettings() }
                 ))
@@ -388,6 +389,12 @@ class MainActivity : AppCompatActivity() {
             val last = getSharedPreferences("dk_a11y_ask", MODE_PRIVATE).getLong(P_A11Y_ASKED, 0L)
             if (A11yWatch.askOnOpen(st, System.currentTimeMillis(), last)) askA11yFix()
         }
+    }
+
+    /** DKAI होम: स्कैन = नीचे की पट्टी वाला स्कैन टैब (अलग आवाज़ / कैमरा विंडो नहीं). पुरानी (क्लासिक) होम पर पहले जैसा */
+    private fun openScanTab() {
+        val d = dkai ?: run { openVoice(VoiceActivity.WANT_CAMERA); return }
+        if (!d.showTab(com.dk.assistant.ui.HomeTabs.Tab.SCAN)) UiLang.toast(this, "स्कैन अभी नहीं खुला", Toast.LENGTH_SHORT).show()
     }
 
     /** want = कैमरा/स्क्रीन शेयर भी चालू करना (v3.102 होम के बटन) */

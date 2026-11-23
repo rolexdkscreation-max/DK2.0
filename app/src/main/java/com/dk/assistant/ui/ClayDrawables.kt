@@ -37,7 +37,13 @@ class ClayDrawable(
     /** RAISED का रंग: null = थीम का surface; बाकी = chip जैसे छोटे रूप */
     val fill: (() -> Int)? = null,
     /** साझा कार्ड ([ClayCard]): नरम दो परछाइयाँ, सख़्त किनारा नहीं, दबाने पर हल्का छोटा (scale) */
-    val card: Boolean = false
+    val card: Boolean = false,
+    /**
+     * 23 नवंबर 2026 (मालिक: "चुना टैब / बीच का माइक - किनारे नरम, बारीक उभार, छाया नरम"): उभरा रूप, पर बाहर की परछाईं
+     * साझा कार्ड वाले नरम मानों ([ClayCard.shadow], [ClayCard.DARK_ALPHA] / [ClayCard.LIGHT_ALPHA]) से - ज़्यादा धुंधली,
+     * पास वाली गहरी छाया और सख़्त किनारे की रेखा नहीं. ऊपर-बाएँ की हल्की चमक वही.
+     */
+    val soft: Boolean = false
 ) : Drawable() {
     enum class Style { RAISED, INSET, ACCENT }
 
@@ -161,7 +167,17 @@ class ClayDrawable(
         // ---- बाहर की दो परछाइयाँ (उभरा) - दबने पर धीमे-धीमे गायब
         // 23 नवंबर 2026 (मालिक: "दबाने वाला रूप ही मूल रूप"): साझा कार्ड पर बाहर की परछाईं कभी नहीं - दबी हालत में भी नहीं थी
         val out = if (raised && !card) depth else 0f
-        if (out > 0.01f && d > 0.5f) {
+        if (soft && out > 0.01f && d > 0.5f) {
+            val (off0, bl) = ClayCard.shadow(d)
+            val off = off0 * out
+            shP.style = Paint.Style.FILL
+            shP.maskFilter = blurOf(bl)
+            shP.color = a(k.shadowDark, out * ClayCard.DARK_ALPHA)
+            tmp.set(shape); tmp.offset(off, off); drawShape(c, tmp, r, shP)
+            shP.color = a(k.shadowLight, out * ClayCard.LIGHT_ALPHA)
+            tmp.set(shape); tmp.offset(-off, -off); drawShape(c, tmp, r, shP)
+            shP.maskFilter = null
+        } else if (out > 0.01f && d > 0.5f) {
             // 23 नवंबर 2026 (मालिक: "उभार काफ़ी ज़्यादा"): आकार वही ([dist] से), सिर्फ़ परछाईं गहरी/बड़ी - [ClayTheme.LIFT] से
             val lift = ClayTheme.LIFT
             val off = d * 0.55f * lift * out
@@ -187,7 +203,7 @@ class ClayDrawable(
             fillP.shader = LinearGradient(0f, shape.top, 0f, shape.bottom, a(k.accentTop, 1f), a(k.accentBottom, 1f), Shader.TileMode.CLAMP)
         } else if (style == Style.RAISED) {
             // हल्का ढलान: ऊपर ज़रा उजला -> नीचे असली रंग (मिट्टी जैसा नरम उभार)
-            val top = NeonTheme.mix(base, k.shadowLight or (0xFF shl 24), if (k.light) 0.35f else 0.06f)
+            val top = NeonTheme.mix(base, k.shadowLight or (0xFF shl 24), if (k.light && !soft) 0.35f else 0.06f)   // नरम (soft) भरे रंग पर सफ़ेदी नहीं - लाल कॉल-कट लाइट थीम में भी गाढ़ा
             fillP.shader = LinearGradient(0f, shape.top, 0f, shape.bottom, a(top or (0xFF shl 24), 1f), a(base, 1f), Shader.TileMode.CLAMP)
         } else {
             fillP.shader = null; fillP.color = a(base, 1f)
@@ -211,7 +227,7 @@ class ClayDrawable(
         // ---- ऊपर-बाएँ की चमक (हाइलाइट): उभरा डिब्बा स्क्रीन से ऊपर उठा दिखे
         if (raised && !card && depth > 0.01f) {   // कार्ड: दबी हालत में यह चमक नहीं थी, इसलिए मूल रूप में भी नहीं
             val gr = maxOf(shape.width(), shape.height()) * 0.75f
-            val hl = NeonTheme.alpha(k.rim, if (style == Style.ACCENT) 0x55 else if (k.light) 0xB0 else 0x30)
+            val hl = NeonTheme.alpha(k.rim, if (style == Style.ACCENT || soft) 0x55 else if (k.light) 0xB0 else 0x30)
             c.save(); c.clipPath(path)
             fillP.shader = android.graphics.RadialGradient(shape.left + shape.width() * 0.16f, shape.top + shape.height() * 0.10f, gr.coerceAtLeast(1f),
                 intArrayOf(a(hl, depth), a(hl, 0f)), null, Shader.TileMode.CLAMP)
@@ -241,13 +257,15 @@ class ClayDrawable(
         }
         // ---- ऊपर का बहुत पतला उजला किनारा (उभार को साफ़ दिखाने के लिए)
         if (raised && !card && depth > 0.5f) {   // कार्ड पर सख़्त किनारे की रेखा नहीं (मालिक)
-            rimP.strokeWidth = maxOf(1.2f, d * 0.16f)
-            // ऊपर-बाएँ उजला किनारा -> नीचे-दाएँ हल्का गहरा किनारा (तिरछा)
-            rimP.shader = LinearGradient(shape.left, shape.top, shape.right, shape.bottom,
-                intArrayOf(a(k.rim, 0.95f), a(k.rim, 0f), a(k.shadowDark, 0.35f)), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
-            tmp.set(shape); tmp.inset(rimP.strokeWidth / 2, rimP.strokeWidth / 2)
-            drawShape(c, tmp, maxOf(0f, r - rimP.strokeWidth / 2), rimP)
-            rimP.shader = null
+            if (!soft) {   // नरम (साझा कार्ड जैसी) सतह पर भी रेखा नहीं
+                rimP.strokeWidth = maxOf(1.2f, d * 0.16f)
+                // ऊपर-बाएँ उजला किनारा -> नीचे-दाएँ हल्का गहरा किनारा (तिरछा)
+                rimP.shader = LinearGradient(shape.left, shape.top, shape.right, shape.bottom,
+                    intArrayOf(a(k.rim, 0.95f), a(k.rim, 0f), a(k.shadowDark, 0.35f)), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+                tmp.set(shape); tmp.inset(rimP.strokeWidth / 2, rimP.strokeWidth / 2)
+                drawShape(c, tmp, maxOf(0f, r - rimP.strokeWidth / 2), rimP)
+                rimP.shader = null
+            }
         }
     }
 
