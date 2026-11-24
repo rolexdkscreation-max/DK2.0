@@ -13,6 +13,7 @@ import com.dk.assistant.insights.Platform
  * हर प्लेटफ़ॉर्म पर आँकड़े कहाँ से लें: दोनों (API + ऐप की स्क्रीन) / सिर्फ़ API / सिर्फ़ स्क्रीन. [InsightsAgent]
  */
 internal fun SettingsActivity.secSocial() {
+    socialReportsCard()   // 24 नवंबर 2026 (मालिक): DK सोशल एजेंट → रिपोर्ट्स
     socialSpecialistCard()
     contentWritingCard()   // 24 नवंबर 2026: DK कंटेंट राइटिंग (शुरू में बंद)
     card("सोशल रिव्यू कैसे करें", "एक बार बोलें — DK खुद ऐप खोलकर हर रील / वीडियो के आँकड़े देखकर पूरी रिपोर्ट बताएगा", startOpen = true) { box ->
@@ -166,5 +167,47 @@ internal fun SettingsActivity.contentWritingCard() {
             "फैक्ट्स = 30-45 सेकंड, स्क्रिप्ट = 60 सेकंड (बदल सकते हैं)। जो बात छूटी हो सिर्फ़ वही पूछेगा। सच्चे फैक्ट्स, पुराना कंटेंट दोहराएगा नहीं।")
         hint(box, "हर स्क्रिप्ट के साथ बोलने का अंदाज़न समय + \"सेव / बदलो / कैप्शन + हैशटैग\"। वही AI key जो कहानी में लगती है। बंद = पहले जैसा Story Writer।")
         row(box, button("खोलें") { startActivity(android.content.Intent(this, ContentWriterActivity::class.java)) })
+    }
+}
+
+/** 24 नवंबर 2026 (मालिक: "Reports go in Settings → DK Social Agent → Reports, newest first, openable, deletable") */
+internal fun SettingsActivity.socialReportsCard() {
+    val n = com.dk.assistant.insights.SocialReports.list(this).size
+    card("रिपोर्ट्स", if (n == 0) "अभी कोई रिपोर्ट नहीं - बोलें \"इंस्टाग्राम का पूरा रिव्यू करो\"" else "$n रिपोर्ट • सबसे नई ऊपर • दबाकर खोलें") { box ->
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        box.addView(list)
+        fun fill() {
+            list.removeAllViews()
+            val items = com.dk.assistant.insights.SocialReports.list(this)
+            if (items.isEmpty()) { hint(list, "अभी कोई रिपोर्ट नहीं। हर रिव्यू के बाद रिपोर्ट यहाँ अपने-आप आ जाती है (और Download/DK Reports में भी)।"); return }
+            val f = java.text.SimpleDateFormat("dd MMM yyyy, HH:mm", java.util.Locale.US)
+            items.forEach { item ->
+                val open = button(f.format(java.util.Date(item.at)) + " • " + item.title) { _ ->
+                    val txt = com.dk.assistant.insights.SocialReports.read(this, item.name)
+                    val tv = TextView(this).apply {
+                        text = txt.ifBlank { UiLang.s("रिपोर्ट नहीं खुली") }; textSize = 14f; setTextIsSelectable(true)
+                        val p = (18 * dp).toInt(); setPadding(p, p, p, p)
+                    }
+                    UiDialog(this).setTitle(item.title).setView(android.widget.ScrollView(this).apply { addView(tv) })
+                        .setPositiveButton("ठीक है", null)
+                        .setNeutralButton(UiLang.s("शेयर")) { _, _ ->
+                            try {
+                                startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND)
+                                    .setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, txt), UiLang.s("रिपोर्ट भेजें")))
+                            } catch (e: Exception) { Quiet.note(e) }
+                        }.show()
+                }
+                val del = button("मिटाओ") { _ ->
+                    UiDialog(this).setTitle("रिपोर्ट मिटाएँ?").setMessage(UiLang.s("यह रिपोर्ट फ़ोन से हट जाएगी (Download वाली फ़ाइल नहीं हटेगी)।"))
+                        .setPositiveButton("हाँ, मिटाओ") { _, _ -> com.dk.assistant.insights.SocialReports.delete(this, item.name); fill() }
+                        .setNegativeButton("रद्द", null).show()
+                }
+                val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, (8 * dp).toInt(), 0, 0) }
+                r.addView(open, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = (8 * dp).toInt() })
+                r.addView(del, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+                list.addView(r)
+            }
+        }
+        fill()
     }
 }
