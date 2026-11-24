@@ -7,12 +7,17 @@ import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -41,6 +46,12 @@ class ConnectorsActivity : AppCompatActivity() {
     private val dp by lazy { resources.displayMetrics.density }
     private var openId: String? = null
     private var pendingGoogle: ConnectorDef? = null
+    // 24 नवंबर 2026: ऊपर की सूची (फ़ोटो जैसी) - खोज, चिप, पंक्तियाँ
+    private var query = ""
+    private var filter = ConnectorList.Filter.ALL
+    private var listBox: LinearLayout? = null
+    private var scrollToOpen = false
+    private var openView: View? = null
 
     private val googleUi = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
         val d = pendingGoogle ?: return@registerForActivityResult
@@ -67,10 +78,12 @@ class ConnectorsActivity : AppCompatActivity() {
 
     private fun build() {
         container.removeAllViews()
+        openView = null
         note("अपने खाते (Gmail, Drive, Calendar, GitHub, Facebook Page, Instagram…) जोड़िए - फिर DK लाइव से बोलकर काम: \"मेरे नए मेल पढ़ो\", \"कल 4 बजे मीटिंग डालो\", \"Drive में बिल ढूँढो\".\n" +
             "भेजना, मिटाना, शेयर या पोस्ट करने से पहले DK हमेशा पूछेगा. पढ़ना/खोजना सीधे.\n" +
             "Token सिर्फ़ इसी फ़ोन में रहते हैं (Android Keystore से बंद) - किसी server पर नहीं जाते. सब मुफ़्त (निजी इस्तेमाल).")
 
+        listCard()   // 24 नवंबर 2026 (मालिक): हर जुड़ने वाली चीज़ की एक साफ़ सूची - आइकन, नाम, विवरण, + / −
         section("g_setup", "Google: एक बार की तैयारी", "Drive, Gmail, Calendar वग़ैरह के लिए - 10 मिनट, सिर्फ़ एक बार") { box -> googleSetup(box) }
         Catalog.GOOGLE.forEach { d -> googleCard(d) }
         githubCard()
@@ -82,6 +95,127 @@ class ConnectorsActivity : AppCompatActivity() {
                 "तब तक: इनमें से किसी का MCP server हो तो नीचे \"MCP server\" में URL डालकर अभी जोड़ सकते हैं.")
         }
         space()
+        val ov = openView
+        if (scrollToOpen && ov != null) container.post { (container.parent as? android.widget.ScrollView)?.smoothScrollTo(0, ov.top) }
+        scrollToOpen = false
+    }
+
+    // ------------------------------------------------------------ सूची (फ़ोटो जैसी)
+    private fun listCard() {
+        val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, (12 * dp).toInt(), 0, (8 * dp).toInt()) }
+        val sb = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setBackgroundResource(R.drawable.cn_search)
+            setPadding((14 * dp).toInt(), 0, (14 * dp).toInt(), 0)
+        }
+        sb.addView(ImageView(this).apply { setImageResource(R.drawable.ic_cn_search) }, LinearLayout.LayoutParams((20 * dp).toInt(), (20 * dp).toInt()))
+        sb.addView(EditText(this).apply {
+            hint = UiLang.s("कनेक्टर खोजें (Gmail, YouTube, Instagram…)"); background = null; isSingleLine = true; textSize = 15f
+            setTextColor(0xFFFFFFFF.toInt()); setHintTextColor(0x80FFFFFF.toInt()); setPadding((10 * dp).toInt(), (14 * dp).toInt(), 0, (14 * dp).toInt())
+            setText(query)
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(t: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                override fun onTextChanged(t: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                override fun afterTextChanged(e: Editable?) { query = e?.toString().orEmpty(); fillList() }
+            })
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        wrap.addView(sb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        val chips = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, (12 * dp).toInt(), 0, 0) }
+        val pairs = listOf(ConnectorList.Filter.ALL to "सब", ConnectorList.Filter.CONNECTED to "जुड़े हुए")
+        fun paint() { for (i in 0 until chips.childCount) chips.getChildAt(i).alpha = if (pairs[i].first == filter) 1f else 0.55f }
+        pairs.forEach { (f, t) ->
+            chips.addView(TextView(this).apply {
+                text = UiLang.s(t); textSize = 15f; setTextColor(0xFFFFFFFF.toInt()); setBackgroundResource(R.drawable.cn_chip)
+                setPadding((16 * dp).toInt(), (8 * dp).toInt(), (16 * dp).toInt(), (8 * dp).toInt())
+                setOnClickListener { filter = f; paint(); fillList() }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = (8 * dp).toInt() })
+        }
+        paint()
+        wrap.addView(chips)
+        wrap.addView(TextView(this).apply {
+            text = UiLang.s("कनेक्टर"); textSize = 18f; setTextColor(0xFFFFFFFF.toInt()); setPadding((2 * dp).toInt(), (16 * dp).toInt(), 0, (4 * dp).toInt())
+        })
+        val lb = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        listBox = lb
+        wrap.addView(lb)
+        container.addView(wrap)
+        fillList()
+    }
+
+    /** कौन-सा कनेक्टर जुड़ा है (सूची के लिए) */
+    private fun connectedIds(): Set<String> =
+        ConnectorStore.connected(this).map { it.id }.toSet() + (if (ConnectorStore.mcpServers(this).isNotEmpty()) setOf("mcp") else emptySet())
+
+    private fun fillList() {
+        val lb = listBox ?: return
+        lb.removeAllViews()
+        val on = connectedIds()
+        val rows = ConnectorList.filter(ConnectorList.rows(), query, filter) { it in on }
+        if (rows.isEmpty()) lb.addView(TextView(this).apply {
+            text = UiLang.s(if (filter == ConnectorList.Filter.CONNECTED && query.isBlank()) "अभी कोई कनेक्टर नहीं जुड़ा - \"सब\" में से + दबाकर जोड़ें" else "कुछ नहीं मिला")
+            textSize = 14f; setTextColor(0x99FFFFFF.toInt()); setPadding(0, (12 * dp).toInt(), 0, (12 * dp).toInt())
+        })
+        rows.forEach { r -> lb.addView(rowView(r, r.id in on)) }
+    }
+
+    private fun rowView(r: ConnectorList.Row, on: Boolean): View {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, (10 * dp).toInt(), 0, (10 * dp).toInt()); isClickable = true
+            setOnClickListener { openId = r.section; scrollToOpen = true; build() }
+        }
+        val tile = FrameLayout(this).apply { setBackgroundResource(R.drawable.cn_tile) }
+        tile.addView(ImageView(this).apply { setImageResource(r.icon); contentDescription = r.title },
+            FrameLayout.LayoutParams((28 * dp).toInt(), (28 * dp).toInt(), Gravity.CENTER))
+        box.addView(tile, LinearLayout.LayoutParams((52 * dp).toInt(), (52 * dp).toInt()))
+        val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding((14 * dp).toInt(), 0, (8 * dp).toInt(), 0) }
+        texts.addView(TextView(this).apply {
+            text = r.title + if (on) "  " + UiLang.s("✓ जुड़ा") else ""
+            textSize = 16f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFFFFFFFF.toInt())
+        })
+        texts.addView(TextView(this).apply { text = UiLang.s(r.sub); textSize = 13f; setTextColor(0x99FFFFFF.toInt()); maxLines = 2 })
+        box.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        box.addView(ImageButton(this).apply {
+            setImageResource(ConnectorList.actionIcon(on)); setBackgroundColor(0); scaleType = ImageView.ScaleType.CENTER
+            contentDescription = UiLang.s(if (on) "हटाओ" else "जोड़ो")
+            setOnClickListener { if (on) askRemove(r) else add(r) }
+        }, LinearLayout.LayoutParams((44 * dp).toInt(), (44 * dp).toInt()))
+        return box
+    }
+
+    /** "+" = जोड़ो: Google (YouTube समेत) = सीधे Google की इजाज़त (OAuth); बाकी = उसका पूरा हिस्सा खोलो */
+    private fun add(r: ConnectorList.Row) {
+        when (r.kind) {
+            Kind.GOOGLE -> Catalog.ALL.firstOrNull { it.id == r.id }?.let { googleConnect(it) }
+            Kind.GITHUB -> if (com.dk.assistant.Prefs.ghToken(this).isBlank()) {
+                toast("पहले GitHub token डालें - सेटिंग्स → कोडिंग एजेंट"); startActivity(Intent(this, SettingsActivity::class.java).putExtra("section", "coder"))
+            } else { getSharedPreferences("dk_connect", MODE_PRIVATE).edit().putBoolean("on_github", true).apply(); openId = r.section; build() }
+            else -> { openId = r.section; scrollToOpen = true; build(); toast(if (r.kind == Kind.META) "नीचे Facebook Page वाले हिस्से में token डालकर \"पेज जोड़ो\" दबाएँ" else "नीचे server का URL डालें") }
+        }
+    }
+
+    /** "−" = हटाओ (पहले पूछो). हर प्लेटफ़ॉर्म अलग */
+    private fun askRemove(r: ConnectorList.Row) {
+        com.dk.assistant.UiDialog(this).setTitle(r.title + " " + UiLang.s("हटाएँ?"))
+            .setMessage(UiLang.s("DK लाइव इसके काम नहीं कर पाएगा। बाद में + दबाकर फिर जोड़ सकते हैं।"))
+            .setPositiveButton(UiLang.s("हाँ, हटाओ")) { _, _ -> remove(r) }
+            .setNegativeButton(UiLang.s("रद्द"), null).show()
+    }
+
+    private fun remove(r: ConnectorList.Row) {
+        when (r.kind) {
+            Kind.GOOGLE -> ConnectorStore.setOn(this, r.id, false)
+            Kind.GITHUB -> getSharedPreferences("dk_connect", MODE_PRIVATE).edit().putBoolean("on_github", false).apply()
+            Kind.META -> {
+                ConnectorStore.setOn(this, r.id, false)
+                // दोनों हटे = token भी फ़ोन से मिटाओ
+                if (!ConnectorStore.isOn(this, "fb_page") && !ConnectorStore.isOn(this, "instagram")) {
+                    ConnectorStore.setSecret(this, "meta_token", null); ConnectorStore.setMetaPages(this, emptyList())
+                }
+            }
+            else -> { openId = r.section; scrollToOpen = true }
+        }
+        build()
+        toast(r.title + ": " + UiLang.s(if (r.kind == Kind.MCP) "नीचे हर server के साथ \"हटाओ\" है" else "हटा दिया"))
     }
 
     // ------------------------------------------------------------ Google
@@ -260,6 +394,7 @@ class ConnectorsActivity : AppCompatActivity() {
 
     private fun section(id: String, title: String, sub: String?, body: (LinearLayout) -> Unit) {
         CollapsibleSection.add(this, container, title, sub, startOpen = id == openId, body = body)
+        if (id == openId) openView = container.getChildAt(container.childCount - 1)
     }
 
     private fun actions(box: LinearLayout, d: ConnectorDef, showLabel: Boolean = true) {
