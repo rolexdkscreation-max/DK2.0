@@ -23,7 +23,7 @@ object SettingsSearch {
         "brain_live" to "AI दिमाग • DK लाइव", "brain_chat" to "AI दिमाग • DK चैट", "brain_coder" to "AI दिमाग • कोडिंग एजेंट",
         "brain_pc" to "AI दिमाग • DK कंप्यूटर", "voice" to "आवाज़", "orb" to "ओर्ब और चेहरा",
         "access" to "Accessibility", "phonelock" to "फ़ोन लॉक / अनलॉक", "guard" to "टच मोड", "applock" to "ऐप लॉक", "face" to "चेहरा पहचान", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
-        "social" to "DK सोशल एजेंट", "reels" to "रील गिनती और लिमिट",
+        "social" to "सोशल रिव्यू", "reels" to "रील गिनती और लिमिट",
         ACT_AUTO to "ऑटोनोमस मोड", ACT_TEMPLATES to "टेम्पलेट कमांड", ACT_CONNECTORS to "कनेक्टर", ACT_STORY to "स्टोरी राइटर एजेंट", ACT_BACKUP to "बैकअप",
         // नवंबर 2026: ऑटो रिप्लाई (ऑटोनोमस मोड के बाद - "ऑटो" खोजने पर पहले ऑटोनोमस मोड ही आए)
         "autoreply" to "ऑटो रिप्लाई",

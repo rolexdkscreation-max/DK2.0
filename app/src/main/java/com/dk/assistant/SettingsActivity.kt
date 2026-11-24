@@ -143,7 +143,7 @@ class SettingsActivity : AppCompatActivity() {
             "debug" -> { title.text = "डिबग लॉग"; secBetaCheck(); secDebug() }
             "coder" -> { title.text = "कोडिंग एजेंट"; if (planKeys()) { secCoder(); secTermux() } else planLockCard("कोडिंग एजेंट") }
             "computer" -> { title.text = "DK कंप्यूटर"; if (planKeys()) { secComputer(); secImageGen() } else planLockCard("DK कंप्यूटर") }
-            "social" -> { title.text = "DK सोशल एजेंट"; secSocial(); secYouTube() }
+            "social" -> { title.text = "सोशल रिव्यू"; secSocial(); secYouTube() }
             "reels" -> { title.text = "रील गिनती और लिमिट"; secReels() }
             "autoreply" -> { title.text = "ऑटो रिप्लाई"; secAutoReply() }
             "about" -> { title.text = "ऐप के बारे में"; secAbout() }
@@ -180,7 +180,7 @@ class SettingsActivity : AppCompatActivity() {
             Triple("auto", "ऑटोनोमस मोड", (if (com.dk.assistant.auto.AutoPrefs.on(this)) "✓ चालू" else "✗ बंद") + " • DK खुद तय करे और खुद करे • API keys • आपातकालीन STOP"),
             Triple("templates", "टेम्पलेट कमांड", "बिना AI के तय साँचे • WhatsApp • अलार्म • मैप • कॉल"),
             Triple("autoreply", "ऑटो रिप्लाई", (if (com.dk.assistant.autoreply.AutoReply.on(this)) "✓ चालू" else "✗ बंद") + " • WhatsApp • WhatsApp Business • Telegram • Messenger — हर ऐप का अपना स्विच"),
-            Triple("social", "DK सोशल एजेंट", "इंस्टाग्राम • फेसबुक • यूट्यूब — पूरा रिव्यू, रीच क्यों गिरी, ट्रेंड + 5 आइडिया • रिपोर्ट्स • YouTube चैनल जाँच"),
+            Triple("social", "सोशल रिव्यू", "इंस्टाग्राम • फेसबुक • यूट्यूब स्टूडियो — हर रील के व्यूज़, रीच क्यों गिरी, ट्रेंड • रिपोर्ट्स • YouTube चैनल जाँच"),
             Triple("reels", "रील गिनती और लिमिट", "इंस्टाग्राम • YouTube शॉर्ट्स • फेसबुक — ऊपर गिनती की पट्टी • रोज़ की लिमिट • फ़ोन लॉक / ऐप बंद"),
             Triple("backup", "बैकअप", "DK की याददाश्त Google Drive में • अपना ईमेल डालें • बैकअप / रिस्टोर (ऐप दोबारा डालने पर सब वापस)"),
             Triple("connectors", "कनेक्टर", "Gmail • Drive • Calendar • GitHub • Facebook Page • Instagram • MCP — DK लाइव से बोलकर काम"),
