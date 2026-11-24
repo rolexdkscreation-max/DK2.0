@@ -121,6 +121,7 @@ internal fun SettingsActivity.secBrainMenu() {
             " • सुनना भी Gemini से (Groq की ज़रूरत नहीं)। एक free key की limit सब कामों में बँटती है — limit जल्दी खत्म हो तो बटन बंद करके अलग-अलग keys डालें।")
     }
     toolAgentCard()   // 15 नवंबर 2026 (हिस्सा 1): दोनों तरीकों (एक key / अलग keys) में दिखे
+    masterAgentCard()   // 24 नवंबर 2026: DK मास्टर एजेंट
     // 14 नवंबर 2026 (मालिक): ऊपर वाला "हर काम का मॉडल — खुद चुनें" हटा (अब हर हिस्से - DK लाइव / चैट / कोडिंग / कंप्यूटर -
     // के अंदर उसका अपना). वेबसाइट बिल्डर की अलग key वाली पंक्ति हटी - वेबसाइट कोडिंग एजेंट की API से बनती है.
     // "एक key से सब" चालू = नीचे के अलग-अलग key वाले हिस्से दिखते ही नहीं (एक बार में एक ही तरीका दिखे)
@@ -635,5 +636,21 @@ internal fun SettingsActivity.toolAgentCard() {
             "ज़्यादा से ज़्यादा ${com.dk.assistant.tools.ToolPolicy.MAX_TRIES} बार, फिर साफ़ बोलकर बताती है कि कहाँ अटकी। कॉल / मैसेज / SMS एक ही बार (दोबारा नहीं जाते)।")
         hint(box, "सीधे काम (ऐप खोलो, कॉल करो, टॉर्च, आवाज़ …) पहले की तरह फ़ोन पर ही, बिना AI। बंद = पुराना एजेंट, कोई बदलाव नहीं। Gemini key चाहिए।")
         hint(box, "Tools: " + com.dk.assistant.tools.ToolRegistry.PHONE_TOOLS.joinToString(", ") { com.dk.assistant.tools.ToolPolicy.hindi(it.name) })
+    }
+}
+
+/** 24 नवंबर 2026 (मालिक: Universal AI Action Agent): केंद्रीय DK मास्टर - चालू/बंद (शुरू में बंद) + काम का लॉग */
+internal fun SettingsActivity.masterAgentCard() {
+    card("DK मास्टर एजेंट", "एक केंद्रीय दिमाग: काम समझे, प्लान दिखाए, सही विशेषज्ञ एजेंट चुने, जोखिम पर रुककर पूछे") { box ->
+        flagSwitch(box, "मास्टर एजेंट चालू", com.dk.assistant.plus.FeatureFlags.MASTER_AGENT)
+        hint(box, "विशेषज्ञ: " + com.dk.assistant.agent.master.MasterRules.Specialist.values().joinToString(", ") { it.hi })
+        hint(box, "कड़ा नियम: खरीदारी, भुगतान, बुकिंग, सबमिट या वापस न होने वाला कोई काम आपकी साफ़ \"हाँ\" के बिना नहीं। " +
+            "बुकिंग में भुगतान कभी खुद नहीं - पेमेंट पेज आपको। फ़ॉर्म में आपकी निजी जानकारी खुद नहीं बनाएगा, पूछेगा। " +
+            "पासवर्ड / OTP / CAPTCHA / आधार-बैंक पर रुककर पूछेगा। \"रुको\" बोलते ही काम रुकेगा।")
+        hint(box, "सीधे काम (ऐप खोलो, कॉल, टॉर्च …) पहले जैसे ही। बंद = पुराना तरीका, कोई बदलाव नहीं।")
+        val st = android.widget.TextView(this).apply { textSize = 12f; setTextColor(0xCCFFFFFF.toInt()) }
+        fun show() { st.text = com.dk.assistant.agent.master.ActionLog.text(this, 15).ifBlank { UiLang.s("अभी कोई काम लॉग नहीं हुआ") } }
+        row(box, button("आख़िरी काम का लॉग") { show() }, button("लॉग मिटाओ") { com.dk.assistant.agent.master.ActionLog.clear(this); show() })
+        box.addView(st)
     }
 }
