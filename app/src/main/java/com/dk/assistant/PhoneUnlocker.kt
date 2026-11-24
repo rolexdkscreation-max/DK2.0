@@ -159,6 +159,14 @@ internal object PhoneUnlocker {
             tries++
             s = waitBouncer(svc, kind)
         }
+        // 24 नवंबर 2026 (मालिक: "एक बार में पिन डालने का ऑप्शन नहीं आ रहा है, तो फिर से लॉक करेगा, फिर अनलॉक करके फिर से
+        // स्वाइप करेगा"): swipe से भी PIN वाला हिस्सा नहीं आया = एक बार फ़ोन लॉक, स्क्रीन फिर जगाओ, फिर swipe
+        var relocks = 0
+        while (s == null && km.isKeyguardLocked && UnlockRetry.relock(relocks, Build.VERSION.SDK_INT)) {
+            relocks++
+            DKLog.d("फ़ोन लॉक: PIN वाला हिस्सा नहीं आया - दोबारा लॉक करके फिर जगा रहा ($relocks/${UnlockRetry.MAX_RELOCKS})")
+            s = relockAndWake(svc, km, kind, upPct, upMore)
+        }
         if (s == null && !km.isKeyguardLocked) return "phone unlock ho gaya"
         // PIN डलना शुरू = पूरा डलेगा (बीच में रद्द होकर आधा PIN न छूटे - अगली कोशिश में अंक जुड़कर गलत हो जाते)
         val first: Screen = s ?: return "$FAIL लॉक स्क्रीन पर ${kind.hi} डालने की जगह नहीं मिली। फ़ोन खुद खोलिए।"
@@ -167,6 +175,30 @@ internal object PhoneUnlocker {
         if (!km.isKeyguardLocked) return "phone unlock ho gaya"
         val screen: Screen = look(svc).takeIf { ready(kind, it) } ?: first
         return withContext(NonCancellable) { type(svc, km, kind, secret, screen) }
+    }
+
+    /** फ़ोन लॉक -> स्क्रीन जगाओ (Android से PIN वाला हिस्सा माँगो) -> PIN वाला हिस्सा / swipe */
+    @Suppress("DEPRECATION")
+    private suspend fun relockAndWake(svc: DKAccessibilityService, km: KeyguardManager, kind: PhoneLockVoice.Kind, upPct: Int, upMore: Boolean): Screen? {
+        if (Build.VERSION.SDK_INT >= 28) svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
+        delay(UnlockRetry.RELOCK_WAIT_MS)
+        val pm = svc.getSystemService(android.os.PowerManager::class.java)
+        try {
+            pm?.newWakeLock(android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP, "dk:rewake")?.acquire(4000)
+        } catch (e: Exception) { DKLog.d("rewake: ${e.message}") }
+        UnlockWakeActivity.open(svc)
+        if (pm != null) { val until = System.currentTimeMillis() + 1200; while (!pm.isInteractive && System.currentTimeMillis() < until) delay(50) }
+        if (!km.isKeyguardLocked) return null
+        var s = waitBouncer(svc, kind, 12)
+        var tries = 0
+        while (s == null && km.isKeyguardLocked && tries < UnlockRetry.SWIPES_AFTER_RELOCK) {
+            val dm = svc.resources.displayMetrics
+            val (y0, y1) = UnlockSwipe.ys(dm.heightPixels, UnlockSwipe.pctFor(upPct, upMore, tries + 1))
+            svc.swipe(dm.widthPixels / 2f, y0, dm.widthPixels / 2f, y1, 250)
+            tries++
+            s = waitBouncer(svc, kind)
+        }
+        return s
     }
 
     private suspend fun type(svc: DKAccessibilityService, km: KeyguardManager, kind: PhoneLockVoice.Kind, secret: String, s: Screen): String {

@@ -47,6 +47,15 @@ object UnlockGuard {
     /** मालिक के सुनने वाले रास्ते ने अनलॉक वाला वाक्य पहचाना */
     fun intent(now: Long = System.currentTimeMillis()) { intentAt = now }
 
+    /**
+     * 24 नवंबर 2026: मालिक के माइक की कोई भी बात (Live का सुना text, caption, आम सुनना) - उसमें अनलॉक का हुक्म हो
+     * ([com.dk.assistant.PhoneLockVoice.saysUnlock]) तो इरादा. PIN फिर भी [allow] की पूरी जाँच के बाद ही.
+     */
+    fun said(text: String?, now: Long = System.currentTimeMillis()): Boolean {
+        if (text.isNullOrBlank() || !com.dk.assistant.PhoneLockVoice.saysUnlock(text)) return false
+        intent(now); return true
+    }
+
     /** आवाज़-कमांड (अनलॉक) ने यही बात खुद जाँच ली */
     private fun grant(now: Long) { grantAt = now; intentAt = now }
 
