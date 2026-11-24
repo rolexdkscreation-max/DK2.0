@@ -23,7 +23,7 @@ object SettingsSearch {
         "brain_live" to "AI दिमाग • DK लाइव", "brain_chat" to "AI दिमाग • DK चैट", "brain_coder" to "AI दिमाग • कोडिंग एजेंट",
         "brain_pc" to "AI दिमाग • DK कंप्यूटर", "voice" to "आवाज़", "orb" to "ओर्ब और चेहरा",
         "access" to "Accessibility", "phonelock" to "फ़ोन लॉक / अनलॉक", "guard" to "टच मोड", "applock" to "ऐप लॉक", "face" to "चेहरा पहचान", "perms" to "परमिशन", "computer" to "DK कंप्यूटर", "coder" to "कोडिंग एजेंट",
-        "social" to "सोशल रिव्यू", "reels" to "रील गिनती और लिमिट",
+        "social" to "DK सोशल एजेंट", "reels" to "रील गिनती और लिमिट",
         ACT_AUTO to "ऑटोनोमस मोड", ACT_TEMPLATES to "टेम्पलेट कमांड", ACT_CONNECTORS to "कनेक्टर", ACT_STORY to "स्टोरी राइटर एजेंट", ACT_BACKUP to "बैकअप",
         // नवंबर 2026: ऑटो रिप्लाई (ऑटोनोमस मोड के बाद - "ऑटो" खोजने पर पहले ऑटोनोमस मोड ही आए)
         "autoreply" to "ऑटो रिप्लाई",
@@ -104,6 +104,7 @@ object SettingsSearch {
         E("autoreply", "ऑटो रिप्लाई चालू / बंद", "एक मुख्य स्विच — बंद = किसी भी ऐप में अपने-आप जवाब नहीं"),
         E("autoreply", "किन ऐप पर ऑटो रिप्लाई", "फ़ोन में मिले मैसेज वाले ऐप — हर एक का अपना स्विच (शुरू में बंद)"),
         E("autoreply", "आपका लिखने का ढंग", "DK ने आपके भेजे मैसेज से कितना सीखा • मिटाएँ"),
+        E("social", "रिपोर्ट्स", "हर सोशल रिव्यू की रिपोर्ट - सबसे नई ऊपर, खोलो, मिटाओ", "reports रिपोर्ट रिपोर्ट्स social review सोशल रिव्यू history"),
         E("social", "सोशल पोस्ट स्पेशलिस्ट", "बोलकर पोस्ट: गैलरी से खुद चुने, देखकर कैप्शन/हैशटैग, कहने पर गाना/टैग, YouTube Shorts", "social specialist instagram facebook youtube shorts कैप्शन caption हैशटैग hashtag गाना song टैग tag गैलरी gallery पोस्ट post रील reel"),
         E("social", "सोशल रिव्यू कैसे करें", "एक बार बोलें — DK खुद ऐप खोलकर हर रील / वीडियो के आँकड़े देखकर पूरी रिपोर्ट बताएगा"),
         E("social", "आँकड़े कहाँ से लें", "हर प्लेटफ़ॉर्म के लिए: दोनों (सबसे पक्का) • सिर्फ़ API • सिर्फ़ ऐप की स्क्रीन"),

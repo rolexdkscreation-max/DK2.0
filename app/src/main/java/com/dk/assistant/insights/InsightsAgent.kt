@@ -480,6 +480,8 @@ object InsightsAgent {
         c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("last_report", report.take(60_000))
             .apply { if (keep.isNotEmpty()) putString("facts", InsightsFacts.toJson(keep, System.currentTimeMillis())) }.apply()
         val name = "सोशल रिव्यू " + java.text.SimpleDateFormat("yyyy-MM-dd HH-mm", java.util.Locale.US).format(java.util.Date()) + ".md"
+        // 24 नवंबर 2026 (मालिक): Settings → DK सोशल एजेंट → रिपोर्ट्स (सबसे नई ऊपर, खोलो, मिटाओ)
+        SocialReports.add(c, report)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val cv = ContentValues().apply {
