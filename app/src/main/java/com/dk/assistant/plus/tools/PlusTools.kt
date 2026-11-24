@@ -32,7 +32,9 @@ object PlusTools {
         // 15 नवंबर 2026: चेहरा, ईमेल, ग्रुप रिपोर्ट (NewTools.kt). 3D कैरेक्टर मालिक के कहने पर हटाया
         FaceWhoTool, EmailReadTool, EmailSendTool, EmailDeleteTool, GroupReportTool,
         // 15 नवंबर 2026: DK वॉचमैन (रिपोर्ट सिर्फ़ Boss की सख़्त चेहरा जाँच के बाद)
-        WatchmanTool)
+        WatchmanTool,
+        // 24 नवंबर 2026: रोमांटिक (18+) सिर्फ़ असली Boss से - पहले चेहरा जाँच
+        RomanticVerifyTool)
 
     fun byName(name: String): PlusTool? = ALL.firstOrNull { it.name == name }
 

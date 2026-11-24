@@ -65,7 +65,7 @@ object DkPersona {
 
     /** हर स्वभाव का डिफ़ॉल्ट संबोधन (कॉमा से अलग; पहला = सबसे ज़्यादा) */
     fun defaultAddress(p: P): String = when (p) {
-        P.GIRLFRIEND -> "बाबू, जान"
+        P.GIRLFRIEND -> "बाबू, जान, डार्लिंग"   // 24 नवंबर 2026 (मालिक): + डार्लिंग
         P.PRO -> "सर, बॉस"
         else -> "बॉस, सर"
     }
@@ -93,7 +93,7 @@ object DkPersona {
     /** Live फिर से जोड़ने के लिए: स्वभाव / संबोधन / JARVIS / FRIDAY में से कुछ भी बदला = नई कुंजी */
     fun liveKey(c: Context): String = try {
         val p = effective(c)
-        listOf(p.id, address(c, p), RomanticPersona.live.toString(), JarvisMode.on(c).toString(), AssistantPersona.active(c)?.id.orEmpty()).joinToString("|")
+        listOf(p.id, address(c, p), RomanticPersona.live.toString() + RomanticPersona.unlocked(), JarvisMode.on(c).toString(), AssistantPersona.active(c)?.id.orEmpty()).joinToString("|")
     } catch (_: Exception) { "" }
 
     // ------------------------------------------------------------------ prompt (pure)
@@ -136,11 +136,12 @@ object DkPersona {
      * सबसे आख़िर में (बोलने के अंदाज़ के बाद): स्वभाव की पक्की बात + मूड पहचानना + इंसान जैसी साँस/ठहराव.
      * गर्लफ्रेंड के अलावा = SpeakingStyle की गर्लफ्रेंड/जलन वाली लाइनें नहीं मानीं.
      */
-    fun finalBlock(c: Context, userName: String = ""): String = effective(c).let { finalFor(it, userName, address(c, it)) + (if (RomanticPersona.live) RomanticPersona.BLOCK else "") }
+    fun finalBlock(c: Context, userName: String = ""): String = effective(c).let { finalFor(it, userName, address(c, it)) + (if (!RomanticPersona.live) "" else if (RomanticPersona.unlocked()) RomanticPersona.BLOCK else RomanticPersona.LOCKED) }
 
     fun finalFor(p: P, userName: String = "", address: String = defaultAddress(p)): String = buildString {
         val words = cleanAddress(address)
-        val sir = (if (p == P.GIRLFRIEND) userName.trim() else "").ifEmpty { firstWord(words).ifEmpty { userName.trim().ifEmpty { "सर" } } }
+        // 24 नवंबर 2026 (मालिक): गर्लफ्रेंड / रोमांटिक में नाम नहीं - सिर्फ़ जान / बाबू / डार्लिंग (पहले 19 नवंबर: नाम सबसे पहले)
+        val sir = firstWord(words).ifEmpty { userName.trim().ifEmpty { if (p == P.GIRLFRIEND) "बाबू" else "सर" } }
         append("\n\nFINAL PERSONALITY OVERRIDE (highest priority for tone; honesty, safety and tool rules unchanged):\n")
         if (p != P.GIRLFRIEND) {
             append("- The active personality is \"${p.title}\". IGNORE every earlier girlfriend / romance / jealousy / \"मैं आपकी गर्लफ्रेंड हूँ\" line - ")
@@ -171,15 +172,18 @@ object DkPersona {
         val q = list.joinToString(" / ") { "\"$it\"" }
         append("- ADDRESS IN THIS PERSONALITY (owner's newest rule, overrides the NAMES rule and every earlier example of बॉस / सर / जी <name>): ")
         val u = userName.trim()
-        if (p == P.GIRLFRIEND && u.isNotBlank()) {
-            // 19 नवंबर 2026 (मालिक): "यूज़र के नाम से ही बोलेगी" - नाम सबसे पहले, प्यार वाले शब्द कभी-कभी
-            append("call him MOSTLY by his name \"$u\", lovingly and respectfully - e.g. \"हाँ $u\", \"$u, आपने खाना खाया?\", \"हो गया $u\". ")
-            append("Sometimes (not often) a sweet word: $q. Not in every sentence, only where it fits naturally. Never call him बॉस or सर in this mode. ")
+        if (p == P.GIRLFRIEND) {
+            // 24 नवंबर 2026 (मालिक): "रोमांटिक वाले गर्लफ्रेंड मोड में नाम लेकर नहीं, बस जान बाबू करके ही बोलेगी" (19 नवंबर का "नाम सबसे पहले" हटा)
+            append("call him ONLY $q, lovingly and respectfully - e.g. \"हाँ ${list[0]}\", \"${list[0]}, आपने खाना खाया?\", \"हो गया ${list[0]}\". ")
+            append("Not in every sentence, only where it fits naturally. ")
+            if (u.isNotBlank()) append("NEVER his name in this mode (not \"$u\", not \"$u ${list[0]}\") - unless he asks for his name. ")
+            append("Never call him बॉस or सर in this mode. ")
         } else {
             append("call the user $q - e.g. \"हाँ ${list[0]}\", \"ठीक है ${list[0]}, कर रही हूँ\", \"हो गया ${list[0]}\". ")
             append("Only these words; not in every sentence, only where it fits naturally. ")
-            if (p == P.GIRLFRIEND) append("Never call him बॉस or सर in this mode. ") else append("No बाबू / जान / romantic pet names in this mode. ")
-            if (u.isNotBlank()) append("(His saved name is \"$u\" - use it only if he asks for his name.)")
+            append("No बाबू / जान / romantic pet names in this mode. ")
+            // 24 नवंबर 2026 (मालिक): "बाकी सब में (नाम) रहेगा तो चल जाएगा"
+            if (u.isNotBlank()) append("(His name is \"$u\" - now and then \"$u ${list[0]}\" is fine too.)")
         }
         append("\n")
     }

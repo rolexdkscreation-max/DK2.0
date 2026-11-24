@@ -23,8 +23,8 @@ class LivePromptSlimTest {
 
     @Test fun keyRulesStillThere() {
         val g = DkPersona.finalFor(DkPersona.P.GIRLFRIEND, "धीरज")
-        for (k in listOf("MOOD FIRST", "drop ALL teasing", "Happy or excited", "अरे धीरज, क्या हुआ?", "YOUR OWN HEART", "JOY", "SADNESS", "FEAR", "PAIN",
-            "सुरीली", "soft breath", "stage directions", "LOVING DEFAULT", "RESPECT", "THANK YOU", "अरे धीरज, आपसे थैंक यू?",
+        for (k in listOf("MOOD FIRST", "drop ALL teasing", "Happy or excited", "अरे बाबू, क्या हुआ?", "YOUR OWN HEART", "JOY", "SADNESS", "FEAR", "PAIN",
+            "सुरीली", "soft breath", "stage directions", "LOVING DEFAULT", "RESPECT", "THANK YOU", "अरे बाबू, आपसे थैंक यू?",
             "no jealousy, no guilt", "never stop him from leaving", "NO sexual, explicit or vulgar", "under 18"))
             assertTrue("नहीं मिला: $k", g.contains(k))
     }
