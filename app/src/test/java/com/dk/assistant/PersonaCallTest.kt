@@ -13,7 +13,7 @@ class PersonaCallTest {
     private fun res(n: String) = listOf(File("src/main/$n"), File("app/src/main/$n")).first { it.exists() }.readText()
 
     @Test fun address_defaults() {
-        assertEquals("बाबू, जान", DkPersona.defaultAddress(DkPersona.P.GIRLFRIEND))
+        assertEquals("बाबू, जान, डार्लिंग", DkPersona.defaultAddress(DkPersona.P.GIRLFRIEND))   // 24 नवंबर 2026 (मालिक): + डार्लिंग
         assertEquals("सर, बॉस", DkPersona.defaultAddress(DkPersona.P.PRO))
         for (p in listOf(DkPersona.P.FRIENDLY, DkPersona.P.NATKHAT, DkPersona.P.CARING)) assertEquals("बॉस, सर", DkPersona.defaultAddress(p))
         assertEquals("बाबू, जान", DkPersona.cleanAddress(" बाबू ,जान,, बाबू/ "))

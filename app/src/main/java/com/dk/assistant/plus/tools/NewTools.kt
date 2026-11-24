@@ -168,3 +168,26 @@ object GroupReportTool : PlusTool {
         return GroupReport.send(svc, t.group, text)?.let { "ERROR: $it. Tell the user." } ?: "SENT: report sent to WhatsApp group '${t.group}'. Tell the user briefly."
     }
 }
+
+/**
+ * 24 नवंबर 2026 (मालिक): रोमांटिक (18+) बातें सिर्फ़ असली Boss से - DK ख़ुद सख़्त चेहरा जाँच खोले.
+ * पास = [com.dk.assistant.RomanticPersona.passBoss] (कुछ घंटे खुला, Live नए निर्देशों से फिर जुड़ता है); नहीं = बातें बंद.
+ */
+object RomanticVerifyTool : PlusTool {
+    override val name = "romantic_verify"
+    // चेहरा पहचान चालू हो तभी जाँच हो सकती है (ADULT_STYLE बोलकर चालू नहीं होता - Settings का अपना स्विच)
+    override val flag = FeatureFlags.FACE_ON
+    override fun declaration() = PlusTools.decl(name,
+        "Romantic (18+) mode: before ANY romantic-mode talk, open the strict Boss face scan. Say one short line first " +
+            "(\"ये बातें मैं सिर्फ़ अपने असली बॉस से करती हूँ - पहले चेहरा दिखाइए\") and call this in the same turn. " +
+            "VERIFIED = romantic mode opens; DENIED = no romantic talk at all.", JSONObject())
+
+    override suspend fun run(c: Context, args: JSONObject): String {
+        if (!com.dk.assistant.RomanticPersona.on(c)) return "OFF: romantic (18+) mode is turned off in Settings. Tell him in one short line."
+        if (com.dk.assistant.RomanticPersona.unlocked()) return "VERIFIED (already): the Boss face was checked recently. Talk in the romantic way."
+        val (ok, why) = com.dk.assistant.BossCheckActivity.verify(c)
+        if (!ok) return "DENIED: the strict Boss face scan did not pass ($why). No romantic talk. Say only: 'माफ़ कीजिए, ये बातें सिर्फ़ मेरे बॉस के लिए हैं।'"
+        com.dk.assistant.RomanticPersona.passBoss()
+        return "VERIFIED BOSS: romantic mode is open now. Say sweetly in one line that you recognised him (e.g. 'पहचान गई जान… अब बोलिए')."
+    }
+}

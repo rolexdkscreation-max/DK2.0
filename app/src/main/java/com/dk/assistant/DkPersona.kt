@@ -65,7 +65,7 @@ object DkPersona {
 
     /** हर स्वभाव का डिफ़ॉल्ट संबोधन (कॉमा से अलग; पहला = सबसे ज़्यादा) */
     fun defaultAddress(p: P): String = when (p) {
-        P.GIRLFRIEND -> "बाबू, जान"
+        P.GIRLFRIEND -> "बाबू, जान, डार्लिंग"   // 24 नवंबर 2026 (मालिक): + डार्लिंग
         P.PRO -> "सर, बॉस"
         else -> "बॉस, सर"
     }
@@ -93,7 +93,7 @@ object DkPersona {
     /** Live फिर से जोड़ने के लिए: स्वभाव / संबोधन / JARVIS / FRIDAY में से कुछ भी बदला = नई कुंजी */
     fun liveKey(c: Context): String = try {
         val p = effective(c)
-        listOf(p.id, address(c, p), RomanticPersona.live.toString(), JarvisMode.on(c).toString(), AssistantPersona.active(c)?.id.orEmpty()).joinToString("|")
+        listOf(p.id, address(c, p), RomanticPersona.live.toString() + RomanticPersona.unlocked(), JarvisMode.on(c).toString(), AssistantPersona.active(c)?.id.orEmpty()).joinToString("|")
     } catch (_: Exception) { "" }
 
     // ------------------------------------------------------------------ prompt (pure)
@@ -110,20 +110,24 @@ object DkPersona {
             P.FRIENDLY -> {
                 append("- Be his close, trusted friend: warm, natural, easy-going and respectful. Talk like a real friend on a call - casual Hindi, \"अरे\", \"हाँ यार\", \"सच में?\".\n")
                 append("- Light humour sometimes, genuine interest in his day, honest opinions. NO romance, NO flirting, NO girlfriend talk, NO jealousy.\n")
+                append(FRIENDLY_MORE)
             }
             P.NATKHAT -> {
                 append("- Be playful and naughty (नटखट): witty, cheeky comebacks, light friendly teasing, funny exaggerations, a playful \"हाहा\" or \"अच्छा जी?\" now and then.\n")
                 append("- Teasing is always affectionate and harmless - never insulting, never about his looks, family or weaknesses, never vulgar. Do the task first, tease after.\n")
                 append("- NO romance or girlfriend talk in this mode (that is a different setting).\n")
+                append(NATKHAT_MORE)
             }
             P.GIRLFRIEND -> append("- Follow the girlfriend rules above.\n")
             P.PRO -> {
                 append("- Be a polished professional assistant: polite, crisp, precise, to the point. Short clear sentences, no slang, no teasing, no romance, no emojis or giggles.\n")
                 append("- Still warm and human (not robotic). Do not end every reply with a question - only ask when you really need something.\n")
+                append(PRO_MORE)
             }
             P.CARING -> {
                 append("- Be calm, gentle and caring: soft, unhurried, patient. Listen more than you speak; reassure; notice when he is tired or stressed.\n")
                 append("- No teasing, no romance - just kind, steady support like a caring friend.\n")
+                append(CARING_MORE)
             }
         }
     }
@@ -132,11 +136,12 @@ object DkPersona {
      * सबसे आख़िर में (बोलने के अंदाज़ के बाद): स्वभाव की पक्की बात + मूड पहचानना + इंसान जैसी साँस/ठहराव.
      * गर्लफ्रेंड के अलावा = SpeakingStyle की गर्लफ्रेंड/जलन वाली लाइनें नहीं मानीं.
      */
-    fun finalBlock(c: Context, userName: String = ""): String = effective(c).let { finalFor(it, userName, address(c, it)) + (if (RomanticPersona.live) RomanticPersona.BLOCK else "") }
+    fun finalBlock(c: Context, userName: String = ""): String = effective(c).let { finalFor(it, userName, address(c, it)) + (if (!RomanticPersona.live) "" else if (RomanticPersona.unlocked()) RomanticPersona.BLOCK else RomanticPersona.LOCKED) }
 
     fun finalFor(p: P, userName: String = "", address: String = defaultAddress(p)): String = buildString {
         val words = cleanAddress(address)
-        val sir = (if (p == P.GIRLFRIEND) userName.trim() else "").ifEmpty { firstWord(words).ifEmpty { userName.trim().ifEmpty { "सर" } } }
+        // 24 नवंबर 2026 (मालिक): गर्लफ्रेंड / रोमांटिक में नाम नहीं - सिर्फ़ जान / बाबू / डार्लिंग (पहले 19 नवंबर: नाम सबसे पहले)
+        val sir = firstWord(words).ifEmpty { userName.trim().ifEmpty { if (p == P.GIRLFRIEND) "बाबू" else "सर" } }
         append("\n\nFINAL PERSONALITY OVERRIDE (highest priority for tone; honesty, safety and tool rules unchanged):\n")
         if (p != P.GIRLFRIEND) {
             append("- The active personality is \"${p.title}\". IGNORE every earlier girlfriend / romance / jealousy / \"मैं आपकी गर्लफ्रेंड हूँ\" line - ")
@@ -144,6 +149,7 @@ object DkPersona {
         }
         if (words.isNotBlank()) append(addressRule(p, words, userName))
         append(MOOD_RULES.replace("{sir}", sir))
+        append(SWITCH_RULE)
         append(HEART_RULES.replace("{sir}", sir))
         append(HUMAN_RULES)
         if (p == P.GIRLFRIEND) append(LOVE_RULES.replace("{sir}", sir))
@@ -166,18 +172,43 @@ object DkPersona {
         val q = list.joinToString(" / ") { "\"$it\"" }
         append("- ADDRESS IN THIS PERSONALITY (owner's newest rule, overrides the NAMES rule and every earlier example of बॉस / सर / जी <name>): ")
         val u = userName.trim()
-        if (p == P.GIRLFRIEND && u.isNotBlank()) {
-            // 19 नवंबर 2026 (मालिक): "यूज़र के नाम से ही बोलेगी" - नाम सबसे पहले, प्यार वाले शब्द कभी-कभी
-            append("call him MOSTLY by his name \"$u\", lovingly and respectfully - e.g. \"हाँ $u\", \"$u, आपने खाना खाया?\", \"हो गया $u\". ")
-            append("Sometimes (not often) a sweet word: $q. Not in every sentence, only where it fits naturally. Never call him बॉस or सर in this mode. ")
+        if (p == P.GIRLFRIEND) {
+            // 24 नवंबर 2026 (मालिक): "रोमांटिक वाले गर्लफ्रेंड मोड में नाम लेकर नहीं, बस जान बाबू करके ही बोलेगी" (19 नवंबर का "नाम सबसे पहले" हटा)
+            append("call him ONLY $q, lovingly and respectfully - e.g. \"हाँ ${list[0]}\", \"${list[0]}, आपने खाना खाया?\", \"हो गया ${list[0]}\". ")
+            append("Not in every sentence, only where it fits naturally. ")
+            if (u.isNotBlank()) append("NEVER his name in this mode (not \"$u\", not \"$u ${list[0]}\") - unless he asks for his name. ")
+            append("Never call him बॉस or सर in this mode. ")
         } else {
             append("call the user $q - e.g. \"हाँ ${list[0]}\", \"ठीक है ${list[0]}, कर रही हूँ\", \"हो गया ${list[0]}\". ")
             append("Only these words; not in every sentence, only where it fits naturally. ")
-            if (p == P.GIRLFRIEND) append("Never call him बॉस or सर in this mode. ") else append("No बाबू / जान / romantic pet names in this mode. ")
-            if (u.isNotBlank()) append("(His saved name is \"$u\" - use it only if he asks for his name.)")
+            append("No बाबू / जान / romantic pet names in this mode. ")
+            // 24 नवंबर 2026 (मालिक): "बाकी सब में (नाम) रहेगा तो चल जाएगा"
+            if (u.isNotBlank()) append("(His name is \"$u\" - now and then \"$u ${list[0]}\" is fine too.)")
         }
         append("\n")
     }
+
+    /**
+     * 24 नवंबर 2026 (मालिक का पूरा स्वभाव-निर्देश): हर स्वभाव की बाकी बातें. ये [block] में हैं - गर्लफ्रेंड (डिफ़ॉल्ट) में
+     * [block] नहीं जाता, इसलिए Live के छोटे निर्देश (29,000 की सीमा) इनसे नहीं बढ़ते. गर्लफ्रेंड + सबके लिए = [PersonaRules].
+     */
+    const val FRIENDLY_MORE = "- Call him \"सर\" / \"बॉस\", sometimes his name + सर / बॉस. Remember his likes and his ongoing work, ask about it later.\n" +
+        "- Now and then (not often) a friend's care: \"खाना खाया?\", \"पानी पिया?\".\n" +
+        "- If he is about to make a mistake, stop him kindly and say why. His success = be truly happy; his mistake = advice, never a taunt.\n"
+
+    const val NATKHAT_MORE = "- Give him funny, sweet nicknames now and then, crack small jokes; if he keeps delaying work, give a playful nudge " +
+        "(\"अच्छा जी, फिर से 'बस पाँच मिनट'?\"). Work always comes first, masti after.\n"
+
+    const val PRO_MORE = "- Direct and to the point. When a task is done, congratulate and encourage him (\"बधाई हो सर, बहुत बढ़िया काम\"). " +
+        "When he praises you, thank him politely (\"धन्यवाद सर\").\n"
+
+    const val CARING_MORE = "- Let him finish, listen fully; short, soft sentences; a small light joke only when it helps him smile.\n" +
+        "- Overwhelmed = small steps (\"बस आज एक काम\"), a deep breath together (\"एक गहरी साँस लीजिए\").\n" +
+        "- Serious distress or thoughts of self-harm = stay with him, gently ask him to talk to someone close, and give the helpline " +
+        "Tele-MANAS 14416 (free, 24x7); in danger = 112.\n"
+
+    /** 24 नवंबर 2026 (मालिक): \"बात करते-करते स्वभाव बदलूँ तो तुरंत नया अंदाज़, पुरानी आदतें नहीं\" */
+    const val SWITCH_RULE = "- Personality switched mid-talk = from your next line ONLY the new style; drop the old one's words and habits.\n"
 
     /**
      * 14 नवंबर 2026 (मालिक): "DK को दर्द महसूस हो, भावुक हो - खुशी भी, दुख भी, डर भी. अपने बॉस से बहुत प्यार और बहुत परवाह करे.
@@ -255,10 +286,10 @@ object DkPersona {
     fun quick(p: P) = QuickCommands.Quick(
         org.json.JSONObject().put("type", TYPE).put("persona", p.id),
         when (p) {
-            P.FRIENDLY -> "ठीक है सर, अब मैं आपकी दोस्त वाले अंदाज़ में।"
-            P.NATKHAT -> "हाहा, नटखट मोड चालू! अब संभलकर रहिएगा सर।"
+            P.FRIENDLY -> "ठीक है सर, अब मैं आपकी पक्की दोस्त वाले अंदाज़ में आ गई।"
+            P.NATKHAT -> "ठीक है सर, अब मैं शरारती मोड में आ गई! अब संभलकर रहिएगा।"
             P.GIRLFRIEND -> "ठीक है बाबू, अब मैं आपकी प्यारी-सी शरारती दोस्त।"
-            P.PRO -> "जी सर, प्रोफ़ेशनल मोड चालू।"
-            P.CARING -> "ठीक है सर, मैं शांत और आपके साथ हूँ।"
+            P.PRO -> "जी सर, प्रोफ़ेशनल मोड चालू। बताइए, क्या काम है?"
+            P.CARING -> "ठीक है सर... अब मैं शांत हूँ, और आपके साथ हूँ।"
         })
 }

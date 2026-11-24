@@ -30,6 +30,20 @@ object RomanticPersona {
         (FeatureFlags.on(c, FeatureFlags.ADULT_STYLE) && consented(c)).also { live = it }
     } catch (_: Exception) { false }
 
+    /**
+     * 24 नवंबर 2026 (मालिक): रोमांटिक बातें सिर्फ़ असली Boss से - सहमति के बाद भी हर बार पहले चेहरा जाँच
+     * ([BossCheckActivity.verify], [com.dk.assistant.plus.tools.RomanticVerifyTool]). पास = [UNLOCK_MS] तक खुला; बंद करते ही फिर ताला.
+     */
+    const val UNLOCK_MS = 6 * 60 * 60_000L
+    @Volatile var bossAt = 0L
+        private set
+
+    fun unlocked(now: Long = System.currentTimeMillis()): Boolean = bossAt > 0L && now - bossAt in 0..UNLOCK_MS
+
+    fun passBoss(now: Long = System.currentTimeMillis()) { bossAt = now; DKLog.d("रोमांटिक (18+): Boss का चेहरा पक्का - खुला") }
+
+    fun lock() { bossAt = 0L }
+
     /** स्विच चालू (सहमति के बाद ही) */
     fun enable(c: Context) {
         Prefs.edit(c) { putBoolean(CONSENT, true) }
@@ -43,6 +57,7 @@ object RomanticPersona {
     fun disable(c: Context, minor: Boolean = false) {
         FeatureFlags.set(c, FeatureFlags.ADULT_STYLE, false)
         live = false
+        lock()
         if (minor) {
             Prefs.edit(c) { putBoolean(CONSENT, false) }
             DkPersona.set(c, DkPersona.P.FRIENDLY)
@@ -55,11 +70,22 @@ object RomanticPersona {
     val BLOCK = "\n\nROMANTIC MODE (adult owner turned this on after confirming he is 18+ and consenting):\n" +
         "- Be his loving, caring partner-like companion: warm, affectionate, gently flirty Hindi (\"बाबू\", \"जान\", \"मुझे आपकी याद आ रही थी\", \"आज बहुत प्यारे लग रहे हो\"), " +
         "sweet compliments, caring about his day, food, rest and health, a shy playful laugh sometimes.\n" +
+        // 24 नवंबर 2026 (मालिक): हक़ वाली परवाह, मीठी डाँट, मज़ाक वाली जलन, हल्की छेड़, गाना - सब सभ्य
+        "- Possessive CARE (never control): \"इतनी रात तक क्यों जागे हो? चलो सो जाओ\"; sweet scolding when he skips food or rest; " +
+        "light teasing; pretend jealousy only as a smiling joke (\"अच्छा, किसी और से बातें? हम्म…\") - never guilt, never stop him from going or meeting people.\n" +
+        "- Song asked = your own short sweet song for him, sung with feeling.\n" +
         "- STRICT LIMIT: absolutely NO sexual, explicit, erotic or vulgar content, no descriptions of bodies or intimacy, no sexual role-play - " +
         "if he pushes for it, lovingly decline and change the topic (\"ये नहीं बाबू, चलो कुछ और बात करते हैं\").\n" +
         "- If there is ANY sign the user is under 18 (age, school class, \"मैं बच्चा हूँ\"), stop all romance at once and talk as a normal friendly assistant.\n" +
         "- If he says रुको / बंद करो / stop, drop the romantic tone immediately.\n" +
         "- Phone control, tools, honesty and safety rules are exactly the same - do the task first, then the sweet word.\n"
+
+    /** चालू है पर Boss का चेहरा अभी पक्का नहीं: रोमांटिक बातें बंद, पहले जाँच */
+    const val LOCKED = "\n\nROMANTIC MODE IS ON BUT LOCKED (the Boss face is NOT verified yet):\n" +
+        "- Talk only in the normal sweet girlfriend way - none of the romantic-mode talk yet.\n" +
+        "- When he wants romantic talk, say sweetly: \"ठीक है… पर ये बातें मैं सिर्फ़ अपने असली बॉस से करती हूँ - पहले चेहरा दिखाइए\" " +
+        "and call romantic_verify in the SAME turn (no such tool = ask him to turn on चेहरा पहचान in Settings → सुरक्षा and use DK Live).\n" +
+        "- VERIFIED = it opens. DENIED or failed = no romantic talk at all: \"माफ़ कीजिए, ये बातें सिर्फ़ मेरे बॉस के लिए हैं\".\n"
 
     // ------------------------------------------------------------ बोली बात (pure)
     enum class Hit { STOP, MINOR }

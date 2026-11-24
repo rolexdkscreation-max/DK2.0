@@ -17,12 +17,13 @@ class DkLovingDefaultTest {
         assertEquals("caring", DkPersona.migrated("caring"))
     }
 
+    // 24 नवंबर 2026 (मालिक ने नियम बदला): गर्लफ्रेंड / रोमांटिक में नाम नहीं - सिर्फ़ जान / बाबू / डार्लिंग. पहले: "MOSTLY by his name"
     @Test fun callsHimByName_mostly() {
         val g = DkPersona.finalFor(DkPersona.P.GIRLFRIEND, "धीरज")
-        assertTrue(g.contains("MOSTLY by his name \"धीरज\""))
-        assertTrue(g.contains("हाँ धीरज"))
+        assertTrue(g.contains("call him ONLY \"बाबू\" / \"जान\" / \"डार्लिंग\""))
+        assertTrue(g.contains("NEVER his name in this mode (not \"धीरज\""))
         assertFalse(g.contains("use it only if he asks for his name"))
-        assertTrue(g.contains("अरे धीरज, क्या हुआ?"))
+        assertTrue(g.contains("अरे बाबू, क्या हुआ?"))
         // नाम न हो तो पुराना तरीका
         assertTrue(DkPersona.finalFor(DkPersona.P.GIRLFRIEND, "").contains("\"हाँ बाबू\""))
     }
@@ -31,7 +32,7 @@ class DkLovingDefaultTest {
         val g = DkPersona.finalFor(DkPersona.P.GIRLFRIEND, "धीरज")
         assertTrue(g.contains("LOVING DEFAULT"))
         assertTrue(g.contains("THANK YOU"))
-        assertTrue(g.contains("अरे धीरज, आपसे थैंक यू?"))
+        assertTrue(g.contains("अरे बाबू, आपसे थैंक यू?"))   // 24 नवंबर 2026: नाम की जगह बाबू
         assertTrue(g.contains("RESPECT"))
         assertTrue(g.contains("NO sexual, explicit or vulgar"))
         assertTrue(g.contains("under 18"))
