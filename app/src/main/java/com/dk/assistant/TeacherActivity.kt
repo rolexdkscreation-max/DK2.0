@@ -8,7 +8,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
 import android.speech.RecognizerIntent
-import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -32,7 +31,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
-import java.util.Locale
 
 class TeacherActivity : AppCompatActivity() {
     /** 23 नवंबर 2026 (मालिक): टैबलेट पर पूरा UI स्क्रीन के अनुपात में बड़ा; फ़ोन पर कुछ नहीं बदलता ([UiFit.tablet]) */
@@ -60,7 +58,8 @@ class TeacherActivity : AppCompatActivity() {
 
     private lateinit var whiteboardView: WhiteboardView
     private lateinit var brainManager: BrainManager
-    private var tts: TextToSpeech? = null
+    /** अभी बोल रहा जवाब (नया सवाल / स्क्रीन बंद = चुप) */
+    private var speakJob: kotlinx.coroutines.Job? = null
     private lateinit var progressBar: ProgressBar
     private lateinit var statusText: TextView
     private lateinit var queryInput: EditText
@@ -114,12 +113,6 @@ class TeacherActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         brainManager = BrainManager(this)
-
-        tts = TextToSpeech(this) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale("hi", "IN")
-            }
-        }
 
         // 23 नवंबर 2026 (मालिक: "टीचर मोड का UI भी बाकी ऐप जैसा"): वही साझा Clay पन्ना - ← शीर्षक [शेयर] [साफ़],
         // बीच में गोल कोनों वाले कार्ड में सफ़ेद बोर्ड, नीचे DKAI जैसा लिखने का डिब्बा. सारे पुराने काम (पेंसिल, रबर, रंग,
@@ -322,12 +315,13 @@ class TeacherActivity : AppCompatActivity() {
 
     private fun showStatus(t: String) { statusText.text = t; statusText.visibility = if (t.isBlank()) View.GONE else View.VISIBLE }
 
-    private fun clearBoard() { whiteboardView.clear(); whiteboardView.clearLesson(); TeacherBoard.reset(); shownVersion = TeacherBoard.version }
+    private fun clearBoard() { stopSpeaking(); whiteboardView.clear(); whiteboardView.clearLesson(); TeacherBoard.reset(); shownVersion = TeacherBoard.version }
 
     override fun onResume() { super.onResume(); TeacherLink.visible = true; refreshLesson() }
     override fun onPause() { TeacherLink.visible = false; super.onPause() }
 
     private fun startVoiceInput() {
+        stopSpeaking()                                   // बोलकर पूछना = DK का चल रहा जवाब चुप (अपनी ही आवाज़ न सुने)
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
@@ -341,6 +335,7 @@ class TeacherActivity : AppCompatActivity() {
     }
 
     private fun askTeacher(userQuestion: String, useBoardImage: Boolean, customImageB64: String?) {
+        stopSpeaking()
         progressBar.visibility = View.VISIBLE
         showStatus("डीके टीचर सोच रही हैं...")
 
@@ -394,7 +389,9 @@ class TeacherActivity : AppCompatActivity() {
         }
     }
 
-    private fun processTeacherResponse(response: String, question: String = "") {
+    private fun processTeacherResponse(raw: String, question: String = "") {
+        // 24 नवंबर 2026 (मालिक: "ब्रैकेट, response लिखा आता है"): मॉडल का JSON / [RESPONSE] लपेट हटाकर ही बोर्ड और आवाज़
+        val response = TeacherReply.clean(raw)
         // [WRITE] वाले मुख्य बिंदु भी पूरे जवाब के साथ - पूरा समझाया हुआ पन्ने पर, चरण-दर-चरण (v3.87)
         val regex = Regex("\\[WRITE\\](.*?)\\[/WRITE\\]", RegexOption.DOT_MATCHES_ALL)
         val boardText = response.replace(regex) { it.groupValues[1].trim() + "\n" }.trim()
@@ -404,9 +401,21 @@ class TeacherActivity : AppCompatActivity() {
         refreshLesson()
 
         // DK Live चल रहा हो तो फ़ोन की दूसरी आवाज़ नहीं (DK की अपनी आवाज़ ही)
-        if (cleanText.isNotEmpty() && !DKState.live) {
-            tts?.speak(com.dk.assistant.voice.engine.HinglishText.toSpeakable(cleanText), TextToSpeech.QUEUE_FLUSH, null, "TeacherTTS")
+        // 24 नवंबर 2026 (मालिक: "रोबोटिक आवाज़ - फ़ोन की TTS; ऑफ़लाइन वाली TTS से आए"): पहले DK की ऑफ़लाइन आवाज़
+        // (Supertonic, [com.dk.assistant.voice.st3.OfflineVoice]); वह डाउनलोड न हो / न चले तभी फ़ोन की आवाज़ ([PhoneVoice.say]).
+        val say = com.dk.assistant.voice.engine.HinglishText.toSpeakable(TeacherReply.spoken(if (cleanText.isNotEmpty()) cleanText else response))
+        if (say.isNotBlank() && !DKState.live) {
+            stopSpeaking()
+            speakJob = activityScope.launch(Dispatchers.IO) {
+                try { PhoneVoice.say(applicationContext, say) } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                } catch (e: Exception) { Quiet.note(e) }
+            }
         }
+    }
+
+    private fun stopSpeaking() {
+        speakJob?.cancel(); speakJob = null
+        try { PhoneVoice.stop() } catch (e: Exception) { Quiet.note(e) }
     }
 
     private fun shareWhiteboard() {
@@ -448,8 +457,7 @@ class TeacherActivity : AppCompatActivity() {
         DKState.unlisten(boardListener)
         TeacherLink.detach(this)
         activityScope.cancel()
-        tts?.stop()
-        tts?.shutdown()
+        stopSpeaking()
         super.onDestroy()
     }
 }
