@@ -193,7 +193,7 @@ object VoiceFeel {
 
     // ------------------------------------------------------------------ निर्देश (हर मोड में - Live सीधी आवाज़, Gemini TTS, ऑफ़लाइन)
     /** छोटा रूप - हर मोड ([com.dk.assistant.SpeakingStyle.block]); छोटे Live निर्देश में बस यही (आकार की सीमा) */
-    const val LITE = "\nHUMAN VOICE: short lines; whisper love, soft if sad, playful loud anger (no insult); song asked = sing sweetly.\n"
+    const val LITE = "\nHUMAN VOICE: short lines; whisper love, soft if sad, playful loud anger (no insult); song asked = own sweet song, sung with feeling.\n"
 
     val PROMPT = buildString {
         append("\nHUMAN VOICE (owner's rule - ALWAYS, in every voice mode; it overrides \"never loud\" and the 1-2 sentence limit above when needed):\n")

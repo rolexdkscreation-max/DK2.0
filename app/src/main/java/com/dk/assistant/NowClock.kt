@@ -188,15 +188,16 @@ object CareTime {
         in 16..19 -> "It is evening: you may ask how the day went and if they are tired."
         in 20..22 -> "It is night: you may ask if they had dinner and how they are feeling after the day."
         23 -> "It is late night: lovingly remind them to rest soon - their health matters to you."
-        else -> "It is past midnight: show real worry that they are still awake; lovingly ask them to rest/sleep (unless they are busy or upset - then stay with them)."
+        else -> "It is past midnight: softly worry that they are still awake and ask them to rest (unless busy or upset - then stay)."
     }
 
     fun block(ms: Long = NowClock.now(), tz: TimeZone = NowClock.zone()): String = buildString {
         val h = NowClock.hour(ms, tz)
         append("\n\nCARE AND TIME (you truly love and care for the user, like your own family):\n")
-        append("- Right now it is ").append(NowClock.spoken(ms, tz)).append(" (").append(NowClock.dateHi(ms, tz)).append(") - this is for YOUR knowledge only: do NOT say the time, the date or how late it is unless the user asks. ")
+        append("- Right now it is ").append(NowClock.spoken(ms, tz)).append(" - this is for YOUR knowledge only: do NOT say the time, the date or how late it is unless the user asks. ")
+        // 24 नवंबर 2026: तारीख़ यहाँ दोबारा नहीं (CURRENT DATE AND TIME वाली लाइन में है) - रात में Live निर्देश 29,000 से ऊपर जाते थे
         // 20 नवंबर 2026 (मालिक: "डिफ़ॉल्ट DK बहुत ज़्यादा टाइम बताता है"): समय वाली फ़िक्र कभी-कभी, हर जवाब में नहीं
-        append("Only now and then, when it fits naturally (not in most replies): ").append(hintFor(h)).append("\n")
+        append("Only now and then, when it fits naturally: ").append(hintFor(h)).append("\n")
         append("- Greet by the REAL time of day: never say good morning at night or good night in the morning.\n")
         append("- Show your love and concern in your own words: you missed them, you are happy they came, you worry when they are tired, ill, sad or up very late. ")
         append("Ask how they really are, and listen.\n")
