@@ -184,7 +184,10 @@ class SettingsActivity : AppCompatActivity() {
             Triple("reels", "रील गिनती और लिमिट", "इंस्टाग्राम • YouTube शॉर्ट्स • फेसबुक — ऊपर गिनती की पट्टी • रोज़ की लिमिट • फ़ोन लॉक / ऐप बंद"),
             Triple("backup", "बैकअप", "DK की याददाश्त Google Drive में • अपना ईमेल डालें • बैकअप / रिस्टोर (ऐप दोबारा डालने पर सब वापस)"),
             Triple("connectors", "कनेक्टर", "Gmail • Drive • Calendar • GitHub • Facebook Page • Instagram • MCP — DK लाइव से बोलकर काम"),
-            Triple("story", "स्टोरी राइटर एजेंट", "लंबी हिंदी कहानियाँ (10–30 मिनट) • भाग-दर-भाग • कॉपी • फ़ोन में सेव"),
+            // 24 नवंबर 2026 (मालिक: "Story Writer इसी में मिलाओ, अलग पंक्ति हटाओ"): कंटेंट राइटिंग चालू = यही पंक्ति "DK कंटेंट राइटिंग" (कहानी अंदर पहले जैसी)
+            if (com.dk.assistant.plus.FeatureFlags.on(this, com.dk.assistant.plus.FeatureFlags.CONTENT_WRITING))
+                Triple("story", "DK कंटेंट राइटिंग", "कहानी (पहले जैसी) • फैक्ट्स • स्क्रिप्ट • कैप्शन + हैशटैग • स्क्रिप्ट सुधार • फ़ोटो से")
+            else Triple("story", "स्टोरी राइटर एजेंट", "लंबी हिंदी कहानियाँ (10–30 मिनट) • भाग-दर-भाग • कॉपी • फ़ोन में सेव"),
             Triple("update", "अपडेट", "अभी: ${Updater.displayVersion(this)} • नया version चेक करें"),
             // 17 नवंबर 2026 (DK बैकएंड): लाइसेंस की - मुख्य पन्ने पर अपडेट के ठीक ऊपर (किसी श्रेणी में नहीं)
             Triple("license", "लाइसेंस की", "की डालें • स्तर और आज का बचा समय • लाइसेंस की पाएँ (WhatsApp)"),
@@ -221,7 +224,8 @@ class SettingsActivity : AppCompatActivity() {
                 isClickable = true
                 setOnClickListener {
                     // Story Writer: seedha apni screen (iski koi settings nahi)
-                    if (id == "story") startActivity(android.content.Intent(this@SettingsActivity, StoryWriterActivity::class.java))
+                    if (id == "story") startActivity(android.content.Intent(this@SettingsActivity,
+                        if (com.dk.assistant.plus.FeatureFlags.on(this@SettingsActivity, com.dk.assistant.plus.FeatureFlags.CONTENT_WRITING)) ContentWriterActivity::class.java else StoryWriterActivity::class.java))
                     else if (id == "backup") startActivity(android.content.Intent(this@SettingsActivity, com.dk.assistant.backup.BackupActivity::class.java))
                     else if (id == "connectors") startActivity(android.content.Intent(this@SettingsActivity, com.dk.assistant.connect.ConnectorsActivity::class.java))
                     else if (id == "auto") startActivity(android.content.Intent(this@SettingsActivity, com.dk.assistant.auto.AutoSettingsActivity::class.java))

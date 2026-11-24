@@ -103,6 +103,8 @@ object FeatureFlags {
     const val WA_GROUP_REPORT = "plus_wa_group_report"
     /** 15 नवंबर 2026 (मालिक, हिस्सा 1): AI दिमाग → टूल एजेंट (Gemini function calling + Retry Loop) */
     const val TOOL_AGENT = "plus_tool_agent"
+    /** 24 नवंबर 2026 (मालिक: DK CONTENT WRITING): Story Writer + फैक्ट्स / स्क्रिप्ट / कैप्शन एक ही जगह (शुरू में बंद) */
+    const val CONTENT_WRITING = "plus_content_writing"
 
     val ALL: List<Flag> = listOf(
         Flag(AUTO_SAVE_MEMORIES, "बातों से याददाश्त अपने-आप सेव", "बातचीत में मिली नई बात DK खुद याद रखे", Section.MEMORY),
@@ -159,6 +161,7 @@ object FeatureFlags {
         Flag(TERMUX, "Termux ऑटोमेशन", "Termux में कमांड / लोकल सर्वर (RUN_COMMAND इजाज़त)", Section.TOOLS),
         Flag(IMAGE_GEN, "बोलकर तस्वीर बनाना", "\"एक शेर की तस्वीर बनाओ\" - DK सर्वर का Cloudflare FLUX (चैट, DK लाइव, DK कंप्यूटर)", Section.CREATE),
         Flag(TOOL_AGENT, "टूल एजेंट (Retry Loop)", "लंबे फ़ोन-काम: Gemini खुद tool चुने (15 कदम तक), हर कदम जाँचकर 3 बार तक दोबारा", Section.BEHAVIOR),
+        Flag(CONTENT_WRITING, "DK कंटेंट राइटिंग", "कहानी (पहले जैसी) + फैक्ट्स / स्क्रिप्ट / कैप्शन / सुधार / फ़ोटो से - एक ही जगह", Section.CREATE),
         Flag(YT_CHANNEL, "बोलकर YouTube चैनल जाँच", "\"मेरे चैनल का हाल बताओ\" - subscribers, views, नए वीडियो, comments", Section.CREATE),
     )
 
@@ -186,6 +189,8 @@ object FeatureFlags {
         SOCIAL_SPECIALIST,
         // 16 नवंबर 2026: सारी keys इस्तेमाल करो (कोडिंग एजेंट की Gemini key 1-5, Round-Robin)
         KEY_POOL_ALL,
+        // 24 नवंबर 2026: DK कंटेंट राइटिंग
+        CONTENT_WRITING,
     )
     fun ready(key: String): Boolean = key in READY
 
