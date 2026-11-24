@@ -27,7 +27,7 @@ object SocialReports {
         fun overflow(names: List<String>, max: Int = MAX): List<String> = newestFirst(names).drop(max)
 
         /** सूची में दिखने वाला नाम: रिपोर्ट की पहली heading / लाइन (markdown साफ़) */
-        fun title(report: String): String = report.lineSequence().map { it.trim().trimStart('#', ' ', '*').trim() }
+        fun title(report: String): String = report.lineSequence().map { it.trim().trim('#', ' ', '*').trim() }
             .firstOrNull { it.isNotBlank() && it != "सार" }?.take(70) ?: "सोशल रिव्यू"
 
         /** सिर्फ़ हमारे फ़ोल्डर की फ़ाइल ("../" वगैरह नहीं) */
