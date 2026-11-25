@@ -81,6 +81,9 @@ object OutsideText {
         }
     }
 
+    /** बटन का नाम भुगतान / ऑर्डर जैसा? (शॉपिंग में मालिक के अपने हुक्म वाली जाँच के लिए) */
+    fun isPayLabel(l: String): Boolean = PAY.containsMatchIn(l)
+
     /** ऐप का अपना कार्ड चाहिए? goal = मालिक की अपनी कही बात */
     fun needsCard(k: Kind, goal: String): Boolean = when (k) {
         Kind.NONE -> false

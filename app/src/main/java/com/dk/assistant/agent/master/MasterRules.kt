@@ -143,7 +143,7 @@ object MasterRules {
         append("never buy, pay, book, submit, post or do anything irreversible without the owner's clear yes right before that step; ")
         when (p.specialist) {
             Specialist.BOOKING -> append("never make the online payment - stop on the payment page and hand it to the owner; ")
-            Specialist.SHOPPING -> append("stop before checkout / payment and hand it to the owner; ").append(ShopRules.AGENT_NOTE).append("; ")
+            Specialist.SHOPPING -> append("stop before checkout / payment and hand it to the owner (unless he himself said proceed / order / cash on delivery); ").append(ShopRules.AGENT_NOTE).append("; ")
             Specialist.FORM -> append("never invent personal details - ask the owner for anything you don't know; ")
             Specialist.BROWSER -> append("read the page before acting, use only what is on the screen, check after each tap that the page changed, try one other way then tell the owner; ")
             else -> Unit
