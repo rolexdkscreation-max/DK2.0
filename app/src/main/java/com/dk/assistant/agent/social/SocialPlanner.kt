@@ -37,7 +37,11 @@ object SocialPlanner {
         else -> "अलग-अलग पोस्ट"
     }
 
-    private fun kindMany(m: List<SharedItem>): String = MediaPolicy.countLabel(m)
+    /** "3 फोटो" / मिले-जुले = "3 चीज़ें (2 फोटो और 1 वीडियो)" - कुल गिनती हमेशा सामने */
+    private fun kindMany(m: List<SharedItem>): String {
+        val l = MediaPolicy.countLabel(m)
+        return if (l.startsWith("${m.size} ")) l else "${m.size} चीज़ें ($l)"
+    }
 
     private fun mimeOf(m: List<SharedItem>): String {
         val types = m.map { it.mime.substringBefore('/') }.distinct()
