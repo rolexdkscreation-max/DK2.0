@@ -451,6 +451,13 @@
             android:excludeFromRecents="true"
             android:launchMode="singleTask"
             android:screenOrientation="portrait" />
+        <!-- 25 नवंबर 2026: DK ट्रांसलेटर (सीधा दुभाषिया) -->
+        <activity
+            android:name=".translate.TranslatorActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
         <!-- 16 नवंबर 2026: जोखिम वाले काम से पहले ऐप का अपना "हाँ / ना" कार्ड (लॉक स्क्रीन के ऊपर नहीं) -->
         <activity
             android:name=".plus.ConfirmActivity"

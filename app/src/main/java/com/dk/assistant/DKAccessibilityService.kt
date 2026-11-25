@@ -1372,6 +1372,7 @@ class DKAccessibilityService : AccessibilityService() {
                 "close_app" -> closeApp()
                 "close_all_apps" -> closeAllApps()
                 in com.dk.assistant.plus.PlusCommands.TYPES -> com.dk.assistant.plus.PlusCommands.run(this, a)   // 15 नवंबर 2026: SOS / ड्राइविंग मोड
+                com.dk.assistant.translate.TrCommands.TYPE -> com.dk.assistant.translate.TrEngine.voice(this, a.optBoolean("on", true))   // 25 नवंबर 2026: DK ट्रांसलेटर
                 in NativeActionEngine.TYPES -> NativeActionEngine.run(this, a)   // नवंबर 2026: ब्राइटनेस / ऑटो रोटेट / DND
                 in OfflineExec.TYPES -> OfflineExec.run(this, a)   // v4.1: अलार्म / टाइमर / कैमरा / समय / टैप / SMS (बिना API)
                 "wait" -> { delay(a.optLong("ms", 1000).coerceIn(100, 8000)); "waited" }

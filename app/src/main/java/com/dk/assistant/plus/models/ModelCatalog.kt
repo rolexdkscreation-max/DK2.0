@@ -13,7 +13,9 @@ object ModelCatalog {
 
     enum class Kind(val title: String) { VOICE("आवाज़-पहचान"), FACE("चेहरा-पहचान"), SOCIAL("सोशल पोस्ट (गैलरी पहचान)"), WAKE("वेक वर्ड"), STT("बोली से लिखना (IndicConformer)"),
         /** 19 नवंबर 2026: Supertonic 3 - फ़ोन पर बनने वाली आवाज़ ([com.dk.assistant.voice.st3.St3Config]) */
-        TTS("बोलने वाली आवाज़ (Supertonic 3)") }
+        TTS("बोलने वाली आवाज़ (Supertonic 3)"),
+        /** 25 नवंबर 2026: DK ट्रांसलेटर का ऑफ़लाइन अनुवाद (IndicTrans2) */
+        MT("ऑफ़लाइन अनुवाद (IndicTrans2)") }
 
     data class Asset(
         val id: String,
@@ -155,12 +157,38 @@ object ModelCatalog {
     val OLD_STT_FILES = listOf("hi_en_stream_ctc_encoder_int8.onnx", "hi_en_stream_ctc_tokens.txt")
     val STT_SHERPA: List<Asset> = listOf(STT_ENCODER, STT_TOKENS)
 
+    /**
+     * 25 नवंबर 2026 (मालिक: "DK ट्रांसलेटर ऑफ़लाइन भी चले - मॉडल इंटरनेट से डाउनलोड होने वाला"): AI4Bharat IndicTrans2
+     * indic-indic distilled 320M, int8 ONNX (`hari31416/...-ONNX-int8`, MIT). मराठी <-> हिंदी (और बाकी भारतीय भाषाएँ).
+     * sandbox जाँच: "तुम्ही कुठे जात आहात? मला स्टेशनला जायचं आहे." -> "आप कहाँ जा रहे हैं मुझे स्टेशन जाना है", ~0.2 s.
+     * फ़ाइल-नाम वही रखे - .onnx के अंदर वज़न वाली .data फ़ाइल का नाम लिखा है (encoder_model.onnx.data, decoder_shared.onnx.data).
+     * Commit-pinned, साइज़ + SHA-256 Hugging Face से जाँचे. कुल ~374 MB, सिर्फ़ Wi-Fi, सिर्फ़ ट्रांसलेटर में "डाउनलोड" दबाने पर.
+     */
+    private const val MT_REPO = "https://huggingface.co/hari31416/indictrans2-indic-indic-dist-320M-ONNX-int8/resolve/b04956dee2f2a3e06e44bf09f8d654a6b81af99a/"
+    private fun mt(id: String, title: String, file: String, remote: String, sha: String, bytes: Long) =
+        Asset(id, Kind.MT, title, "DK ट्रांसलेटर - फ़ोन पर ही अनुवाद", file, listOf(MT_REPO + remote), sha, bytes, "MIT")
+    val MT_ENC = mt("mt_it2_enc", "IndicTrans2 encoder", "encoder_model.onnx", "encoder_model.onnx",
+        "0b965dfef8d5ba16603a9fbcc9d326acf6438e2768c52f6816004d9956e15810", 831_435L)
+    val MT_ENC_DATA = mt("mt_it2_enc_data", "IndicTrans2 encoder वज़न", "encoder_model.onnx.data", "encoder_model.onnx.data",
+        "914b82d0a08240d8cc133034a0958733ffc4d98b13a69111029ed8a85a9c159b", 120_068_096L)
+    val MT_DEC = mt("mt_it2_dec", "IndicTrans2 decoder", "decoder_model.onnx", "decoder_model.onnx",
+        "33f6dd13aff20d67cb659cc534b918f947c75691c7ee54a5494406f757923092", 2_037_642L)
+    val MT_DEC_PAST = mt("mt_it2_dec_past", "IndicTrans2 decoder (cache)", "decoder_with_past_model.onnx", "decoder_with_past_model.onnx",
+        "0f1f620993308f01f23460a60d534e3bd92e73d8d6e74141bcdb7ecbaaf86abb", 1_850_619L)
+    val MT_DEC_DATA = mt("mt_it2_dec_data", "IndicTrans2 decoder वज़न", "decoder_shared.onnx.data", "decoder_shared.onnx.data",
+        "5b35423deb71577d1bb95d7abb702042bdf5724846e8b21a8cb9f6757c54dfd7", 203_048_944L)
+    val MT_TOK_SRC = mt("mt_it2_tok_src", "IndicTrans2 शब्द-टुकड़े (स्रोत)", "it2_tokenizer_src.json", "tokenizer_src.json",
+        "d15ba1265a61b3b66122aab74e888442093a2c711f51b0f9896108661e1d346c", 23_876_630L)
+    val MT_TOK_TGT = mt("mt_it2_tok_tgt", "IndicTrans2 शब्द-टुकड़े (अनुवाद)", "it2_tokenizer_tgt.json", "tokenizer_tgt.json",
+        "51b05cd37636765e158146534d54452be558df32c6ab06ba4caeecdd0266a580", 23_869_629L)
+    val MT_INDIC: List<Asset> = listOf(MT_ENC, MT_ENC_DATA, MT_DEC, MT_DEC_PAST, MT_DEC_DATA, MT_TOK_SRC, MT_TOK_TGT)
+
     /** हटा हुआ Whisper small (q5_1) - पुराने फ़ोन में पड़ी फ़ाइल; Settings का बटन इसे मिटाता है (जगह खाली) */
     const val OLD_WHISPER_FILE = "ggml_small_q5_1.bin"
     const val OLD_WHISPER_BYTES = 190_085_487L
 
     /** यह मॉडल सिर्फ़ Wi-Fi (बिना-गिनती वाले नेट) पर उतरे? - बोली वाला मॉडल हाँ (मालिक: "Wi-Fi पर अलग से Download") */
-    fun wifiOnly(a: Asset): Boolean = a.kind == Kind.STT
+    fun wifiOnly(a: Asset): Boolean = a.kind == Kind.STT || a.kind == Kind.MT
 
     val SOCIAL_CLIP: List<Asset> = listOf(CLIP_VISION, CLIP_TEXT, CLIP_WORDS, CLIP_BPE)
 
@@ -170,7 +198,7 @@ object ModelCatalog {
      */
     val REMOVED_FILES = listOf("robot_expressive.glb", "cesium_man.glb", "brainstem.glb", "fox.glb", "three_gltf_loader.js", "three_bg_utils.js") + OLD_STT_FILES
 
-    val ALL: List<Asset> = listOf(REDIMNET_HEAVY, REDIMNET_LIGHT, REDIMNET_PRO, FACE_EMBED, FACE_DETECT) + SOCIAL_CLIP + WAKE + STT_SHERPA +
+    val ALL: List<Asset> = listOf(REDIMNET_HEAVY, REDIMNET_LIGHT, REDIMNET_PRO, FACE_EMBED, FACE_DETECT) + SOCIAL_CLIP + WAKE + STT_SHERPA + MT_INDIC +
         com.dk.assistant.voice.st3.St3Config.ALL + com.dk.assistant.voice.st3.St3Config.FAST +
         com.dk.assistant.voice.st3.St3Config.MALE.map { it.asset }
 
