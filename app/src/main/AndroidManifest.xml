@@ -292,6 +292,15 @@
                 <data android:mimeType="image/*" />
                 <data android:mimeType="video/*" />
             </intent-filter>
+            <!-- 25 नवंबर 2026: गैलरी में कई फोटो/वीडियो चुनकर एक साथ DK को -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+                <!-- फोटो + वीडियो मिलाकर चुनें तो गैलरी */* भेजती है - फ़ोटो/वीडियो के सिवा बाक़ी DK छोड़ देता है -->
+                <data android:mimeType="*/*" />
+            </intent-filter>
         </activity>
         <activity
             android:name=".forge.ForgeActivity"
