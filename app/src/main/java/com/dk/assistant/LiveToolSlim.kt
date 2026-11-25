@@ -24,6 +24,8 @@ object LiveToolSlim {
         "deep_research", "look_photo",
         // 20 नवंबर 2026 (मालिक): "Gemini Live में generate_image(prompt) tool घोषित करो" - सीधे, router के पीछे नहीं
         "generate_image",
+        // 25 नवंबर 2026 (मालिक: "दिखाओ तो पेज खोल के दिखाए") - तुरंत चाहिए, router के पीछे नहीं
+        "show_page",
         // 20 नवंबर 2026 (मालिक का लॉग: निर्देश + tools ≈ 14100 token): कम चलने वाले notification_reply, screen_share,
         // camera, social_media_task_control अब dk_agent के पीछे (बुलाने पर वही काम, सिर्फ़ setup हल्का)
     )

@@ -2,6 +2,8 @@ package com.dk.assistant
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
+import android.content.MutableContextWrapper
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -35,6 +37,21 @@ object ComputerBrowser {
 
     @SuppressLint("StaticFieldLeak") private var web: WebView? = null
     @Volatile private var loaded: CompletableDeferred<Unit>? = null
+
+    /**
+     * 25 नवंबर 2026 (मालिक: "मैं बोलूँ दिखाओ तो वो पेज खोल के मुझे दिखाए"): काम खत्म होते ही ब्राउज़र बंद नहीं -
+     * [PARK_MS] तक वही पेज (login / cart / बुकिंग / भुगतान वाला) ज़िंदा, ताकि [BrowserShowActivity] उसे सामने ला सके.
+     */
+    const val PARK_MS = 30 * 60 * 1000L
+    /** मालिक अभी यह पेज स्क्रीन पर देख रहा है ([BrowserShowActivity]) */
+    @Volatile var shown = false
+        private set
+    @Volatile var lastUrl = ""
+        private set
+    @Volatile var lastTitle = ""
+        private set
+    private val main by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
+    private val killer = Runnable { if (!shown) destroyNow() }
 
     // ------------------------------------------------------------ pure (tests)
     /** पेज पर जो दिखता है: शीर्षक, URL, text, और दबाने/लिखने लायक चीज़ें [n] नंबर के साथ */
@@ -142,7 +159,7 @@ return JSON.stringify(out);})()"""
 
     // ------------------------------------------------------------ Android
     @SuppressLint("SetJavaScriptEnabled")
-    private fun view(c: Context): WebView = web ?: WebView(c.applicationContext).also { w ->
+    private fun view(c: Context): WebView = (web ?: WebView(MutableContextWrapper(c.applicationContext)).also { w ->
         w.settings.javaScriptEnabled = true
         w.settings.domStorageEnabled = true
         w.settings.loadWithOverviewMode = true
@@ -154,12 +171,52 @@ return JSON.stringify(out);})()"""
             override fun onPageFinished(v: WebView?, url: String?) { loaded?.complete(Unit) }
             override fun shouldOverrideUrlLoading(v: WebView?, r: WebResourceRequest?): Boolean {
                 val s = r?.url?.scheme.orEmpty()
+                // मालिक खुद देख रहा है और खुद दबाया (जैसे UPI से भुगतान) = उसका ऐप खोलो; DK अकेले में कभी नहीं
+                if (r != null && s != "http" && s != "https" && shown && r.hasGesture()) openOutside(v?.context, r.url.toString())
                 return s != "http" && s != "https"      // intent:/upi:/tel: वगैरह नहीं खोलते
             }
         }
         w.measure(View.MeasureSpec.makeMeasureSpec(W, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(H, View.MeasureSpec.EXACTLY))
         w.layout(0, 0, W, H)
         web = w
+    }).also { main.removeCallbacks(killer) }
+
+    private fun openOutside(c: Context?, url: String) {
+        val ctx = c ?: return
+        try {
+            val i = if (url.startsWith("intent:")) Intent.parseUri(url, Intent.URI_INTENT_SCHEME).apply { addCategory(Intent.CATEGORY_BROWSABLE) }
+                else Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+            i.component = null; i.selector = null       // वेब पेज किसी ख़ास (छिपे) हिस्से को सीधे न खोल पाए
+            ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) { Quiet.note(e) }
+    }
+
+    /**
+     * [BrowserShowActivity] के लिए: वही चलता WebView (session / cookies / भरा फ़ॉर्म वैसे ही).
+     * ब्राउज़र बंद हो चुका हो तो आख़िरी पता नए सिरे से खोलते हैं. null = दिखाने को कुछ नहीं.
+     */
+    fun showIn(a: android.app.Activity): WebView? {
+        val fresh = web == null
+        if (fresh && lastUrl.isBlank()) return null
+        val w = view(a)
+        (w.context as? MutableContextWrapper)?.baseContext = a
+        (w.parent as? android.view.ViewGroup)?.removeView(w)
+        w.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        shown = true
+        if (fresh) w.loadUrl(lastUrl)
+        return w
+    }
+
+    /** मालिक ने देखना बंद किया = फिर से छिपा (DK का चलता काम वहीं से आगे), [PARK_MS] बाद बंद */
+    fun hide(w: WebView) {
+        (w.parent as? android.view.ViewGroup)?.removeView(w)
+        (w.context as? MutableContextWrapper)?.baseContext = w.context.applicationContext
+        w.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        w.measure(View.MeasureSpec.makeMeasureSpec(W, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(H, View.MeasureSpec.EXACTLY))
+        w.layout(0, 0, W, H)
+        w.url?.let { lastUrl = it }; w.title?.let { lastTitle = it }
+        shown = false
+        main.removeCallbacks(killer); main.postDelayed(killer, PARK_MS)
     }
 
     private suspend fun js(w: WebView, code: String): String = suspendCancellableCoroutine { k ->
@@ -234,6 +291,9 @@ return JSON.stringify(out);})()"""
             if (g.any) guard.log("पेज पर ${BrowserRules.pageHi(g)} - मालिक खुद करेंगे")
             BrowserRules.pageNote(g, w.url.orEmpty())
         }
+        // "पेज दिखाओ" के लिए याद (कहाँ पहुँचा) - भुगतान वाला पेज अलग से निशान
+        lastUrl = w.url.orEmpty(); lastTitle = w.title.orEmpty()
+        ShowPage.dkWeb(lastUrl, lastTitle, pay = log.contains("PAYMENT step") || BrowserRules.isPaymentUrl(lastUrl))
         var file: File? = null
         if (!shot.isNullOrBlank()) file = try {
             val h = H.coerceAtMost(4000)
@@ -268,10 +328,19 @@ return JSON.stringify(out);})()"""
         } catch (_: Exception) { null } finally { try { v.destroy() } catch (e: Exception) { Quiet.note(e) } }
     }
 
-    /** काम खत्म = ब्राउज़र बंद (memory खाली) */
+    /**
+     * काम खत्म = ब्राउज़र अभी बंद नहीं: [PARK_MS] तक पेज ज़िंदा ("पेज दिखाओ" पर वही), फिर बंद (memory खाली).
+     * मालिक देख रहा हो ([shown]) तो तब तक बिल्कुल नहीं.
+     */
     fun close() {
+        if (web == null) return
+        main.removeCallbacks(killer)
+        main.postDelayed(killer, PARK_MS)
+    }
+
+    private fun destroyNow() {
         val w = web ?: return
         web = null
-        android.os.Handler(android.os.Looper.getMainLooper()).post { try { w.stopLoading(); w.destroy() } catch (e: Exception) { Quiet.note(e) } }
+        try { (w.parent as? android.view.ViewGroup)?.removeView(w); w.stopLoading(); w.destroy() } catch (e: Exception) { Quiet.note(e) }
     }
 }

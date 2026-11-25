@@ -297,6 +297,8 @@ internal suspend fun GeminiLive.phoneTaskOne(req: String, queued: Boolean = fals
     // v3.87: कतार में = पूरा होने तक (90s) रुको, फिर अगला काम; बाद वाला संदेश नहीं
     val finished = withTimeoutOrNull(if (queued) 90_000 else AGENT_WAIT_MS) { job.join() } != null
     if (queued && !finished) job.cancel()
+    // 25 नवंबर 2026 (मालिक): बाद में "पेज दिखाओ" = जिस ऐप में यह काम हुआ, वही स्क्रीन
+    if (finished) ShowPage.appNow(svc)
     val reply = DKState.lastReply.takeIf { it != before && it.isNotBlank() }
     if (!finished && !queued) {
         log("phone_task ${AGENT_WAIT_MS / 1000}s में पूरा नहीं - Gemini को सच बताया (चल रहा है), पूरा होने पर बताऊँगा")

@@ -252,6 +252,12 @@ object ComputerSession {
         val b = (if (Build.VERSION.SDK_INT >= 26) android.app.Notification.Builder(c, "dk_computer") else android.app.Notification.Builder(c))
             .setSmallIcon(android.R.drawable.stat_notify_sync_noanim).setContentTitle(title).setContentText(text)
             .setStyle(android.app.Notification.BigTextStyle().bigText(text)).setContentIntent(pi).setAutoCancel(true)
+        // 25 नवंबर 2026 (मालिक: "पेज खोल के दिखाए"): ब्राउज़र वाला काम = notification से सीधे वही पेज
+        if (ComputerBrowser.lastUrl.isNotBlank()) {
+            val page = PendingIntent.getActivity(c, 7402, Intent(c, BrowserShowActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            b.addAction(android.app.Notification.Action.Builder(android.graphics.drawable.Icon.createWithResource(c, android.R.drawable.ic_menu_view), "पेज दिखाओ", page).build())
+        }
         nm.notify(7401, b.build())
     } catch (e: Exception) { Quiet.note(e) }
 }
