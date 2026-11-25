@@ -58,7 +58,7 @@ class TrLive(
                         .put("startOfSpeechSensitivity", "START_SENSITIVITY_HIGH")
                         .put("endOfSpeechSensitivity", "END_SENSITIVITY_HIGH")
                         .put("prefixPaddingMs", 100)
-                        .put("silenceDurationMs", 400))
+                        .put("silenceDurationMs", 300))   // 25 नवंबर 2026: जवाब जल्दी (पहले 400)
                     .put("activityHandling", "NO_INTERRUPTION"))
                 .put("inputAudioTranscription", JSONObject())
                 .put("outputAudioTranscription", JSONObject())
