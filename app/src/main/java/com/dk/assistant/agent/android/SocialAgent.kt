@@ -16,6 +16,7 @@ import com.dk.assistant.agent.social.MediaPolicy
 import com.dk.assistant.agent.social.OpenSpec
 import com.dk.assistant.agent.social.Platform
 import com.dk.assistant.agent.social.SocialAction
+import com.dk.assistant.agent.social.SocialBatch
 import com.dk.assistant.agent.social.SocialPlanner
 import com.dk.assistant.agent.social.SharedItem
 import com.dk.assistant.agent.social.SocialRequest
