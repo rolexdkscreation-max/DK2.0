@@ -16,7 +16,7 @@ object WebTr {
         else -> c
     }
 
-    private fun cost(s: String) = s.sumOf { if (it.code < 128) 3 else 9 } + 3
+    private fun cost(s: String): Int = s.fold(3) { n, ch -> n + if (ch.code < 128) 3 else 9 }
 
     /** लाइनों को हिस्सों में (हर हिस्से के index), हर हिस्सा [MAX_Q] से छोटा (एक लंबी लाइन अकेली) */
     fun parts(texts: List<String>): List<List<Int>> {
