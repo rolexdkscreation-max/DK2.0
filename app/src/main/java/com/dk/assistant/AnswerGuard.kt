@@ -156,6 +156,8 @@ class AnswerGuard {
             if (sentence.contains('{') || sentence.contains('}')) return false
             val l = sentence.lowercase()
             if (words(l).none { it in FP }) return false
+            // 25 नवंबर 2026: "मेरा सबसे तेज़ AI मॉडल DKAI Ultra है" = DK का अपना नाम, किसी कंपनी से नहीं जोड़ता - रहने दो
+            if ((l.contains("dkai ultra") || l.contains("डीकेएआई अल्ट्रा")) && !BRAND.containsMatchIn(l)) return false
             return MODEL.containsMatchIn(l) || (BRAND.containsMatchIn(l) && MADE.containsMatchIn(l))
         }
 
