@@ -197,6 +197,8 @@ class SettingsActivity : AppCompatActivity() {
         if (cat == null) {
             // 15 नवंबर 2026 (मालिक: "अपडेट का सेक्शन सबसे नीचे दिखना चाहिए"): मुख्य पन्ने पर एक ही जगह, सबसे नीचे
             // (किसी श्रेणी के अंदर नहीं). नया अपडेट आया हो तो होम पर चमकती पट्टी + popup ([UpdatePrompt])
+            // 25 नवंबर 2026 (मालिक): सबसे ऊपर असली नाम + verified टिक (टैप = प्रोफ़ाइल) - [profileTopCard]
+            profileTopCard()
             // 23 नवंबर 2026 (Soft Clay): सबसे ऊपर "Theme" पट्टी - दबाओ = 8 थीम वाला पेज
             menuRow("theme", "Theme", "अभी: ${com.dk.assistant.ui.ClayTheme.current.name} • Clay Navy • Clay Day • Midnight • Nocturne • Ember • Abyss • Obsidian • Rosewood")
             SettingsSearch.CATEGORIES.forEach { (c, _) -> menuRow(c.first, c.second, c.third) }

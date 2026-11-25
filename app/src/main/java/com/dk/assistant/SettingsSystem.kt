@@ -253,6 +253,7 @@ internal fun SettingsActivity.secUpdate() {
 }
 
 internal fun SettingsActivity.secProfile() {
+    realNameCard()   // 25 नवंबर 2026 (मालिक): असली नाम + verified टिक सबसे ऊपर
     card("प्रोफ़ाइल", "आपका नाम, असिस्टेंट का नाम और बात करने का तरीका") {
         edUser = field(it, "आपका नाम", Prefs.userName(this), "जैसे: दीपक")
         hint(it, "DK इसी नाम से बुलाएगा: power बटन / Hey DK पर \"जी <नाम>\" (नाम बॉस = \"जी बॉस\"), \"हेलो DK\" पर \"हेलो <नाम>\"।")
