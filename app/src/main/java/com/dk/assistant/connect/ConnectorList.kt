@@ -54,6 +54,12 @@ object ConnectorList {
         else -> emptyList()
     }
 
+    /**
+     * 25 नवंबर 2026 (मालिक: "दो-दो नहीं दिखना चाहिए"): पन्ने पर हर कनेक्टर एक ही बार (सूची में, फ़ोटो के साथ).
+     * पूरा हिस्सा सिर्फ़ उसी का जो सूची में दबाया ([Row.section]); null = कोई नहीं.
+     */
+    fun detailKind(section: String?): Kind? = rows().firstOrNull { it.section == section }?.kind
+
     /** दाईं ओर का बटन: जुड़ा = हटाओ (−), नहीं = जोड़ो (+) */
     fun actionIcon(on: Boolean) = if (on) R.drawable.ic_cn_remove else R.drawable.ic_cn_plus
 }
