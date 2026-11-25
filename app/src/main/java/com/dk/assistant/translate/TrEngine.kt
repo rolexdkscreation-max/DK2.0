@@ -52,7 +52,7 @@ object TrEngine {
 
     const val VOICE = "Zephyr"
     private const val FRAME = 640 // 40 ms @16 kHz
-    private const val VERDICT_MS = 1200L
+    private const val VERDICT_MS = 500L
     private const val MAX_LINES = 40
 
     @Volatile var ui: Ui? = null
@@ -91,7 +91,12 @@ object TrEngine {
     @Volatile private var bBusyUntil = 0L
     @Volatile private var pauseUntil = 0L
 
+    /** Live की आवाज़ न आए तो बोलने वाला (Gemini TTS -> फ़ोन की आवाज़) - [TrVoice] */
+    private var speak: TrSpeak? = null
+
     // A का चल रहा turn (lock में)
+    private var aGotAudio = false
+    private var aSpoken = false
     private var aLine: Line? = null
     private var aVerdict: TrLang.Verdict? = null
     private val aBuf = ArrayList<ByteArray>()
@@ -100,6 +105,8 @@ object TrEngine {
     private val aOut = StringBuilder()
     // B का चल रहा turn
     private var bLine: Line? = null
+    private var bGotAudio = false
+    private var bSpoken = false
     private val bIn = StringBuilder()
     private val bOut = StringBuilder()
 
@@ -121,6 +128,7 @@ object TrEngine {
         Setup.startKeepAlive(c)
         val au = TrAudio(c) { r -> route = r; post { ui?.onRoute(r) } }
         audio = au; au.start()
+        speak = TrSpeak(c) { note(it) }
         watchNet(c)
         val key = GeminiLive.key(c)
         if (key.isBlank() || !NetProbe.online(c)) goOffline(if (key.isBlank()) TrPrompt.NO_KEY else "नेट नहीं - ऑफ़लाइन अनुवाद")
@@ -133,6 +141,8 @@ object TrEngine {
         if (!running) return
         running = false
         stopOnline(); off?.stop(); off = null
+        main.removeCallbacks(aWatch); main.removeCallbacks(bWatch)
+        speak?.close(); speak = null
         audio?.stop(); audio = null
         app?.let { c -> netCb?.let { cb -> try { (c.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(cb) } catch (e: Exception) { Quiet.note(e) } } }
         netCb = null
@@ -287,8 +297,11 @@ object TrEngine {
     private fun aHeld(): Boolean {
         val au = audio ?: return true
         val now = System.currentTimeMillis()
-        val busy = ptt || !micOn || now < bBusyUntil || au.partner.busy() || (au.headset == null && au.hindi.busy())
-        if (busy) pauseUntil = now + 300
+        // 25 नवंबर 2026 (मालिक: "बोलते-बोलते भी सुन ले, एक सेकंड की देरी नहीं"): हिंदी बज रही हो तब भी सुनना चालू -
+        // स्पीकर की हिंदी माइक में आई तो भाषा-छन्नी (TrLang.verdict = DROP) उसे खुद फेंक देती है. सिर्फ़ सामने वाले की भाषा
+        // स्पीकर पर बजते समय रुको (वरना वही वापस अनुवाद होगा), और वह भी थोड़ी देर.
+        val busy = ptt || !micOn || now < bBusyUntil || au.partner.busy()
+        if (busy) pauseUntil = now + 150
         return busy || now < pauseUntil
     }
 
@@ -322,8 +335,9 @@ object TrEngine {
                 } else {
                     a?.send(bytes); spoke += 40
                     silent = if (speech) 0 else silent + 40
-                    // ठहराव पर / लंबी बात में छोटे ठहराव पर / 9 सेकंड पर - अनुवाद शुरू (streaming: टुकड़ों में)
-                    if (silent >= 480 || (spoke >= 4500 && silent >= 160) || spoke >= 9000) {
+                    // ठहराव पर / लंबी बात में छोटे ठहराव पर / 6 सेकंड पर - अनुवाद शुरू (streaming: टुकड़ों में)
+                    // 25 नवंबर 2026 (मालिक: "जवाब तुरंत बने, टुकड़ों में"): ठहराव 480 -> 300 ms, लंबी बात 4.5 -> 2.5 s, 9 -> 6 s
+                    if (TrVoice.turnEnds(spoke, silent)) {
                         a?.streamEnd(); inSpeech = false
                         if (status == St.LISTENING) setStatus(St.TRANSLATING)
                     }
@@ -339,7 +353,40 @@ object TrEngine {
 
     // ---------------------------------------------------------------- A: सामने वाला -> हिंदी
 
-    private fun resetA() { aLine = null; aVerdict = null; aBuf.clear(); aFirst = 0; aIn.setLength(0); aOut.setLength(0) }
+    private fun resetA() { aLine = null; aVerdict = null; aBuf.clear(); aFirst = 0; aIn.setLength(0); aOut.setLength(0); aGotAudio = false; aSpoken = false }
+
+    /** Live ने अनुवाद लिखा पर आवाज़ नहीं दी = दूसरे रास्ते से बोलो (चुप नहीं) */
+    private fun fallbackA() {
+        val c = app ?: return
+        val au = audio ?: return
+        val text = synchronized(lock) {
+            val play = aVerdict == TrLang.Verdict.PLAY
+            if (!TrVoice.needFallback(aGotAudio, aOut.toString(), aSpoken, !play)) return
+            aSpoken = true; aOut.toString().trim()
+        }
+        DKLog.d("Translator A: Live की आवाज़ नहीं आई - Gemini TTS / फ़ोन की आवाज़ से")
+        setStatus(St.SPEAKING)
+        speak?.speak(text, TrLang.HINDI, au.hindi, Prefs.liveGeminiKeys(c), NetProbe.online(c))
+        idleSoon()
+    }
+
+    private fun fallbackB() {
+        val c = app ?: return
+        val au = audio ?: return
+        val (text, t) = synchronized(lock) {
+            if (!TrVoice.needFallback(bGotAudio, bOut.toString(), bSpoken, false)) return
+            bSpoken = true; bOut.toString().trim() to (bLine?.lang ?: bTarget)
+        }
+        DKLog.d("Translator B: Live की आवाज़ नहीं आई - Gemini TTS / फ़ोन की आवाज़ से")
+        bBusyUntil = System.currentTimeMillis() + 4000
+        setStatus(St.SPEAKING)
+        speak?.speak(text, t, au.partner, Prefs.liveGeminiKeys(c), NetProbe.online(c))
+        idleSoon()
+    }
+
+    /** लिखा आ गया, आवाज़ नहीं, और कुछ देर से कुछ नया नहीं (turn अटका / socket टूटा) = आगे बढ़ो */
+    private val aWatch = Runnable { if (running && !offline) { decide(true); fallbackA() } }
+    private val bWatch = Runnable { if (running && !offline) fallbackB() }
 
     private fun aLineOrNew(): Line = aLine ?: Line(false, chosen).also { aLine = it; add(top, it) }
 
@@ -364,8 +411,9 @@ object TrEngine {
                     val g = TrLang.guess(heard)
                     if (chosen == TrLang.AUTO && g.isNotEmpty() && g != TrLang.UNKNOWN && g != TrLang.HINDI && g != detected) { detected = g; main.post { if (running && !offline) rebuildB(force = false) } }
                 }
-                TrLang.Verdict.DROP -> { aBuf.clear(); au.hindi.flush(); aLine?.let { top.remove(it) } }
-                else -> { aBuf.clear(); au.hindi.flush(); aLine?.let { it.note = TrPrompt.NOT_UNDERSTOOD }; msg = TrPrompt.NOT_UNDERSTOOD }
+                // इस turn की आवाज़ अभी बजी ही नहीं (aBuf में रुकी थी) - पिछले अनुवाद की चल रही आवाज़ नहीं काटनी
+                TrLang.Verdict.DROP -> { aBuf.clear(); aLine?.let { top.remove(it) } }
+                else -> { aBuf.clear(); aLine?.let { it.note = TrPrompt.NOT_UNDERSTOOD }; msg = TrPrompt.NOT_UNDERSTOOD }
             }
             Unit
         }
@@ -387,23 +435,30 @@ object TrEngine {
                     chosen != TrLang.ALL.first().code) drop = true
             }
             if (drop) synchronized(lock) { aVerdict = TrLang.Verdict.DROP; aBuf.clear(); audio?.hindi?.flush(); aLine?.let { top.remove(it) } }
+            if (!synchronized(lock) { aGotAudio }) { main.removeCallbacks(aWatch); main.postDelayed(aWatch, TrVoice.NO_AUDIO_MS) }
             lines()
         }
         override fun onAudio(pcm: ByteArray) {
             val au = audio ?: return
             var play = false
             synchronized(lock) {
+                // दूसरे रास्ते से बोल चुके = देर से आई Live आवाज़ दोबारा नहीं
+                if (aSpoken) return
+                aGotAudio = true
                 when (aVerdict) {
                     null -> { aBuf.add(pcm); if (aFirst == 0L) aFirst = System.currentTimeMillis() }
                     TrLang.Verdict.PLAY -> play = true
                     else -> Unit
                 }
             }
+            main.removeCallbacks(aWatch)
             if (play) { au.hindi.play(pcm); setStatus(St.SPEAKING) }
             checkVerdictTimeout()
         }
         override fun onTurnDone() {
             decide(true)
+            main.removeCallbacks(aWatch)
+            fallbackA()
             synchronized(lock) { resetA() }
             lines(); idleSoon()
         }
@@ -413,7 +468,7 @@ object TrEngine {
 
     // ---------------------------------------------------------------- B: मेरी हिंदी -> चुनी भाषा
 
-    private fun newBLine(): Line { bIn.setLength(0); bOut.setLength(0); return Line(true, target()).also { bLine = it; add(bottom, it) } }
+    private fun newBLine(): Line { bIn.setLength(0); bOut.setLength(0); bGotAudio = false; bSpoken = false; return Line(true, target()).also { bLine = it; add(bottom, it) } }
 
     private val bCb = object : TrLive.Cb {
         override fun onInText(t: String) {
@@ -423,17 +478,28 @@ object TrEngine {
             lines()
         }
         override fun onOutText(t: String) {
-            synchronized(lock) { bOut.append(t); val l = bLine ?: newBLine(); l.tr = bOut.toString().trim(); l.read = TrLang.readInHindi(l.tr) }
+            val got = synchronized(lock) { bOut.append(t); val l = bLine ?: newBLine(); l.tr = bOut.toString().trim(); l.read = TrLang.readInHindi(l.tr); bGotAudio }
+            if (!got) { main.removeCallbacks(bWatch); main.postDelayed(bWatch, TrVoice.NO_AUDIO_MS) }
             lines()
         }
         override fun onAudio(pcm: ByteArray) {
+            val late = synchronized(lock) {
+                if (!bSpoken) {
+                    bGotAudio = true
+                }
+                bSpoken
+            }
+            if (late) return
+            main.removeCallbacks(bWatch)
             audio?.partner?.play(pcm)
             bBusyUntil = System.currentTimeMillis() + 1500
             setStatus(St.SPEAKING)
         }
         override fun onTurnDone() {
             bBusyUntil = 0
-            synchronized(lock) { bLine = null; bIn.setLength(0); bOut.setLength(0) }
+            main.removeCallbacks(bWatch)
+            fallbackB()
+            synchronized(lock) { bLine = null; bIn.setLength(0); bOut.setLength(0); bGotAudio = false; bSpoken = false }
             lines(); idleSoon()
         }
         override fun onState(ready: Boolean) { if (!ready) DKLog.d("Translator B: दोबारा जुड़ रहा") }

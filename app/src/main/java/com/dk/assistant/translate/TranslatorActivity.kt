@@ -5,7 +5,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -15,14 +14,16 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
-import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.dk.assistant.Prefs
+import com.dk.assistant.R
 import com.dk.assistant.UiLang
 import com.dk.assistant.plus.models.ModelCatalog
 import com.dk.assistant.plus.models.ModelManager
@@ -36,6 +37,8 @@ class TranslatorActivity : AppCompatActivity(), TrEngine.Ui {
     companion object {
         const val PREF_LANG = "dk_translator_lang"
         private const val REQ_MIC = 7311
+        private const val GOOD = 0xFF4CAF50.toInt()
+        private const val WARN = 0xFFFFC107.toInt()
 
         fun open(c: Context): String = try { c.startActivity(TrEngine.intent(c)); "OK" } catch (e: Exception) { "ERROR: ${e.message}" }
     }
@@ -50,9 +53,10 @@ class TranslatorActivity : AppCompatActivity(), TrEngine.Ui {
     private lateinit var botBox: LinearLayout
     private lateinit var topScroll: ScrollView
     private lateinit var botScroll: ScrollView
-    private lateinit var micBtn: Button
-    private lateinit var ptt: Button
-    private lateinit var dlBtn: Button
+    private lateinit var micBtn: TextView
+    private lateinit var ptt: TextView
+    private lateinit var dlBtn: TextView
+    private val k get() = com.dk.assistant.ui.ClayTheme.t
     private var d = 1f
     private var closing = false
 
@@ -65,20 +69,38 @@ class TranslatorActivity : AppCompatActivity(), TrEngine.Ui {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         d = resources.displayMetrics.density
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(0xFF0B1220.toInt()); setPadding(px(12), px(12), px(12), px(12)) }
+        // 25 नवंबर 2026 (मालिक: "ट्रांसलेटर का विंडो अलग लगता है - पूरे फ़ोन (DK) जैसा UI हो"): वही थीम / रंग / काँच वाला header,
+        // वही कार्ड और बटन जो मेमोरी / सेटिंग में हैं ([com.dk.assistant.ui.ClayTheme]) - अपने अलग पक्के रंग नहीं.
+        val frame = FrameLayout(this).apply { setBackgroundColor(k.bg) }
+        frame.addView(com.dk.assistant.AuroraView(this), FrameLayout.LayoutParams(-1, -1))
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(14), px(14), px(14), px(14)) }
+        frame.addView(root, FrameLayout.LayoutParams(-1, -1))
 
-        // शीर्षक + बंद
-        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(TextView(this).apply { text = UiLang.s("DK ट्रांसलेटर"); textSize = 22f; setTypeface(typeface, Typeface.BOLD); setTextColor(0xFF00E5FF.toInt()) },
-            LinearLayout.LayoutParams(0, -2, 1f))
-        head.addView(Button(this).apply { text = UiLang.s("बंद करें"); isAllCaps = false; setOnClickListener { close() } })
+        // शीर्षक (काँच वाला header: पीछे का बटन + नाम + रास्ता)
+        val head = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setBackgroundResource(R.drawable.glass_card); setPadding(px(10), px(10), px(14), px(12))
+        }
+        head.addView(ImageButton(this).apply {
+            setImageResource(R.drawable.ic_back); setBackgroundResource(R.drawable.glass_circle)
+            setPadding(px(12), px(12), px(12), px(12)); scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            contentDescription = UiLang.s("बंद करें"); setOnClickListener { close() }
+        }, LinearLayout.LayoutParams(px(48), px(48)))
+        val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(12), 0, 0, 0) }
+        titles.addView(TextView(this).apply { text = UiLang.s("DK ट्रांसलेटर"); textSize = 22f; setTypeface(typeface, Typeface.BOLD); setTextColor(k.text) })
+        routeTv = TextView(this).apply { textSize = 12f; setTextColor(k.sub) }
+        titles.addView(routeTv)
+        head.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
         root.addView(head)
 
         // भाषा
-        root.addView(TextView(this).apply { text = UiLang.s("सामने वाले की भाषा"); textSize = 13f; setTextColor(0x99FFFFFF.toInt()) })
-        val sp = Spinner(this)
+        root.addView(header("सामने वाले की भाषा"))
+        val sp = Spinner(this).apply { setBackgroundResource(R.drawable.glass_input); setPadding(px(12), px(8), px(12), px(8)) }
         val labels = TrLang.CHOICES.map { TrLang.label(it) }
-        sp.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, labels)
+        sp.adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, labels) {
+            override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View =
+                super.getView(position, convertView, parent).also { (it as? TextView)?.setTextColor(k.text) }
+        }
         val saved = Prefs.str(this, PREF_LANG, TrLang.ALL.first().code)
         sp.setSelection(TrLang.CHOICES.indexOf(saved).coerceAtLeast(0))
         sp.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -90,49 +112,54 @@ class TranslatorActivity : AppCompatActivity(), TrEngine.Ui {
             override fun onNothingSelected(parent: AdapterView<*>?) { /* कुछ नहीं */ }
         }
         UiLang.keep(sp)
-        root.addView(sp)
+        root.addView(sp, LinearLayout.LayoutParams(-1, -2))
 
-        status = TextView(this).apply { textSize = 20f; setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER; setPadding(0, px(6), 0, px(2)) }
-        routeTv = TextView(this).apply { textSize = 12f; setTextColor(0x99FFFFFF.toInt()); gravity = Gravity.CENTER }
-        noteTv = TextView(this).apply { textSize = 13f; setTextColor(0xFFFFC107.toInt()); gravity = Gravity.CENTER; visibility = View.GONE }
+        status = TextView(this).apply { textSize = 20f; setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER; setPadding(0, px(8), 0, px(2)) }
+        noteTv = TextView(this).apply { textSize = 13f; setTextColor(WARN); gravity = Gravity.CENTER; visibility = View.GONE }
         UiLang.keep(status); UiLang.keep(routeTv); UiLang.keep(noteTv)
-        root.addView(status); root.addView(routeTv); root.addView(noteTv)
+        root.addView(status); root.addView(noteTv)
 
         // ऊपर: सामने वाला
         root.addView(header("सामने वाला (हिंदी में)"))
-        topBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        topScroll = ScrollView(this).apply { addView(topBox); background = box(0xFF111A2E.toInt()) }
+        topBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(6), px(6), px(6), px(6)) }
+        topScroll = ScrollView(this).apply { addView(topBox); setBackgroundResource(R.drawable.glass_card) }
         UiLang.keep(topBox)
-        root.addView(topScroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(topScroll, LinearLayout.LayoutParams(-1, 0, 1.3f))
 
         // नीचे: मैं
         root.addView(header("मेरी बात (अनुवाद सहित)"))
-        botBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        botScroll = ScrollView(this).apply { addView(botBox); background = box(0xFF13202A.toInt()) }
+        botBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(6), px(6), px(6), px(6)) }
+        botScroll = ScrollView(this).apply { addView(botBox); setBackgroundResource(R.drawable.glass_card) }
         UiLang.keep(botBox)
         root.addView(botScroll, LinearLayout.LayoutParams(-1, 0, 1f))
 
         // लिखकर भेजें
-        val typeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val et = EditText(this).apply { hint = UiLang.s("हिंदी में लिखें…"); setTextColor(0xFFFFFFFF.toInt()); setHintTextColor(0x66FFFFFF); maxLines = 3 }
+        val typeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, px(8), 0, 0) }
+        val et = EditText(this).apply {
+            hint = UiLang.s("हिंदी में लिखें…"); setTextColor(k.text); setHintTextColor(k.hint); maxLines = 3; textSize = 15f
+            setBackgroundResource(R.drawable.glass_input); setPadding(px(12), px(12), px(12), px(12))
+        }
         typeRow.addView(et, LinearLayout.LayoutParams(0, -2, 1f))
-        typeRow.addView(Button(this).apply { text = UiLang.s("भेजें"); isAllCaps = false
-            setOnClickListener { val s = et.text.toString(); if (s.isNotBlank()) { et.setText(""); TrEngine.typed(s) } } })
+        typeRow.addView(TextView(this).apply {
+            text = UiLang.s("भेजें"); textSize = 15f; setTextColor(k.onAccent); gravity = Gravity.CENTER
+            setBackgroundResource(R.drawable.btn_accent); setPadding(px(16), px(13), px(16), px(13))
+            setOnClickListener { val s = et.text.toString(); if (s.isNotBlank()) { et.setText(""); TrEngine.typed(s) } }
+        }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(8) })
         root.addView(typeRow)
 
         // माइक + ऑफ़लाइन मॉडल
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        micBtn = Button(this).apply { isAllCaps = false; setOnClickListener { TrEngine.setMic(!TrEngine.micOn); showMic() } }
-        dlBtn = Button(this).apply { isAllCaps = false; setOnClickListener { TrOfflineMt.download(this@TranslatorActivity); showModel() } }
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, px(8), 0, 0) }
+        micBtn = pill { TrEngine.setMic(!TrEngine.micOn); showMic() }
+        dlBtn = pill { TrOfflineMt.download(this@TranslatorActivity); showModel() }
         UiLang.keep(micBtn); UiLang.keep(dlBtn)
-        row.addView(micBtn, LinearLayout.LayoutParams(0, -2, 1f))
-        row.addView(dlBtn, LinearLayout.LayoutParams(0, -2, 1f))
+        row.addView(micBtn, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = px(4) })
+        row.addView(dlBtn, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = px(4) })
         root.addView(row)
 
         // बड़ा बटन: दबाकर हिंदी बोलें
-        ptt = Button(this).apply {
-            text = UiLang.s("दबाए रखें - हिंदी बोलें"); textSize = 20f; isAllCaps = false; setTextColor(0xFF000000.toInt())
-            background = GradientDrawable().apply { cornerRadius = 28 * d; setColor(0xFF00E5FF.toInt()) }
+        ptt = TextView(this).apply {
+            text = UiLang.s("दबाए रखें - हिंदी बोलें"); textSize = 20f; gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD)
+            setTextColor(k.onAccent); setBackgroundResource(R.drawable.btn_accent); isClickable = true
             setOnTouchListener { v, e ->
                 when (e.actionMasked) {
                     MotionEvent.ACTION_DOWN -> { v.alpha = 0.6f; TrEngine.pttDown() }
@@ -141,8 +168,10 @@ class TranslatorActivity : AppCompatActivity(), TrEngine.Ui {
                 true
             }
         }
-        root.addView(ptt, LinearLayout.LayoutParams(-1, px(96)).apply { topMargin = px(8) })
-        setContentView(root)
+        root.addView(ptt, LinearLayout.LayoutParams(-1, px(96)).apply { topMargin = px(10) })
+        setContentView(frame)
+        com.dk.assistant.PlainLook.install(this)
+        com.dk.assistant.Glass.install(this)
 
         TrEngine.ui = this
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) begin()
@@ -178,7 +207,7 @@ class TranslatorActivity : AppCompatActivity(), TrEngine.Ui {
 
     override fun onStatus(st: TrEngine.St) {
         status.text = st.hi
-        status.setTextColor(when (st) { TrEngine.St.LISTENING -> 0xFF4CAF50.toInt(); TrEngine.St.TRANSLATING -> 0xFFFFC107.toInt(); TrEngine.St.SPEAKING -> 0xFF00E5FF.toInt() })
+        status.setTextColor(when (st) { TrEngine.St.LISTENING -> GOOD; TrEngine.St.TRANSLATING -> WARN; TrEngine.St.SPEAKING -> k.accent })
         ptt.text = if (st == TrEngine.St.LISTENING && TrEngine.offline) "दबाए रखें - हिंदी बोलें (ऑफ़लाइन)" else "दबाए रखें - हिंदी बोलें"
     }
 
@@ -199,24 +228,32 @@ class TranslatorActivity : AppCompatActivity(), TrEngine.Ui {
 
     override fun onClosed() { if (!isFinishing) { closing = true; finish() } }
 
+    /**
+     * 25 नवंबर 2026 (मालिक: "स्क्रीन बहुत छोटा दिखता है; जो बोला वही और उसका अनुवाद दिखे, अगला बोले तो पहले वाला हटे"):
+     * हर हिस्से में सिर्फ़ ताज़ा बात - बड़े अक्षरों में ([TrVoice.current]).
+     */
     private fun fill(box: LinearLayout, list: List<TrEngine.Line>, mine: Boolean) {
         box.removeAllViews()
-        for (l in list) {
-            val item = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(10), px(6), px(10), px(6)) }
-            val lang = TrLang.of(l.lang)?.hi ?: ""
-            if (!mine) {
-                // बड़ा: हिंदी अनुवाद; छोटा: असली बात
-                if (l.tr.isNotBlank()) item.addView(tv(l.tr, 18f, 0xFFFFFFFF.toInt()))
-                if (l.orig.isNotBlank()) item.addView(tv((if (lang.isNotEmpty()) "$lang: " else "") + l.orig, 13f, 0x99FFFFFF.toInt()))
-            } else {
-                if (l.orig.isNotBlank()) item.addView(tv("मैं: " + l.orig, 16f, 0xFFFFFFFF.toInt()))
-                if (l.tr.isNotBlank()) item.addView(tv((if (lang.isNotEmpty()) "$lang: " else "") + l.tr, 17f, 0xFF00E5FF.toInt()))
-                if (l.read.isNotBlank() && l.read != l.tr) item.addView(tv("(हिंदी में पढ़ें: ${l.read})", 13f, 0x99FFFFFF.toInt()))
-            }
-            if (l.note.isNotBlank()) item.addView(tv(l.note, 13f, 0xFFFFC107.toInt()))
-            if (item.childCount > 0) box.addView(item)
+        val l = TrVoice.current(list) ?: run {
+            box.addView(tv(if (mine) "बड़ा बटन दबाकर हिंदी बोलें या नीचे लिखें" else "सामने वाले की बात यहाँ दिखेगी", 16f, k.hint))
+            return
         }
+        val item = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(14), px(12), px(14), px(12)) }
+        val lang = TrLang.of(l.lang)?.hi ?: ""
+        if (!mine) {
+            // ऊपर: सामने वाले ने जो बोला (असली भाषा); नीचे बड़ा: हिंदी अनुवाद
+            if (l.orig.isNotBlank()) item.addView(tv((if (lang.isNotEmpty()) "$lang: " else "") + l.orig, 22f, k.sub))
+            if (l.tr.isNotBlank()) item.addView(big(l.tr, 30f, k.text))
+        } else {
+            if (l.orig.isNotBlank()) item.addView(tv("मैं: " + l.orig, 22f, k.sub))
+            if (l.tr.isNotBlank()) item.addView(big((if (lang.isNotEmpty()) "$lang: " else "") + l.tr, 28f, k.accent))
+            if (l.read.isNotBlank() && l.read != l.tr) item.addView(tv("(हिंदी में पढ़ें: ${l.read})", 18f, k.sub))
+        }
+        if (l.note.isNotBlank()) item.addView(tv(l.note, 16f, WARN))
+        box.addView(item, LinearLayout.LayoutParams(-1, -2))
     }
+
+    private fun big(t: String, size: Float, color: Int) = tv(t, size, color).apply { setTypeface(typeface, Typeface.BOLD); setPadding(0, px(8), 0, 0) }
 
     private fun showMic() {
         micBtn.text = if (TrEngine.micOn) "सुनना: चालू (बंद करें)" else "सुनना: बंद (चालू करें)"
@@ -235,11 +272,15 @@ class TranslatorActivity : AppCompatActivity(), TrEngine.Ui {
         }
     }
 
-    private fun header(t: String) = TextView(this).apply { text = UiLang.s(t); textSize = 13f; setTextColor(0xFF80DEEA.toInt()); setPadding(0, px(8), 0, px(4)) }
+    private fun header(t: String) = TextView(this).apply { text = UiLang.s(t); textSize = 13f; setTypeface(typeface, Typeface.BOLD); setTextColor(k.sub); setPadding(px(4), px(10), 0, px(4)) }
+
+    private fun pill(on: () -> Unit) = TextView(this).apply {
+        textSize = 14f; setTextColor(k.text); gravity = Gravity.CENTER
+        setBackgroundResource(R.drawable.glass_pill); setPadding(px(10), px(12), px(10), px(12))
+        setOnClickListener { on() }
+    }
 
     private fun tv(t: String, size: Float, color: Int) = TextView(this).apply { text = t; textSize = size; setTextColor(color); setTextIsSelectable(true) }
-
-    private fun box(color: Int) = GradientDrawable().apply { cornerRadius = 14 * d; setColor(color) }
 
     private fun px(v: Int) = (v * d).toInt()
 }
