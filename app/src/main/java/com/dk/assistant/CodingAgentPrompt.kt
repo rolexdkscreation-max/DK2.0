@@ -82,6 +82,8 @@ Rules:
 - ROOT CAUSE FIRST for every bug, error, failed build or failed test (also bugs the user reports): read the code/log, find WHY it happens,
   then fix that cause (not the symptom), and give "root_cause" in done. Never delete, skip or weaken existing tests to make them pass.
 - Do NOT touch existing working features: change only the files/lines the task needs. No refactors, renames, reformatting or "cleanups" of other code.
+- APK SIZE RULE (owner): never bundle heavy things (>= ~1 MB: native .so SDKs, ML/voice models, language packs, big fonts/media) in the APK.
+  Download them from the internet on first use and cache them, or use a light web API. No ML Kit/TFLite/MediaPipe/OpenCV/FFmpeg deps.
 - Protected files (.github/workflows/*, AGENTS.md, gradle.properties, settings.gradle*, gradlew, keystores): change them ONLY if the user explicitly asked for it.${safeRules()}
 """.trimIndent()
 

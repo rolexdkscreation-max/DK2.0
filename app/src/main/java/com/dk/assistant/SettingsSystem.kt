@@ -57,8 +57,8 @@ internal fun SettingsActivity.secLang() {
         box.addView(rg)
         row(box, button("Custom — दुनिया की कोई भी भाषा खोजें") { customLangDialog() })
         if (UiMt.status.isNotBlank()) hint(box, UiMt.status)
-        hint(box, "चुनते ही पूरे ऐप की स्क्रीनें इसी भाषा में। जिन लाइनों का अनुवाद पहले से नहीं, वे फ़ोन पर ही बदलती हैं — " +
-            "पहली बार भाषा-पैक (करीब 30 MB) इंटरनेट से आता है, फिर बिना इंटरनेट। DK के जवाब की भाषा नीचे अलग से चुनें। " +
+        hint(box, "चुनते ही पूरे ऐप की स्क्रीनें इसी भाषा में। जिन लाइनों का अनुवाद पहले से नहीं, उनका अनुवाद " +
+            "internet से (एक बार आया तो फ़ोन में याद, फिर बिना internet; ऐप का साइज़ नहीं बढ़ता)। DK के जवाब की भाषा नीचे अलग से चुनें। " +
             "बातचीत, कोड और कहानियाँ जैसी लिखी हैं वैसी ही दिखती हैं।")
     }
     card("DK किस भाषा में जवाब दे", "DK लाइव, DK चैट, बिना-Live आवाज़, DK कंप्यूटर और कोडिंग एजेंट — सब पर एक साथ") { box ->
@@ -551,11 +551,11 @@ private fun SettingsActivity.customLangDialog() {
     }
     wrap.addView(q)
     var shown = WorldLangs.ALL
-    val ad = android.widget.ArrayAdapter(this, android.R.layout.simple_list_item_1, shown.map { it.label + if (UiMt.offline(it.code)) "" else "  • AI" }.toMutableList())
+    val ad = android.widget.ArrayAdapter(this, android.R.layout.simple_list_item_1, shown.map { it.label }.toMutableList())
     val list = android.widget.ListView(this).apply { adapter = ad; UiLang.keep(this) }
     wrap.addView(list, android.widget.LinearLayout.LayoutParams(-1, (420 * dp).toInt()))
     wrap.addView(android.widget.TextView(this).apply {
-        text = "• AI = यह भाषा फ़ोन वाले अनुवाद में नहीं, DK का AI (आपकी key) अनुवाद करेगा"
+        text = "अनुवाद internet से आता है; न मिले तो DK का AI (आपकी key) करता है"
         textSize = 12f; setTextColor(k.gray); setPadding(0, (6 * dp).toInt(), 0, 0)
     })
     val dlg = UiDialog(this).setTitle("Custom भाषा").setView(wrap).setNegativeButton("बंद", null).create()
@@ -564,7 +564,7 @@ private fun SettingsActivity.customLangDialog() {
         override fun onTextChanged(s: CharSequence?, a: Int, b: Int, n: Int) { /* सिर्फ़ afterTextChanged चाहिए */ }
         override fun afterTextChanged(s: android.text.Editable?) {
             shown = WorldLangs.search(s?.toString().orEmpty())
-            ad.clear(); ad.addAll(shown.map { it.label + if (UiMt.offline(it.code)) "" else "  • AI" }); ad.notifyDataSetChanged()
+            ad.clear(); ad.addAll(shown.map { it.label }); ad.notifyDataSetChanged()
         }
     })
     list.setOnItemClickListener { _, _, pos, _ ->
