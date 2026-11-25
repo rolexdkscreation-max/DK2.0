@@ -85,7 +85,12 @@ class TrSpeak(c: Context, private val onNote: (String) -> Unit) {
                     } catch (e: Exception) { Quiet.note(e); DKLog.d("Translator: Gemini TTS नहीं चला (${e.javaClass.simpleName}) - फ़ोन की आवाज़"); null }
                     if (pcm != null && pcm.isNotEmpty()) { out.play(pcm); return }
                 }
-                TrVoice.Src.PHONE -> { if (!tts.say(text, TrVoice.bcp(code), out)) onNote("आवाज़ नहीं बन पाई - अनुवाद ऊपर लिखा है"); return }
+                TrVoice.Src.PHONE -> {
+                    if (!tts.say(text, TrVoice.bcp(code), out)) {
+                        onNote("आवाज़ नहीं बन पाई - अनुवाद ऊपर लिखा है")
+                    }
+                    return
+                }
                 TrVoice.Src.LIVE -> Unit
             }
         }
