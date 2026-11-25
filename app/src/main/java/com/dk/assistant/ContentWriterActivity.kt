@@ -52,6 +52,13 @@ class ContentWriterActivity : AppCompatActivity() {
     private lateinit var out: TextView
     private lateinit var dur: TextView
     private lateinit var outCard: LinearLayout
+    /** 25 नवंबर 2026 (मालिक): अपनी लंबाई (मिनट), बोलने का तरीका / भाव, म्यूज़िक (स्रोत जैसे चिप - दबाकर सुनें) */
+    private lateinit var customPill: Button
+    private lateinit var deliveryBox: LinearLayout
+    private lateinit var deliveryTxt: TextView
+    private lateinit var musicBox: LinearLayout
+    private lateinit var musicRow: LinearLayout
+    private var parts = ContentPlan.Parts("", "", emptyList())
     private lateinit var ask: TextView
 
     private val pickImage = registerForActivityResult(ActivityResultContracts.GetContent()) { u ->
@@ -59,7 +66,7 @@ class ContentWriterActivity : AppCompatActivity() {
     }
     private val createDoc = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         if (uri == null) return@registerForActivityResult
-        try { contentResolver.openOutputStream(uri)?.use { it.write(result.toByteArray()) }; toast("सेव हो गया") }
+        try { contentResolver.openOutputStream(uri)?.use { it.write(fullText().toByteArray()) }; toast("सेव हो गया") }
         catch (e: Exception) { DKLog.d("Content: सेव गलती ${e.message?.take(120)}"); toast("सेव नहीं हुआ, फिर से कोशिश करें") }
     }
 
@@ -112,6 +119,8 @@ class ContentWriterActivity : AppCompatActivity() {
             lenRow.addView(pill("$s सेकंड") { sec = s; paint() }.apply { tag = s },
                 LinearLayout.LayoutParams(-2, (40 * dp).toInt()).apply { marginEnd = (8 * dp).toInt() })
         }
+        customPill = pill("अपनी लंबाई (मिनट)") { askCustom() }.apply { tag = CUSTOM }
+        lenRow.addView(customPill, LinearLayout.LayoutParams(-2, (40 * dp).toInt()))
         lenBox.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(lenRow) })
         form.addView(lenBox)
         ask = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFB74D.toInt()); visibility = View.GONE; setPadding(0, (8 * dp).toInt(), 0, 0) }
@@ -130,6 +139,16 @@ class ContentWriterActivity : AppCompatActivity() {
         outCard.addView(dur)
         out = TextView(this).apply { textSize = 15f; setTextColor(0xFFFFFFFF.toInt()); setLineSpacing(0f, 1.25f); setTextIsSelectable(true); setPadding(0, (8 * dp).toInt(), 0, 0) }
         outCard.addView(out)
+        deliveryBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE; setPadding(0, (14 * dp).toInt(), 0, 0) }
+        deliveryBox.addView(label("कैसे बोलें (भाव और तरीका)"))
+        deliveryTxt = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFE0A3.toInt()); setLineSpacing(0f, 1.2f); setTextIsSelectable(true) }
+        deliveryBox.addView(deliveryTxt)
+        outCard.addView(deliveryBox)
+        musicBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE; setPadding(0, (12 * dp).toInt(), 0, 0) }
+        musicBox.addView(label("म्यूज़िक (दबाकर सुनें)"))
+        musicRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        musicBox.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(musicRow) })
+        outCard.addView(musicBox)
         val acts = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, (12 * dp).toInt(), 0, 0) }
         acts.addView(pill("सेव") { createDoc.launch("DK Content ${System.currentTimeMillis() / 1000}.txt") }, LinearLayout.LayoutParams(0, (44 * dp).toInt(), 1f).apply { marginEnd = (6 * dp).toInt() })
         acts.addView(pill("बदलो") { onModify() }, LinearLayout.LayoutParams(0, (44 * dp).toInt(), 1f).apply { marginEnd = (6 * dp).toInt() })
@@ -163,8 +182,49 @@ class ContentWriterActivity : AppCompatActivity() {
 
     private fun paint() {
         for (i in 0 until typeRow.childCount) typeRow.getChildAt(i).alpha = if (typeRow.getChildAt(i).tag == type) 1f else 0.5f
-        for (i in 0 until lenRow.childCount) lenRow.getChildAt(i).alpha = if (lenRow.getChildAt(i).tag == sec) 1f else 0.5f
+        val custom = sec > 0 && sec !in ContentPlan.LENGTHS
+        for (i in 0 until lenRow.childCount) {
+            val v = lenRow.getChildAt(i)
+            v.alpha = if (v.tag == sec || (v.tag == CUSTOM && custom)) 1f else 0.5f
+        }
+        customPill.text = UiLang.s(if (custom) "अपनी: " + ContentPlan.durationHi(sec).removePrefix("लगभग ") else "अपनी लंबाई (मिनट)")
     }
+
+    /** "अपनी लंबाई" - कितने मिनट (जैसे 3, 1.5, 2:30) */
+    private fun askCustom() {
+        val e = EditText(this).apply {
+            hint = UiLang.s("कितने मिनट? जैसे 2, 1.5 या 2:30"); inputType = InputType.TYPE_CLASS_TEXT
+            setPadding((16 * dp).toInt(), (12 * dp).toInt(), (16 * dp).toInt(), (12 * dp).toInt())
+        }
+        UiDialog(this).setTitle("अपनी लंबाई").setView(e)
+            .setPositiveButton("ठीक है") { _, _ ->
+                val v = ContentPlan.parseMinutes(e.text.toString())
+                if (v == null) toast("15 सेकंड से 20 मिनट के बीच लिखें, जैसे 3 या 1.5") else { sec = v; paint() }
+            }.setNegativeButton("रद्द", null).show()
+    }
+
+    /** बोलने का तरीका + म्यूज़िक वाले चिप */
+    private fun showExtras() {
+        deliveryTxt.text = parts.delivery
+        deliveryBox.visibility = if (parts.delivery.isBlank()) View.GONE else View.VISIBLE
+        musicRow.removeAllViews()
+        parts.music.forEach { m ->
+            musicRow.addView(pill("♪ " + m.name + if (m.mood.isNotBlank()) " · " + m.mood else "") {
+                try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(m.url))) } catch (_: Exception) { toast("YouTube नहीं खुला") }
+            }.apply { setOnLongClickListener { if (m.why.isNotBlank()) toast(m.why); true } },
+                LinearLayout.LayoutParams(-2, (40 * dp).toInt()).apply { marginEnd = (8 * dp).toInt() })
+        }
+        musicBox.visibility = if (parts.music.isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    /** सेव में सब: स्क्रिप्ट (+ कैप्शन) + बोलने का तरीका + म्यूज़िक */
+    private fun fullText(): String = buildString {
+        append(result)
+        if (parts.delivery.isNotBlank()) append("\n\n— कैसे बोलें —\n").append(parts.delivery)
+        if (parts.music.isNotEmpty()) append("\n\n— म्यूज़िक —\n").append(parts.music.joinToString("\n") { "${it.name} (${it.mood}) - ${it.why}\n${it.url}" })
+    }
+
+    private companion object { const val CUSTOM = -1 }
 
     private fun onWrite() {
         val topic = edt.text.toString()
@@ -201,8 +261,12 @@ class ContentWriterActivity : AppCompatActivity() {
             }
             busy.visibility = View.GONE
             r.onSuccess { t ->
-                if (caption) result = script + "\n\n" + t
-                else { script = t; result = t; ContentMemory.add(this@ContentWriterActivity, t) }
+                if (caption) result = script + "\n\n" + ContentPlan.split(t).script
+                else {
+                    parts = ContentPlan.split(t)
+                    script = parts.script; result = script; ContentMemory.add(this@ContentWriterActivity, script)
+                    showExtras()
+                }
                 out.text = result
                 dur.text = UiLang.s("बोलने में: " + ContentPlan.durationHi(ContentPlan.estimateSec(script)))
                 outCard.visibility = View.VISIBLE

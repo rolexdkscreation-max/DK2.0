@@ -58,7 +58,7 @@ Rules for every script:
 4. CTA: end with one short natural call to action (follow / comment / share).
 5. FACTS: only true, well-known, checkable facts. If you are not sure about a fact, do not use it. Never invent numbers, dates or quotes.
 6. ORIGINAL: never repeat earlier scripts, hooks or facts listed by the user.
-7. OUTPUT: only the clean script text, ready to speak. No headings like "Hook:", no notes, no emojis, no markdown, no word counts.
+7. OUTPUT: only the clean script text, ready to speak. No headings like "Hook:", no notes, no emojis, no markdown, no word counts (the extra marked blocks that the request asks for come after the script).
 """.trim()
 
     /** लिखने की request (user turn) */
@@ -67,7 +67,7 @@ Rules for every script:
         val len = sec.takeIf { it > 0 } ?: t.defSec
         val avoidLine = avoid.filter { it.isNotBlank() }.take(15).takeIf { it.isNotEmpty() }
             ?.let { "\nDo NOT repeat these earlier pieces / hooks: " + it.joinToString(" | ") { a -> a.take(80) } } ?: ""
-        return when (t) {
+        return withExtras(t, when (t) {
             Type.FACTS -> "Write a $len-second Hindi facts video script (about ${words(len)} words) on: $tp. 3-5 amazing true facts, each in 1-2 short lines.$avoidLine"
             Type.SCRIPT -> "Write a $len-second Hindi video script (about ${words(len)} words) on: $tp.$avoidLine"
             Type.CAPTION -> "Write one short Hindi caption (1-2 lines, with a hook) and then 10-15 relevant hashtags (mix of Hindi-English, popular + niche) on one line, for: $tp.$avoidLine"
@@ -75,12 +75,72 @@ Rules for every script:
             Type.IMAGE -> "Look at this photo and write a $len-second Hindi video script (about ${words(len)} words) about what is in it" +
                 (if (tp.isNotBlank()) " ($tp)" else "") + ". Only describe what is really visible; do not guess names or places.$avoidLine"
             Type.STORY -> tp
+        })
+    }
+
+    // ------------------------------------------------------------ 25 नवंबर 2026 (मालिक): अपनी लंबाई + बोलने का भाव + म्यूज़िक
+    /** स्क्रिप्ट के बाद AI ये दो हिस्से जोड़ता है (बोले नहीं जाते) - [split] अलग करता है */
+    const val DELIVERY_MARK = "###DK_DELIVERY###"
+    const val MUSIC_MARK = "###DK_MUSIC###"
+    val EXTRAS = "\n\nAFTER the script add exactly these two blocks (they are NOT part of the spoken script):\n" +
+        "$DELIVERY_MARK\n3-6 short simple Hindi lines for the speaker: overall tone and emotion (जैसे: हैरानी, जोश, धीमा रहस्य, भावुक), speed, " +
+        "where to pause, which words to stress, energy / face - for the hook, the middle and the ending.\n" +
+        "$MUSIC_MARK\n2-4 background music suggestions that fit the mood, one per line exactly as: track or search name | mood | why (short Hindi). " +
+        "Use real, well-known royalty-free / YouTube Audio Library tracks or a clear search phrase (जैसे: suspense dark piano background music). Never invent artists."
+
+    /** कहानी / कैप्शन में नहीं - बाकी (फैक्ट्स, स्क्रिप्ट, सुधार, फ़ोटो) में */
+    fun withExtras(t: Type, req: String): String = if (t == Type.STORY || t == Type.CAPTION) req else req + EXTRAS
+
+    /** म्यूज़िक का एक सुझाव - दबाने पर YouTube पर सुनें */
+    data class Music(val name: String, val mood: String, val why: String) {
+        val url get() = "https://www.youtube.com/results?search_query=" + java.net.URLEncoder.encode("$name background music", "UTF-8")
+    }
+
+    data class Parts(val script: String, val delivery: String, val music: List<Music>)
+
+    /** AI जवाब -> बोलने वाली स्क्रिप्ट + बोलने का तरीका + म्यूज़िक (निशान न हों = सब स्क्रिप्ट) */
+    fun split(raw: String): Parts {
+        val lines = raw.lines()
+        val d = lines.indexOfFirst { it.contains("DK_DELIVERY") }
+        val m = lines.indexOfFirst { it.contains("DK_MUSIC") }
+        val firstMark = listOf(d, m).filter { it >= 0 }.minOrNull() ?: return Parts(raw.trim(), "", emptyList())
+        fun part(from: Int): List<String> {
+            if (from < 0) return emptyList()
+            val end = listOf(d, m).filter { it > from }.minOrNull() ?: lines.size
+            return lines.subList(from + 1, end)
         }
+        val bare = { l: String -> l.trim().trimStart('-', '*', '•', '#', ' ').replace("**", "").trim() }
+        val delivery = part(d).map(bare).filter { it.isNotBlank() }.joinToString("\n")
+        val music = part(m).map(bare).filter { it.isNotBlank() }.mapNotNull { l ->
+            val x = l.replace(Regex("^\\d+[.)]\\s*"), "").split("|").map { it.trim() }
+            x.getOrNull(0)?.takeIf { it.isNotBlank() }?.let { Music(it.take(80), x.getOrNull(1).orEmpty().take(40), x.getOrNull(2).orEmpty().take(120)) }
+        }.take(4)
+        return Parts(lines.subList(0, firstMark).joinToString("\n").trim(), delivery, music)
+    }
+
+    /** साफ़ करते समय निशान वाले हिस्से न मिटें: स्क्रिप्ट साफ़, बाकी वैसे ही वापस जोड़ो */
+    fun cleanKeep(raw: String): String {
+        val p = split(raw)
+        val sb = StringBuilder(clean(p.script))
+        if (p.delivery.isNotBlank()) sb.append("\n\n").append(DELIVERY_MARK).append('\n').append(p.delivery)
+        if (p.music.isNotEmpty()) sb.append("\n\n").append(MUSIC_MARK).append('\n').append(p.music.joinToString("\n") { "${it.name} | ${it.mood} | ${it.why}" })
+        return sb.toString()
+    }
+
+    /** अपनी लंबाई: "3" = 3 मिनट, "1.5" / "1:30" = डेढ़ मिनट. सेकंड में; 15 सेकंड से 20 मिनट. null = गलत */
+    fun parseMinutes(s: String): Int? {
+        val t = s.trim().replace(',', '.').replace(Regex("\\s*(मिनट|min|minutes?|m)$", RegexOption.IGNORE_CASE), "").trim()
+        val sec = if (t.contains(':')) {
+            val (a, b) = t.split(':', limit = 2).map { it.trim().toIntOrNull() ?: return null }
+            if (b !in 0..59) return null
+            a * 60 + b
+        } else ((t.toDoubleOrNull() ?: return null) * 60).roundToInt()
+        return sec.takeIf { it in 15..1200 }
     }
 
     /** "बदलो" - पिछला text + मालिक का निर्देश */
     fun modify(prev: String, how: String): String =
-        "Rewrite the script below as the owner asks: \"${how.trim()}\". Keep all the rules. Script:\n$prev"
+        "Rewrite the script below as the owner asks: \"${how.trim()}\". Keep all the rules. Script:\n$prev" + EXTRAS
 
     /** लिखे script से कैप्शन + हैशटैग */
     fun captionFor(script: String): String = request(Type.CAPTION, script.take(600), 0, emptyList())
@@ -118,7 +178,7 @@ object ContentAi {
             // एक बार दोबारा, फिर साफ़ गलती
             try { ai.write(ContentPlan.SYSTEM, msgs) } catch (e2: Exception) { throw IllegalStateException("लिखा नहीं जा सका: ${(e2.message ?: e.message).orEmpty().take(120)}") }
         }
-        return ContentPlan.clean(out.text).ifBlank { throw IllegalStateException("AI ने खाली जवाब दिया, फिर से कोशिश करें") }
+        return ContentPlan.cleanKeep(out.text).ifBlank { throw IllegalStateException("AI ने खाली जवाब दिया, फिर से कोशिश करें") }
     }
 
     /** फ़ोटो देखकर (Gemini vision) */
@@ -146,7 +206,7 @@ object ContentAi {
                     val p = JSONObject(s).optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts") ?: return@use
                     val sb = StringBuilder()
                     for (i in 0 until p.length()) { val x = p.optJSONObject(i) ?: continue; if (!x.optBoolean("thought")) sb.append(x.optString("text")) }
-                    if (sb.isNotBlank()) return ContentPlan.clean(sb.toString())
+                    if (sb.isNotBlank()) return ContentPlan.cleanKeep(sb.toString())
                 }
             } catch (e: Exception) { last = e.message ?: last }
         }
