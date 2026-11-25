@@ -365,7 +365,19 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
                 } ?: return false
                 else -> homeScroll
             }
-        } catch (e: Exception) { com.dk.assistant.Quiet.note(e); return false }
+        } catch (e: Exception) {
+            com.dk.assistant.Quiet.note(e)
+            // 25 नवंबर 2026 (मालिक: "DK लेंस कभी-कभी नहीं खुलता / अभी नहीं खुला"): स्कैन का पुराना पैनल गड़बड़ हो तो
+            // एक बार नया बनाकर फिर (पहले सीधे "अभी नहीं खुला")
+            if (t == com.dk.assistant.ui.HomeTabs.Tab.SCAN && !scanRetry) {
+                com.dk.assistant.DKLog.d("स्कैन टैब: फिर से बना रहा हूँ (${e.message?.take(80)})")
+                try { scanPanel?.release() } catch (x: Exception) { com.dk.assistant.Quiet.note(x) }
+                scanPanel = null; scanFrame = null
+                scanRetry = true
+                try { return showTab(t) } finally { scanRetry = false }
+            }
+            return false
+        }
         if (tabNow == com.dk.assistant.ui.HomeTabs.Tab.SCAN && t != tabNow) scanPanel?.leaveTab()
         DkaiUi.closeTop(root)
         if (t != com.dk.assistant.ui.HomeTabs.Tab.CHAT) hideKeyboard()
@@ -392,6 +404,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         return true
     }
     private var scanFrame: View? = null
+    private var scanRetry = false
 
     /** पूरी स्क्रीन वाला कैरेक्टर सिर्फ़ होम टैब पर (बाकी टैब पर सादा पीछा, ताकि लिखावट साफ़ पढ़ी जाए) */
     private fun renderBack() {

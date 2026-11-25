@@ -1589,3 +1589,83 @@ Google ने पहचान नहीं दी - Firebase में Google lo
 सर्वर पर अभी कोई काम नहीं	No work on the server yet
 सर्वर से काम ला रहा हूँ…	Loading work from the server…
 सर्वर से काम नहीं आए: 	Could not load work from the server: 
+# 25 नवंबर 2026 (मालिक: "English सेट है तो पूरी चीज़ English में") - Settings मुख्य पेज, नया हेडर, भाषा, DK लेंस
+ऑटोमेशन	Automation
+सुरक्षा	Security
+सोशल और कहानी	Social & Stories
+डेटा और ऐप	Data & Apps
+अलग key (DK लाइव)	Separate key (DK Live)
+अलग key (DK चैट)	Separate key (DK Chat)
+DK का स्वभाव और मोड	DK personality & modes
+याददाश्त और सच्चा दोस्त	Memory & true friend
+लाइव वॉलपेपर	Live wallpaper
+आवाज़ें (Supertonic 3)	Voices (Supertonic 3)
+फ़ोन लॉक / अनलॉक	Phone lock / unlock
+टच मोड	Touch mode
+ऐप लॉक	App lock
+चेहरा पहचान	Face recognition
+सोशल रिव्यू	Social review
+रील गिनती और लिमिट	Reel count & limit
+Theme • डार्क / लाइट • orb • एनिमेशन • तैरता ORB	Theme • Dark / Light • orb • Animation • Floating ORB
+DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर • एक key से सब	DK Live • DK Chat • Coding agent • DK Computer • one key for all
+Memory (याददाश्त) • इनकॉग्निटो • पुरानी बातचीत • सच्चा दोस्त	Memory • Incognito • Past chats • True friend
+फ़ोन पर बनने वाली आवाज़ें • डाउनलोड • रफ़्तार • टेस्ट	On-device voices • Download • Speed • Test
+फ़ोन कंट्रोल • हमेशा सुनना • कॉल • बैटरी • ड्राइविंग मोड • इवेंट ट्रिगर	Phone control • Always listening • Calls • Battery • Driving mode • Event triggers
+अपना नाम और वाक्य	your own name and phrase
+PIN / पैटर्न	PIN / Pattern
+DK और कोई भी ऐप	DK and any app
+फ़िंगरप्रिंट / फ़ेस	Fingerprint / Face
+DK फ़ेस स्कैन	DK face scan
+कोई फ़ोन छुए तो सायरन	Siren if someone touches the phone
+इमरजेंसी SOS	Emergency SOS
+✓ Boss का चेहरा सेट	✓ Boss's face is set
+✗ सेट नहीं	✗ Not set
+जान-पहचान वाले	Known people
+कौन है?	Who is it?
+DK से पूछकर पहचान	Identify by asking DK
+ऑटोनोमस मोड	Autonomous mode
+DK खुद तय करे और खुद करे	DK decides and acts on its own
+आपातकालीन STOP	Emergency STOP
+टेम्पलेट कमांड	Template commands
+बिना AI के तय साँचे • WhatsApp • अलार्म • मैप • कॉल	Fixed templates without AI • WhatsApp • Alarm • Maps • Calls
+हर ऐप का अपना स्विच	a switch for every app
+बैकअप	Backup
+DK कंटेंट राइटिंग	DK Content Writing
+सूर्योदय-सूर्यास्त • असली सूरज, चाँद, तारे • होम + लॉक स्क्रीन	Sunrise-sunset • Real sun, moon, stars • Home + lock screen
+लाइट मोड (बंद = डार्क)	Light mode (off = dark)
+✓ key लगी है	✓ key is set
+दिखावट	Appearance
+पूरे ऐप के बटन, Settings, संदेश — हिंदी, English, Hinglish या कोई भी भाषा	Buttons, Settings and messages across the app — Hindi, English, Hinglish or any language
+Custom — दुनिया की कोई भी भाषा खोजें	Custom — search any language in the world
+Custom भाषा	Custom language
+भाषा खोजें (जैसे: Tamil, मराठी, Français)	Search a language (e.g. Tamil, Marathi, Français)
+• AI = यह भाषा फ़ोन वाले अनुवाद में नहीं, DK का AI (आपकी key) अनुवाद करेगा	• AI = not in on-device translation; DK's AI (your key) will translate it
+भाषा-पैक तैयार हो रहा है (पहली बार इंटरनेट से)…	Preparing language pack (first time from the internet)…
+अनुवाद हो रहा है…	Translating…
+असली नाम + verified टिक	Real name + verified tick
+Settings में सबसे ऊपर यही नाम • लाइसेंस हो तो नाम के आगे टिक	This name at the very top of Settings • a tick next to it if you have a license
+असली नाम (Real name)	Real name
+जैसे: धीरज कुमार सिंह	e.g. Dhiraj Kumar Singh
+मालिक (Boss)	Owner (Boss)
+प्रीमियम	Premium
+बेसिक	Basic
+अपना असली नाम लिखें	Write your real name
+टैप करें • नाम लिखें	Tap • write your name
+Basic / Premium लाइसेंस डालें - नाम के आगे verified टिक आएगा	Add a Basic / Premium license - a verified tick will appear next to your name
+कैमरा अभी कोई दूसरा ऐप चला रहा है — उसे बंद करके फिर दबाएँ	Another app is using the camera — close it and tap again
+फ़ोन ने कैमरा बंद कर रखा है (सेटिंग्स → निजता → कैमरा चालू करें)	Camera is blocked on this phone (Settings → Privacy → turn on Camera)
+कैमरा की इजाज़त नहीं मिली — इजाज़त देकर फिर दबाएँ	Camera permission not given — allow it and tap again
+स्क्रीन बदल गई — स्कैन फिर दबाएँ	Screen changed — tap Scan again
+कैमरा नहीं खुला — स्कैन फिर दबाएँ	Camera did not open — tap Scan again
+DK लाइव जुड़ते ही कैमरा पलटेगा — थोड़ा रुकिए	The camera will flip as soon as DK Live connects — please wait
+DK लाइव जुड़ते ही स्क्रीन शेयर होगी — थोड़ा रुकिए	The screen will be shared as soon as DK Live connects — please wait
+DK लाइव चालू हो रही है… जुड़ते ही DK लेंस	DK Live is starting… DK Lens opens once connected
+फ़ोन कंट्रोल (Accessibility) बंद है — उसे चालू करें, फिर स्कैन दबाएँ	Phone control (Accessibility) is off — turn it on, then tap Scan
+DK लाइव नहीं जुड़ी — इंटरनेट देखें; जुड़ते ही लेंस अपने-आप खुलेगा	DK Live did not connect — check the internet; the lens will open automatically once connected
+स्कैन बंद	Scan off
+कैमरा बंद है — फिर से स्कैन दबाएँ	Camera is off — tap Scan again
+कैमरा की इजाज़त दीजिए	Please allow camera access
+DK लेंस नहीं खुला	DK Lens did not open
+DK लेंस नहीं खुला — स्कैन फिर दबाएँ	DK Lens did not open — tap Scan again
+स्कैन छोड़ा	Scan stopped
+कैमरा नहीं खुला	Camera did not open

@@ -36,9 +36,33 @@ class CameraFeed(private val act: AppCompatActivity, private val view: PreviewVi
     @Volatile var onFace: ((Bitmap) -> Unit)? = null
     @Volatile private var lastFace = 0L
 
+    /**
+     * 25 नवंबर 2026 (मालिक: "DK लेंस कभी-कभी नहीं खुलता"): कैमरा पल भर किसी और के पास हो (चेहरा पहचान / दूसरी
+     * स्क्रीन का लेंस / इजाज़त की खिड़की के पीछे रुकी स्क्रीन) तो पहली कोशिश फेल होती थी और सीधे "DK लेंस नहीं खुला".
+     * अब [RETRIES] बार थोड़ा रुककर फिर कोशिश; स्क्रीन अभी सामने न हो (STARTED से पहले) तो सामने आने तक रुककर.
+     * बार-बार दबाने पर पुरानी कोशिश बीच में नहीं घुसती ([attemptId]).
+     */
     fun start(front: Boolean, onOk: () -> Unit, onFail: (String) -> Unit) {
-        val f = ProcessCameraProvider.getInstance(act)
+        val id = ++attemptId
+        tryStart(front, onOk, onFail, id, 0)
+    }
+
+    @Volatile private var attemptId = 0
+
+    private fun tryStart(front: Boolean, onOk: () -> Unit, onFail: (String) -> Unit, id: Int, n: Int) {
+        if (id != attemptId) return
+        val life = act.lifecycle.currentState
+        if (life == androidx.lifecycle.Lifecycle.State.DESTROYED) return
+        val main = android.os.Handler(android.os.Looper.getMainLooper())
+        fun again(why: String) {
+            if (n + 1 >= RETRIES) { running = false; DKLog.d("कैमरा नहीं खुला (${n + 1} बार): $why"); onFail(LensRetry.reason(why)); return }
+            DKLog.d("कैमरा: फिर कोशिश ${n + 2}/$RETRIES ($why)")
+            main.postDelayed({ tryStart(front, onOk, onFail, id, n + 1) }, LensRetry.delayMs(n))
+        }
+        if (!life.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) { again("स्क्रीन अभी सामने नहीं"); return }
+        val f = try { ProcessCameraProvider.getInstance(act) } catch (e: Exception) { again(e.message ?: "कैमरा सेवा नहीं मिली"); return }
         f.addListener({
+            if (id != attemptId) return@addListener
             try {
                 val p = f.get(); provider = p
                 val sel = if (front) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
@@ -57,8 +81,7 @@ class CameraFeed(private val act: AppCompatActivity, private val view: PreviewVi
                 onOk()
             } catch (e: Exception) {
                 running = false
-                DKLog.d("कैमरा नहीं खुला: ${e.message}")
-                onFail(e.message ?: "कैमरा नहीं खुला")
+                again(e.message ?: "कैमरा नहीं खुला")
             }
         }, ContextCompat.getMainExecutor(act))
     }
@@ -95,11 +118,12 @@ class CameraFeed(private val act: AppCompatActivity, private val view: PreviewVi
     }
 
     fun stop() {
+        attemptId++          // बीच में चल रही दोबारा-कोशिश रुके
         try { provider?.unbindAll() } catch (e: Exception) { Quiet.note(e) }
         running = false
     }
 
     fun release() { stop(); exec.shutdown() }
 
-    companion object { const val FACE_MS = 330L }
+    companion object { const val FACE_MS = 330L; const val RETRIES = 4 }
 }

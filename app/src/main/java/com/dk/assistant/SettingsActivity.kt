@@ -130,7 +130,7 @@ class SettingsActivity : AppCompatActivity() {
             "livewall" -> { title.text = "लाइव वॉलपेपर"; secLiveWall() }
             "st3" -> { title.text = "आवाज़ें (Supertonic 3)"; secSt3() }
             "orb" -> { title.text = "ओर्ब और चेहरा"; secOrb(); secIsland() }
-            "ui" -> { title.text = "दिखावट"; secUi() }
+            "ui" -> { title.text = "दिखावट"; secTheme(); secUi() }   // 25 नवंबर 2026: Theme भी यहीं (सबसे ऊपर)
             "theme" -> { title.text = "Theme"; secTheme() }   // 23 नवंबर 2026: Soft Clay की 8 थीम
             "access" -> { title.text = "Accessibility"; secAccess(); secPayGuard(); secDriving(); secEvents() }
             "phonelock" -> { title.text = "फ़ोन लॉक / अनलॉक"; secPhoneLock() }   // 22 नवंबर 2026 (मालिक): रिकॉर्ड करके सिखाने वाला हिस्सा हटा
@@ -161,8 +161,8 @@ class SettingsActivity : AppCompatActivity() {
         val name = Prefs.assistantName(this)
         val items = listOf(
             Triple("profile", "प्रोफ़ाइल", "आपका नाम • असिस्टेंट का नाम ($name) • नंबर • गाने • Instagram / Facebook • और जानकारी"),
-            Triple("lang", "भाषा / Language", "ऐप: ${if (UiLang.en()) "English" else "हिंदी"} • DK के जवाब: ${Lang.short(Prefs.replyLang(this))}"),
-            Triple("ui", "दिखावट (UI कस्टमाइज़ेशन)", "डार्क / लाइट • orb • एनिमेशन • तैरता ORB"),
+            Triple("lang", "भाषा / Language", "ऐप: ${UiLang.label()} • DK के जवाब: ${Lang.short(Prefs.replyLang(this))}"),
+            Triple("ui", "दिखावट (UI कस्टमाइज़ेशन)", "Theme • डार्क / लाइट • orb • एनिमेशन • तैरता ORB"),
             Triple("brain", "AI दिमाग", "DK लाइव • DK चैट • कोडिंग एजेंट • DK कंप्यूटर • एक key से सब"),
             Triple("voice", "आवाज़", "बोलने वाला इंजन (Live • Gemini TTS) • सुनना"),
             Triple("persona", "DK का स्वभाव और मोड", "JARVIS • FRIDAY / VENOM • DK का स्वभाव (${DkPersona.get(this).title}) • रोमांटिक • संबोधन"),
@@ -199,8 +199,8 @@ class SettingsActivity : AppCompatActivity() {
             // (किसी श्रेणी के अंदर नहीं). नया अपडेट आया हो तो होम पर चमकती पट्टी + popup ([UpdatePrompt])
             // 25 नवंबर 2026 (मालिक): सबसे ऊपर असली नाम + verified टिक (टैप = प्रोफ़ाइल) - [profileTopCard]
             profileTopCard()
-            // 23 नवंबर 2026 (Soft Clay): सबसे ऊपर "Theme" पट्टी - दबाओ = 8 थीम वाला पेज
-            menuRow("theme", "Theme", "अभी: ${com.dk.assistant.ui.ClayTheme.current.name} • Clay Navy • Clay Day • Midnight • Nocturne • Ember • Abyss • Obsidian • Rosewood")
+            // 25 नवंबर 2026 (मालिक): "Theme" पट्टी मुख्य पन्ने से हटी - अब प्रोफ़ाइल → दिखावट (UI कस्टमाइज़ेशन) के अंदर
+            // सबसे ऊपर ([secUi] में [secTheme]); "theme" section खोज/पुराने link के लिए वैसा ही
             SettingsSearch.CATEGORIES.forEach { (c, _) -> menuRow(c.first, c.second, c.third) }
             // 15 नवंबर 2026 (मालिक): "DK AI Plus" का अलग पन्ना हटाया - उसकी असली सुविधाएँ अपनी पुरानी जगह ([secSos] वगैरह, SettingsExtra.kt)
             items.firstOrNull { it.first == "license" }?.let { (id, t, sub) -> menuRow(id, t, sub) }

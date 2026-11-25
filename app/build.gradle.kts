@@ -119,6 +119,8 @@ dependencies {
     implementation("androidx.camera:camera-view:1.3.4")
     // v3.72: कनेक्टर हब - Google login (Drive/Gmail/Calendar...) बिना client secret, token Play services देता है
     implementation("com.google.android.gms:play-services-auth:21.2.0")
+    // 25 नवंबर 2026 (मालिक: "Custom - दुनिया की कोई भी भाषा"): फ़ोन पर ही UI अनुवाद (भाषा-पैक पहली बार इंटरनेट से) - UiMt.kt
+    implementation("com.google.mlkit:translate:17.0.3")
     // 14 नवंबर 2026: DKAI Terminal की `apk` कमांड - फ़ोन पर ही बने ऐप को sign करना (Google की अपनी apksig, pure Java)
     implementation("com.android.tools.build:apksig:8.5.2")
     // 21 नवंबर 2026 (मालिक: "ऐप का MB घटाओ"): k2-fsa का AAR (9.5 MB, अपना अलग onnxruntime) हटा - बोली लिखना अब

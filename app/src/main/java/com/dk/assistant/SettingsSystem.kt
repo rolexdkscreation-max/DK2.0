@@ -30,27 +30,36 @@ import kotlinx.coroutines.launch
  * (2) DK के जवाब की भाषा (v3.30) - Hinglish / हिंदी / English, पहले जैसी.
  */
 internal fun SettingsActivity.secLang() {
-    card("ऐप की भाषा (स्क्रीन)", "पूरे ऐप के बटन, Settings, संदेश — English या हिंदी") { box ->
+    // 25 नवंबर 2026 (मालिक): तीन भाषाएँ - हिंदी, English, Hinglish - और नीचे "Custom" (खोजकर दुनिया की कोई भी भाषा).
+    // English चुनी हो तो पूरा ऐप English में (शब्दकोश में न हो वह फ़ोन पर ही अनुवाद - [UiMt])
+    card("ऐप की भाषा (स्क्रीन)", "पूरे ऐप के बटन, Settings, संदेश — हिंदी, English, Hinglish या कोई भी भाषा") { box ->
         val rg = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
-        val ui = listOf(UiLang.EN to "English (default)", UiLang.HI to "हिंदी (Hindi)")
+        val ui = listOf(UiLang.HI to "हिंदी (Hindi)", UiLang.EN to "English (default)", UiLang.HINGLISH to "Hinglish (Hindi + English)")
         ui.forEachIndexed { i, (code, label) ->
             rg.addView(RadioButton(this).apply {
-                id = 3100 + i; text = label; setTextColor(0xFFFFFFFF.toInt()); textSize = 15f
+                id = 3100 + i; text = label; setTextColor(com.dk.assistant.ui.ClayTheme.t.text); textSize = 15f
                 isChecked = code == UiLang.code
                 setPadding((6 * dp).toInt(), (8 * dp).toInt(), 0, (8 * dp).toInt())
                 UiLang.keep(this)     // भाषा के नाम हर भाषा में वैसे ही
             })
         }
+        if (UiLang.custom()) rg.addView(RadioButton(this).apply {
+            id = 3199; text = "Custom: " + (WorldLangs.find(UiLang.code)?.label ?: UiLang.code)
+            setTextColor(com.dk.assistant.ui.ClayTheme.t.text); textSize = 15f; isChecked = true
+            setPadding((6 * dp).toInt(), (8 * dp).toInt(), 0, (8 * dp).toInt())
+            UiLang.keep(this)
+        })
         rg.setOnCheckedChangeListener { _, idc ->
             val code = ui.getOrNull(idc - 3100)?.first ?: return@setOnCheckedChangeListener
             if (code == UiLang.code) return@setOnCheckedChangeListener
-            UiLang.set(this, code)
-            toast(if (code == UiLang.EN) "App language: English" else "ऐप की भाषा: हिंदी")
-            // यह screen अभी नई बने; पीछे खुली screens लौटते ही अपने-आप नई भाषा में
-            recreate()
+            pickUiLang(code)
         }
         box.addView(rg)
-        hint(box, "चुनते ही पूरे ऐप की स्क्रीनें इसी भाषा में। DK के जवाब की भाषा नीचे अलग से चुनें। बातचीत, कोड और कहानियाँ जैसी लिखी हैं वैसी ही दिखती हैं।")
+        row(box, button("Custom — दुनिया की कोई भी भाषा खोजें") { customLangDialog() })
+        if (UiMt.status.isNotBlank()) hint(box, UiMt.status)
+        hint(box, "चुनते ही पूरे ऐप की स्क्रीनें इसी भाषा में। जिन लाइनों का अनुवाद पहले से नहीं, वे फ़ोन पर ही बदलती हैं — " +
+            "पहली बार भाषा-पैक (करीब 30 MB) इंटरनेट से आता है, फिर बिना इंटरनेट। DK के जवाब की भाषा नीचे अलग से चुनें। " +
+            "बातचीत, कोड और कहानियाँ जैसी लिखी हैं वैसी ही दिखती हैं।")
     }
     card("DK किस भाषा में जवाब दे", "DK लाइव, DK चैट, बिना-Live आवाज़, DK कंप्यूटर और कोडिंग एजेंट — सब पर एक साथ") { box ->
         val rg = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
@@ -520,4 +529,48 @@ internal fun SettingsActivity.callPct(box: LinearLayout, title: String, value: I
         })
     }
     box.addView(sb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (48 * dp).toInt()))
+}
+
+
+/** भाषा बदलो - यह screen अभी नई बने; पीछे खुली screens लौटते ही अपने-आप नई भाषा में */
+private fun SettingsActivity.pickUiLang(code: String) {
+    UiLang.set(this, code)
+    toast(when (code) { UiLang.EN -> "App language: English"; UiLang.HI -> "ऐप की भाषा: हिंदी"; else -> "App language: " + UiLang.label(code) })
+    recreate()
+}
+
+/** 25 नवंबर 2026 (मालिक): Custom - खोजने वाला खाना + दुनिया की सारी भाषाएँ, टैप = पूरा ऐप उसी भाषा में */
+private fun SettingsActivity.customLangDialog() {
+    val k = com.dk.assistant.ui.ClayTheme.t
+    val wrap = android.widget.LinearLayout(this).apply {
+        orientation = android.widget.LinearLayout.VERTICAL
+        val p = (16 * dp).toInt(); setPadding(p, (8 * dp).toInt(), p, 0)
+    }
+    val q = android.widget.EditText(this).apply {
+        hint = "भाषा खोजें (जैसे: Tamil, मराठी, Français)"; setSingleLine(); setTextColor(k.text); setHintTextColor(k.gray)
+    }
+    wrap.addView(q)
+    var shown = WorldLangs.ALL
+    val ad = android.widget.ArrayAdapter(this, android.R.layout.simple_list_item_1, shown.map { it.label + if (UiMt.offline(it.code)) "" else "  • AI" }.toMutableList())
+    val list = android.widget.ListView(this).apply { adapter = ad; UiLang.keep(this) }
+    wrap.addView(list, android.widget.LinearLayout.LayoutParams(-1, (420 * dp).toInt()))
+    wrap.addView(android.widget.TextView(this).apply {
+        text = "• AI = यह भाषा फ़ोन वाले अनुवाद में नहीं, DK का AI (आपकी key) अनुवाद करेगा"
+        textSize = 12f; setTextColor(k.gray); setPadding(0, (6 * dp).toInt(), 0, 0)
+    })
+    val dlg = UiDialog(this).setTitle("Custom भाषा").setView(wrap).setNegativeButton("बंद", null).create()
+    q.addTextChangedListener(object : android.text.TextWatcher {
+        override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, n: Int) { /* सिर्फ़ afterTextChanged चाहिए */ }
+        override fun onTextChanged(s: CharSequence?, a: Int, b: Int, n: Int) { /* सिर्फ़ afterTextChanged चाहिए */ }
+        override fun afterTextChanged(s: android.text.Editable?) {
+            shown = WorldLangs.search(s?.toString().orEmpty())
+            ad.clear(); ad.addAll(shown.map { it.label + if (UiMt.offline(it.code)) "" else "  • AI" }); ad.notifyDataSetChanged()
+        }
+    })
+    list.setOnItemClickListener { _, _, pos, _ ->
+        val l = shown.getOrNull(pos) ?: return@setOnItemClickListener
+        dlg.dismiss()
+        pickUiLang(l.code)
+    }
+    dlg.show()
 }

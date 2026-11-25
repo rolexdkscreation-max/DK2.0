@@ -36,6 +36,8 @@ object VerifiedBadge {
 
     /** 25 नवंबर 2026 (मालिक): Settings के सबसे ऊपर वाली प्रोफ़ाइल पट्टी - नाम न लिखा हो तो यही लाइन */
     const val ADD_NAME = "अपना असली नाम लिखें"
+    /** नाम न लिखा हो तब बाहर वाली पट्टी की छोटी लाइन (नाम हो तो बाहर कोई लाइन नहीं - सिर्फ़ नाम + टिक) */
+    const val ADD_HINT = "टैप करें • नाम लिखें"
 
     /** सबसे ऊपर दिखने वाला नाम: असली नाम, न लिखा हो तो [ADD_NAME] */
     fun headerName(realName: String): String = realName.trim().ifBlank { ADD_NAME }
@@ -43,7 +45,7 @@ object VerifiedBadge {
     /** नाम के नीचे की लाइन: टिक हो तो स्तर, नाम है पर लाइसेंस नहीं / नाम ही नहीं तो क्या करना है */
     fun statusLine(realName: String, t: Tier?): String = when {
         t != null && realName.isNotBlank() -> "Verified • ${t.label} • ${t.hi}"
-        realName.isBlank() -> "टैप करें • नाम लिखें" + if (t != null) " - ${t.label} लाइसेंस है, नाम लिखते ही verified टिक" else ""
+        realName.isBlank() -> ADD_HINT + if (t != null) " - ${t.label} लाइसेंस है, नाम लिखते ही verified टिक" else ""
         else -> "Basic / Premium लाइसेंस डालें - नाम के आगे verified टिक आएगा"
     }
 
