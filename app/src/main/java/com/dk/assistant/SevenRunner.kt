@@ -279,6 +279,21 @@ object SevenRunner {
         RepoDoctorRunner.scan(c, focus = RepoDoctor.prNumber(task), question = task)?.let { say("e", "${Seven.INSPECTOR_HI}: $it") }
     }
 
+    /** काम वाली branch (या रुका काम / main) के ऐप के emulator screenshot */
+    private fun shotsFor(c: Context) {
+        val gh = GitHub.fromPrefs(c)
+        val repo = Prefs.ghRepo(c)
+        if (gh == null || !repo.contains('/')) {
+            say("s", "📸 screenshot के लिए GitHub token और रिपो चाहिए — ऊपर \"रिपो\" से चुनें, फिर \"स्क्रीनशॉट दो\" लिखें")
+            return
+        }
+        val base = Prefs.ghBranch(c)
+        val branches = listOf(CoderSession.agent?.branch.orEmpty(), CoderHistory.checkpoint(c)?.branch.orEmpty(), base).filter { it.isNotBlank() }.distinct()
+        say("s", "📸 ठीक है — " + branches.firstOrNull().let { b -> if (b != null && b != base) "नए काम (branch $b)" else "ऐप ($base)" } +
+            " के screenshot emulator पर ले रहा हूँ…")
+        CoderShots.request(c, gh, repo, branches)
+    }
+
     /** @return null = शुरू हो गया, वरना वजह */
     fun start(ctx: Context, input: String, fromVoice: Boolean = false, forceNormal: Boolean = false, media: List<CoderMedia> = emptyList()): String? {
         val c = ctx.applicationContext
@@ -287,6 +302,12 @@ object SevenRunner {
         OneKeyGate.check(c, OneKeyGate.Work.CODING)?.let { return it }
         if (!Prefs.coderOn(c)) return "कोडिंग एजेंट बंद है — Settings में चालू करें"
         val ai = CoderAi.fromPrefs(c) ?: return "कोडिंग एजेंट की AI key नहीं — Settings → AI दिमाग → कोडिंग एजेंट में डालें"
+        // 25 नवंबर 2026 (मालिक: "स्क्रीनशॉट माँगा जाए तो स्क्रीनशॉट भी देगा"): emulator पर ऐप खोलकर screenshot (कोड नहीं छूता; काम चलते समय भी)
+        if (pending == null && Shots.wantsShots(input)) {
+            say("u", (if (fromVoice) "🎤 " else "") + input)
+            shotsFor(c)
+            return null
+        }
         // नवंबर 2026 (मालिक): काम चलते समय नई बात (आवाज़ से भी) - उसी काम की = साथ में, अलग = यह पूरा होते ही
         if (CoderSession.busy) { CoderSession.followUp(c, input, (if (fromVoice) "🎤 " else "") + input); return null }
         CoderSession.offerNormal = null
@@ -477,6 +498,8 @@ object SevenRunner {
                         if (content != null) CoderSession.normalFiles[p] = content else CoderSession.normalFiles.remove(p)
                     }
                     val ok = out.testOk == true
+                    // काम के साथ ही screenshot माँगा था = PR तैयार होते ही अपने-आप
+                    if (ok && out.mode == Seven.Mode.GITHUB && Shots.mentions(task)) shotsFor(c)
                     CoderTeam.announce(c, if (ok) "कोडिंग टीम: काम पूरा" else "कोडिंग टीम: रुकी",
                         out.short.lines().firstOrNull { it.startsWith("वजह:") }?.removePrefix("वजह:")?.trim() ?: out.report.lines().getOrNull(1).orEmpty(),
                         if (ok && out.mode == Seven.Mode.GITHUB) "कोडिंग का काम पूरा हो गया, बॉस। टेस्ट पास हैं, PR आपकी मंज़ूरी का इंतज़ार कर रहा है। हाँ बोलें तो merge करके APK release कर दूँगा।"

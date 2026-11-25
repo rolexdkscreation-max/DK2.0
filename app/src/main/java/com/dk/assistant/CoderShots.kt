@@ -34,6 +34,43 @@ object Shots {
         }
     }
 
+    /** 25 नवंबर 2026: नई स्क्रीन के screenshot के लिए कोडर यह फ़ाइल लिखता है; .github/ui/shots.sh इसे emulator पर चलाता है */
+    const val EXTRA = ".github/ui/extra_shots.sh"
+    /** emulator पर हर स्क्रीन के screenshot वाला workflow (workflow_dispatch से किसी भी branch पर) */
+    const val UI_WORKFLOW = "ui-preview.yml"
+
+    /** बदली फ़ाइलों में स्क्रीन/दिखावट वाला कुछ है? (तब रिपोर्ट में screenshot की बात) */
+    fun uiChanged(paths: Collection<String>): Boolean = paths.any { p ->
+        val n = p.substringAfterLast('/')
+        p == EXTRA || p.contains("/res/layout") || p.contains("/res/drawable") || p.contains("/res/values/") || p.contains("/ui/") ||
+            n.endsWith("Activity.kt") || n.startsWith("Settings") || n.contains("Screen") || n.contains("Dialog") || n.contains("Sheet") || n.contains("Card")
+    }
+
+    /**
+     * user screenshot माँग रहा है? ("स्क्रीनशॉट दो", "screenshot दिखाओ", "कैसा दिखता है ss भेजो").
+     * screenshot वाला नया फ़ीचर बनवाना (जोड़ो/बनाओ/feature) = नया काम, यह नहीं.
+     */
+    fun wantsShots(input: String): Boolean {
+        val t = input.lowercase()
+        if (!mentions(t)) return false
+        val ask = listOf("दो", "दें", "दीजिए", "दिखाओ", "दिखाइए", "भेजो", "भेजिए", "चाहिए", "लाओ", "कैसा दिख", "give", "show", "send").any { t.contains(it) }
+        val build = listOf("फ़ीचर", "फीचर", "feature", "जोड़", "बनाओ", "add ", "बटन", "option").any { t.contains(it) }
+        return ask && !build && t.length <= 200
+    }
+
+    /** बात में screenshot का ज़िक्र (काम के साथ माँगा हो तो काम पूरा होते ही अपने-आप लाओ) */
+    fun mentions(text: String): Boolean = text.lowercase().let { t ->
+        listOf("स्क्रीनशॉट", "स्क्रीन शॉट", "स्क्रीनशॉर्ट", "screenshot", "screen shot").any { t.contains(it) }
+    }
+
+    /** आख़िरी रिपोर्ट की screenshot लाइन (GitHub मोड) */
+    fun reportNote(paths: Collection<String>, github: Boolean): String = when {
+        !github -> ""
+        uiChanged(paths) -> "📸 स्क्रीनशॉट: build पूरा होते ही emulator के screenshot इसी चैट में तस्वीरों की पट्टी में आएँगे (टैप = बड़ी)। " +
+            "नई स्क्रीन के screenshot चाहिए तो \"स्क्रीनशॉट दो\" लिखें — emulator पर नई और पुरानी (main) दोनों स्क्रीनें लाकर दिखाऊँगा।"
+        else -> "📸 स्क्रीनशॉट चाहिए तो \"स्क्रीनशॉट दो\" लिखें — emulator पर ऐप खोलकर screenshot लाऊँगा।"
+    }
+
     /** 01_khulte_hi.png -> "01 khulte hi" */
     fun label(file: String): String = file.substringBeforeLast('.').replace('_', ' ').replace('-', ' ').trim()
 }
@@ -54,11 +91,11 @@ object CoderShots {
     fun dir(c: Context) = File(c.filesDir, "coder_shots").apply { mkdirs() }
 
     /** इस commit के build पूरे होने तक (background में) देखो; screenshot मिलें तो "i" लाइन */
-    fun fetchLater(c: Context, gh: GitHub, repo: String, sha: String) {
-        if (sha.isBlank() || !active.add("$repo@$sha")) return
+    fun fetchLater(c: Context, gh: GitHub, repo: String, sha: String, waitMs: Long = MAX_WAIT_MS, untilName: String = "") {
+        if (sha.isBlank() || !active.add("$repo@$sha$untilName")) return
         val app = c.applicationContext
         CoderSession.scope.launch {
-            val until = System.currentTimeMillis() + MAX_WAIT_MS
+            val until = System.currentTimeMillis() + waitMs
             var noted = false
             try {
             while (System.currentTimeMillis() < until) {
@@ -88,11 +125,49 @@ object CoderShots {
                     shown.add(r.id)
                 }
                 // सारे build पूरे और देख लिए = बस
-                if (runs.isNotEmpty() && runs.all { it.status == "completed" && it.id in shown }) break
+                // untilName = अभी चलाया गया workflow (जैसे UI Preview) - वह दिखे और पूरा हो, तभी बस (पुराने पूरे build पर रुकना नहीं)
+                val waitingFor = untilName.isNotBlank() && runs.none { it.name.contains(untilName, ignoreCase = true) }
+                if (!waitingFor && runs.isNotEmpty() && runs.all { it.status == "completed" && it.id in shown }) break
                 delay(POLL_MS)
             }
-            } finally { active.remove("$repo@$sha") }
+            } finally { active.remove("$repo@$sha$untilName") }
             cleanup(app)
+        }
+    }
+
+    /** ui-preview (हर स्क्रीन + नई स्क्रीन) ~50 मिनट तक चल सकता है */
+    private const val UI_WAIT_MS = 70 * 60_000L
+    /** ui-preview.yml का name: */
+    private const val UI_RUN = "UI Preview"
+
+    /**
+     * 25 नवंबर 2026 (मालिक: "स्क्रीनशॉट माँगा जाए तो स्क्रीनशॉट भी देगा"): इस branch पर emulator वाला ui-preview चलाओ और
+     * उसके screenshot (नया + main वाला पुराना) चैट में. नेटवर्क background में; नतीजा चैट की लाइनों में.
+     */
+    fun request(c: Context, gh: GitHub, repo: String, branches: List<String>) {
+        val app = c.applicationContext
+        CoderSession.scope.launch {
+            var branch = branches.firstOrNull().orEmpty()
+            try {
+                // पहली branch (काम वाली) merge के बाद हट चुकी हो तो अगली (main)
+                var sha = ""
+                for (b in branches.filter { it.isNotBlank() }.distinct()) {
+                    sha = withContext(Dispatchers.IO) { try { gh.remoteBranchSha(repo, b) } catch (e: Exception) { Quiet.note(e); "" } }
+                    if (sha.isNotBlank()) { branch = b; break }
+                }
+                if (sha.isBlank()) {
+                    CoderSession.add("e", "📸 GitHub पर branch नहीं मिली (" + branches.joinToString() + ") — रिपो/branch जाँचें")
+                } else {
+                    withContext(Dispatchers.IO) { gh.dispatchWorkflow(repo, UI_WORKFLOW, branch) }
+                    CoderSession.add("s", "📸 branch $branch पर emulator चला दिया ($UI_WORKFLOW) — ऐप की स्क्रीनें (नई + पुरानी main वाली) खोलकर screenshot ले रहा है। " +
+                        "20-40 मिनट में तस्वीरें इसी चैट में आएँगी (टैप = बड़ी)।")
+                    fetchLater(app, gh, repo, sha, UI_WAIT_MS, untilName = UI_RUN)
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                CoderSession.add("e", "📸 screenshot वाला emulator नहीं चला पाया: " + (e.message ?: e.javaClass.simpleName).take(160) +
+                    " — token में Actions: Read and write दें, या GitHub → Actions → \"UI Preview\" → Run workflow (branch $branch)")
+            }
         }
     }
 

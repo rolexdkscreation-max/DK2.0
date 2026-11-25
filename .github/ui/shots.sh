@@ -59,6 +59,8 @@ run() {
   revive; timeout 90 adb shell am start -W -n $PKG/.MainActivity;                             shot ${tag}_01d_home_real 8
   { tap "मेनू खोलें" || tap "Open menu"; } && shot ${tag}_01c_home_menu 2
   adb shell input keyevent KEYCODE_BACK; sleep 1
+  # 25 नवंबर 2026: DK कोडिंग एजेंट की बनाई/बदली नई स्क्रीन - वह .github/ui/extra_shots.sh लिखता है (go/tap/shot से). पहले, ताकि अटकने से पहले मिले
+  if [ -f .github/ui/extra_shots.sh ]; then . .github/ui/extra_shots.sh || true; fi
   # v4: emulator कुछ मिनट में अटक जाता है - इसलिए नई स्क्रीनें पहले (चैट, आवाज़, मेमोरी)
   go .ChatActivity;                          shot ${tag}_05a_chat_first 5
   go .VoiceActivity;                         shot ${tag}_07a_voice_first 5
