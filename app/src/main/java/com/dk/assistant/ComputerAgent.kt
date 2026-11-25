@@ -378,7 +378,7 @@ class ComputerAgent(private val c: Context) {
                     }
                     return finish(ans, choices = next)
                 }
-                "ask_user" -> return finish(call.args.optString("question").ifBlank { "कृपया और जानकारी दें।" }, question = true,
+                "ask_user" -> return finish(call.args.optString("question").ifBlank { "थोड़ा और बताइए ना, क्या चाहिए?" }, question = true,
                     choices = strs(call.args.optJSONArray("options")))
                 "update_plan" -> {
                     val st = call.args.optJSONArray("steps")

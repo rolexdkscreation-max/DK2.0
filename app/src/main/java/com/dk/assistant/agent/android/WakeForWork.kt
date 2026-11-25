@@ -25,7 +25,7 @@ object WakeForWork {
         step("स्क्रीन जगा रही हूँ")
         try { DKLog.d("WakeForWork: " + svc.unlock()) } catch (e: Exception) { DKLog.d("WakeForWork: स्क्रीन नहीं जगी ${e.message}") }
         if (km?.isKeyguardLocked == true) {
-            step("फ़ोन लॉक है - कृपया अनलॉक करें, फिर मैं आपके सामने ऐप खोलूँगी")
+            step("फ़ोन लॉक है - एक बार अनलॉक कर दीजिए, फिर मैं आपके सामने ऐप खोलूँगी")
             val until = System.currentTimeMillis() + waitMs
             while (km.isKeyguardLocked && System.currentTimeMillis() < until) delay(500)
         }

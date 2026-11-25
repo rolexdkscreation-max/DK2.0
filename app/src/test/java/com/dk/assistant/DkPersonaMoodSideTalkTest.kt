@@ -16,11 +16,12 @@ import java.io.File
 class DkPersonaMoodSideTalkTest {
 
     // ------------------------------------------------------------------ स्वभाव
-    // 19 नवंबर 2026 (मालिक के कहने पर डिफ़ॉल्ट बदला): डिफ़ॉल्ट = प्यार वाला (गर्लफ्रेंड जैसा) स्वभाव
+    // 19 नवंबर 2026: डिफ़ॉल्ट गर्लफ्रेंड जैसा था; 25 नवंबर 2026 (मालिक का नया DK प्रॉम्प्ट): डिफ़ॉल्ट फिर दोस्ताना
     @Test fun persona_defaultIsLoving() {
-        assertEquals(DkPersona.P.GIRLFRIEND, DkPersona.DEFAULT)
-        assertEquals(DkPersona.P.GIRLFRIEND, DkPersona.of(null))
-        assertEquals(DkPersona.P.GIRLFRIEND, DkPersona.of("कुछ भी"))
+        assertEquals(DkPersona.P.FRIENDLY, DkPersona.DEFAULT)
+        assertEquals(DkPersona.P.FRIENDLY, DkPersona.of(null))
+        assertEquals(DkPersona.P.FRIENDLY, DkPersona.of("कुछ भी"))
+        assertEquals(DkPersona.P.GIRLFRIEND, DkPersona.of("girlfriend"))   // चुना हुआ गर्लफ्रेंड वैसा ही
         assertEquals(DkPersona.P.NATKHAT, DkPersona.of("natkhat"))
         assertEquals(5, DkPersona.P.values().size)
     }
