@@ -148,7 +148,7 @@ object DkaiUi {
 
     /** icon + शीर्षक + विवरण वाली पंक्ति (चुना = नीली लकीर + ✓) */
     fun row(c: Context, kind: DkaiIcon.Kind?, title: String, sub: String?, selected: Boolean = false, tint: Int = DkaiTheme.CYAN,
-            danger: Boolean = false, onTap: () -> Unit): LinearLayout = LinearLayout(c).apply {
+            danger: Boolean = false, logoRes: Int = 0, onTap: () -> Unit): LinearLayout = LinearLayout(c).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; minimumHeight = d(c, 52f)
         setPadding(d(c, 12f), d(c, 8f), d(c, 12f), d(c, 8f))
         // 23 नवंबर 2026 (Soft Clay): उभरी पट्टी; चुनी = accent का चमकदार ढलान + दाईं ओर सफ़ेद ✓ वाला गोल खाना
@@ -157,7 +157,16 @@ object DkaiUi {
         isSelected = selected
         setPadding(d(c, 14f), d(c, 10f), d(c, 14f), d(c, 10f))
         isClickable = true; isFocusable = true; contentDescription = title + (sub?.let { ", $it" } ?: "")
-        if (kind != null) {
+        if (logoRes != 0) {
+            // 25 नवंबर 2026 (मालिक): DKAI Ultra = टॉप बार वाला DK लोगो, उसी 38dp खाने में; अपना तय पीछा (थीम/PlainLook नहीं बदलते)
+            // ताकि डार्क और लाइट दोनों में साफ़ दिखे; FIT_CENTER = खिंचता नहीं
+            val ic = FrameLayout(c).apply { background = DkaiTheme.round(c, DkaiTheme.LOGO_TILE, 12f, DkaiTheme.LOGO_TILE_EDGE); setTag(com.dk.assistant.PlainLook.SKIP, true) }
+            ic.addView(ImageView(c).apply {
+                setImageResource(logoRes); scaleType = ImageView.ScaleType.FIT_CENTER; adjustViewBounds = true
+                imageTintList = null; setTag(com.dk.assistant.PlainLook.SKIP, true); importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, FrameLayout.LayoutParams(d(c, 26f), d(c, 26f), Gravity.CENTER))
+            addView(ic, LinearLayout.LayoutParams(d(c, 38f), d(c, 38f)).apply { rightMargin = d(c, 12f) })
+        } else if (kind != null) {
             val ic = FrameLayout(c).apply { background = DkaiTheme.round(c, (if (danger) DkaiTheme.RED else tint) and 0x26FFFFFF, 12f) }
             ic.addView(ImageView(c).apply { setImageDrawable(DkaiIcon(kind, if (danger) DkaiTheme.RED else tint)) }, FrameLayout.LayoutParams(d(c, 20f), d(c, 20f), Gravity.CENTER))
             addView(ic, LinearLayout.LayoutParams(d(c, 38f), d(c, 38f)).apply { rightMargin = d(c, 12f) })
