@@ -22,6 +22,9 @@ object DkMaster {
 
     fun on(c: Context) = FeatureFlags.on(c, FeatureFlags.MASTER_AGENT)
 
+    /** अभी चल रहा बुकिंग वाला काम (फ़ोन एजेंट \"Book / Confirm\" पर ब्योरे के साथ पूछता है). null = बुकिंग नहीं */
+    @Volatile var trip: BookRules.Trip? = null
+
     /**
      * एजेंट चलने से पहले. null = मास्टर बंद (पुराना रास्ता). [Pre.note] खाली नहीं = एजेंट के note में जोड़ो.
      * [block] भरा हो = काम मत चलाओ, यही लाइन Gemini को लौटाओ (आवाज़ में पुष्टि माँगनी है / मना हुआ).
@@ -39,8 +42,24 @@ object DkMaster {
             }
             ActionLog.add(c, "पुष्टि", "मालिक ने हाँ कहा")
         }
+        // 25 नवंबर 2026 (बुकिंग एजेंट): ज़रूरी ब्योरा (कहाँ से / तक / कब / कितने लोग) न हो = एजेंट नहीं, पहले मालिक से पूछो - अपने से कुछ नहीं भरते
+        var note = MasterRules.agentNote(p)
+        trip = null
+        if (p.specialist == MasterRules.Specialist.BOOKING && BookRules.isBooking(req)) {
+            val t = BookRules.trip(req)
+            val miss = BookRules.missing(t)
+            ActionLog.add(c, "बुकिंग", BookRules.summary(t))
+            if (miss.isNotEmpty()) {
+                ActionLog.add(c, "पूछा", miss.joinToString(", "))
+                return null to BookRules.askNote(t, miss)
+            }
+            val pm = c.packageManager
+            val apps = BookRules.appsFor(t.kind) { pkg -> try { pm.getLaunchIntentForPackage(pkg) != null } catch (_: Exception) { false } }
+            note += "\n" + BookRules.agentNote(t, apps)
+            trip = t
+        }
         show(c, MasterRules.planText(p))
-        return Pre(p, MasterRules.agentNote(p)) to null
+        return Pre(p, note) to null
     }
 
     /** एजेंट का नतीजा लॉग में (मास्टर चालू हो तो) */
