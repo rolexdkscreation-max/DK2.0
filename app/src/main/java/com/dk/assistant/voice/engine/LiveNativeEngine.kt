@@ -36,7 +36,8 @@ object LiveNativeEngine : VoiceEngine {
     @Volatile private var cur: WebSocket? = null
 
     override fun voices(): List<Pair<String, String>> {
-        val names = listOf("Sulafat", "Kore", "Leda", "Aoede", "Vindemiatrix")
+        // 25 नवंबर 2026 (मालिक): Zephyr भी (Gemini Live और TTS दोनों में)
+        val names = listOf("Sulafat", "Kore", "Leda", "Aoede", "Vindemiatrix", "Zephyr")
         return names.map { it to "$it — ${VoiceCatalog.GEMINI_INFO[it] ?: ""} (महिला)" }
     }
     override fun voice(c: Context): String = Prefs.geminiVoice(c)
