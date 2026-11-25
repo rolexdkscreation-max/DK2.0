@@ -40,7 +40,7 @@ class TranslatorActivity : AppCompatActivity(), TrEngine.Ui {
         fun open(c: Context): String = try { c.startActivity(TrEngine.intent(c)); "OK" } catch (e: Exception) { "ERROR: ${e.message}" }
     }
 
-    override fun attachBaseContext(newBase: Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
+    override fun attachBaseContext(newBase: android.content.Context) { super.attachBaseContext(com.dk.assistant.UiFit.tablet(newBase)) }
 
     private val main = Handler(Looper.getMainLooper())
     private lateinit var status: TextView
