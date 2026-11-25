@@ -113,8 +113,9 @@ object ClayTheme {
     /** धँसे (input / दबा) हिस्से की अंदर वाली परछाईं कितनी गहरी */
     const val SINK = 1.35f
 
-    private val WHITE = 0xFFFFFFFF.toInt()
-    private val BLACK = 0xFF000000.toInt()
+    // const: `cached = tokens(DEFAULT)` ऊपर पहले चलता है - साधारण val तब 0 होता (Midnight लिखावट काली दिखती थी)
+    private const val WHITE = 0xFFFFFFFF.toInt()
+    private const val BLACK = 0xFF000000.toInt()
 
     fun tokens(th: Theme): Tokens {
         val light = th.light
