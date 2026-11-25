@@ -44,7 +44,7 @@ internal fun SettingsActivity.secLang() {
             })
         }
         if (UiLang.custom()) rg.addView(RadioButton(this).apply {
-            id = 3199; text = "Custom: " + (WorldLangs.find(UiLang.code)?.label ?: UiLang.code)
+            id = 3100 + CUSTOM_RADIO; text = "Custom: " + (WorldLangs.find(UiLang.code)?.label ?: UiLang.code)
             setTextColor(com.dk.assistant.ui.ClayTheme.t.text); textSize = 15f; isChecked = true
             setPadding((6 * dp).toInt(), (8 * dp).toInt(), 0, (8 * dp).toInt())
             UiLang.keep(this)
@@ -574,3 +574,6 @@ private fun SettingsActivity.customLangDialog() {
     }
     dlg.show()
 }
+
+/** Custom भाषा वाला radio (3100 + यह) - ऊपर की तीन भाषाओं से अलग */
+private const val CUSTOM_RADIO = 99
