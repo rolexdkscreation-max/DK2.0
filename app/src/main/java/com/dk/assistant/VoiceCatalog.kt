@@ -8,7 +8,7 @@ object VoiceCatalog {
     /** Gemini ki saari 30 natural awaazein (naam to Hindi vivaran). */
     val GEMINI_INFO = linkedMapOf(
         // mahila
-        "Kore" to "मज़बूत, साफ़", "Aoede" to "हल्की, खुली", "Leda" to "जवान, ताज़ी", "Zephyr" to "चमकदार",
+        "Kore" to "मज़बूत, साफ़", "Aoede" to "हल्की, खुली", "Leda" to "जवान, ताज़ी", "Zephyr" to "चमकदार, ताज़ी",
         "Callirrhoe" to "आरामदायक", "Autonoe" to "चमकदार, साफ़", "Despina" to "मुलायम, स्मूद", "Erinome" to "साफ़",
         "Laomedeia" to "खुशमिज़ाज", "Achernar" to "बहुत नरम", "Gacrux" to "परिपक्व", "Pulcherrima" to "आत्मविश्वासी",
         "Vindemiatrix" to "कोमल, प्यारी", "Sulafat" to "गर्मजोशी भरी",

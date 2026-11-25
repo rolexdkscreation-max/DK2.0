@@ -41,6 +41,8 @@ object GeminiTtsEngine : VoiceEngine {
         "Kore" to "Kore — मज़बूत, साफ़ (महिला)",
         "Leda" to "Leda — जवान, ताज़ी (महिला)",
         "Aoede" to "Aoede — हल्की, खुली (महिला)",
+        // 25 नवंबर 2026 (मालिक): "Zephyr आवाज़ Gemini Live और Gemini TTS दोनों में जोड़ो"
+        "Zephyr" to "Zephyr — चमकदार, ताज़ी (महिला)",
     )
 
     private val http = com.dk.assistant.NetFix.builder()
