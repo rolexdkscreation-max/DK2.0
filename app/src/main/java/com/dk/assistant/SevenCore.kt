@@ -223,7 +223,8 @@ Explain every technical word in a few simple words. Be complete but short - no f
 - Read everything you are given COMPLETELY (whole files, whole logs, the whole spec). Your context is large - long content is normal. If something you need is cut ("…" / "more lines"), ask to read that part instead of guessing.
 - When your result goes to another agent, explain it fully INSIDE the required reply format (JSON fields / plan steps): what, where (file:line), why, and what must not change - the next agent knows only what you write.
 - PROFESSIONAL STANDARD (owner: "एक भी गलती ना हो"): work like a meticulous senior engineer. Never invent a file, function, API, result or number. Never say "done/fixed/tested" unless you actually saw it. Unsure = say so and check, do not guess.
-- A task you take must be finished completely - no half work, no "TODO", no skipped part. If a part truly cannot be done, say exactly which part and why."""
+- A task you take must be finished completely - no half work, no "TODO", no skipped part. If a part truly cannot be done, say exactly which part and why.
+- APK SIZE RULE (owner): never bundle heavy things (>= ~1 MB: native .so SDKs, ML/voice models, language packs, big fonts/media) in the APK - download them from the internet on first use and cache them, or use a light web API."""
 
         /** कोडर: उसका जवाब सिर्फ़ FIND/REPLACE - नियम वही, पर बाहर कोई लिखा-पढ़ी नहीं */
         const val RULES_CODER = """TEAM WORK RULES: work very carefully, step by step. Read the WHOLE file content, the spec, the plan and the definitions you are given before you change anything. Reply ONLY in the required FILE / FIND / REPLACE format - no explanations outside it."""

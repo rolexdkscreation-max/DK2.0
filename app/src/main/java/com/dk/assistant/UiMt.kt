@@ -3,21 +3,18 @@ package com.dk.assistant
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import com.google.android.gms.tasks.Tasks
-import com.google.mlkit.common.model.DownloadConditions
-import com.google.mlkit.nl.translate.TranslateLanguage
-import com.google.mlkit.nl.translate.Translation
-import com.google.mlkit.nl.translate.Translator
-import com.google.mlkit.nl.translate.TranslatorOptions
 import java.io.File
+import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
  * 25 नवंबर 2026 (मालिक: "English सेट है तो पूरी चीज़ English में ही; और Custom - दुनिया की कोई भी भाषा"):
- * ऐप के जिन हिंदी text का शब्दकोश (ui_en.tsv) में अनुवाद नहीं, उनका अनुवाद फ़ोन पर ही (Google ML Kit, बिना key,
- * पहली बार भाषा-पैक इंटरनेट से ~30 MB, फिर बिना इंटरनेट). जो भाषा ML Kit में नहीं, उसके लिए DK का अपना AI
- * ([com.dk.assistant.dkai.DkaiPick.ask]). अनुवाद फ़ोन में याद (filesDir/ui_mt_<भाषा>.tsv) - दोबारा नहीं माँगते.
+ * ऐप के जिन हिंदी text का शब्दकोश (ui_en.tsv) में अनुवाद नहीं, उनका अनुवाद internet से (Google Translate का खुला
+ * web अनुवाद, बिना key, बिना SDK). न मिले तो DK का अपना AI ([com.dk.assistant.dkai.DkaiPick.ask]).
+ * हर अनुवाद फ़ोन में याद (filesDir/ui_mt_<भाषा>.tsv) - एक बार आया तो फिर बिना internet, दोबारा नहीं माँगते.
+ * 25 नवंबर 2026 (मालिक: "भारी चीज़ ऐप के अंदर मत लगाओ, internet से डाउनलोड वाले लगाओ"): पहले Google ML Kit था
+ * (APK में +7 MB की .so) - हटाया, AGENTS.md का "APK साइज़" नियम.
  * एक अलग धागे पर, थोड़ा-थोड़ा जोड़कर; तैयार होते ही सामने वाली स्क्रीन ([UiLang.refresh]) नई लिखावट में.
  */
 object UiMt {
@@ -27,21 +24,15 @@ object UiMt {
     private val tables = ConcurrentHashMap<String, ConcurrentHashMap<String, String>>()
     private val pending = LinkedHashMap<String, Job>()
     private val failed = ConcurrentHashMap<String, Long>()
-    private val translators = HashMap<String, Translator>()
+    private val http by lazy { NetFix.builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build() }
     @Volatile private var worker: Thread? = null
     private val main by lazy { Handler(Looper.getMainLooper()) }
 
-    /** Settings → भाषा में दिखने वाली हालत ("भाषा-पैक उतर रहा है…") */
+    /** Settings → भाषा में दिखने वाली हालत ("अनुवाद हो रहा है…") */
     @Volatile var status: String = ""
         private set
 
     fun init(c: Context) { app = c.applicationContext }
-
-    /** ML Kit यह भाषा फ़ोन पर ही बदल सकता है? (नहीं = DK का AI) */
-    fun offline(lang: String): Boolean = ARM64 && try { TranslateLanguage.fromLanguageTag(lang) != null } catch (_: Throwable) { false }
-
-    /** ML Kit की .so सिर्फ़ arm64 वाले APK में (build.gradle.kts - MB बचाने को); बाकी फ़ोनों पर DK का AI */
-    private val ARM64: Boolean by lazy { try { android.os.Build.SUPPORTED_64_BIT_ABIS.contains("arm64-v8a") } catch (_: Throwable) { false } }
 
     /** तैयार अनुवाद (नहीं = null) */
     fun get(lang: String, key: String): String? = table(lang)[key]
@@ -78,8 +69,11 @@ object UiMt {
             if (batch.isEmpty()) { status = ""; synchronized(this) { worker = null }; return }
             var any = false
             for ((lang, jobs) in batch.groupBy { it.lang }) {
-                val got = try { if (offline(lang)) mlkit(lang, jobs) else ai(lang, jobs) } catch (e: Throwable) {
-                    DKLog.d("UI अनुवाद ($lang) नहीं हुआ: ${e.message?.take(100)}"); emptyMap()
+                val got = HashMap<String, String>()
+                try { got.putAll(web(lang, jobs)) } catch (e: Exception) { DKLog.d("UI अनुवाद (web, $lang) नहीं हुआ: ${e.message?.take(100)}") }
+                val left = jobs.filter { got[it.key].isNullOrBlank() }
+                if (left.isNotEmpty()) try { got.putAll(ai(lang, left)) } catch (e: Exception) {
+                    DKLog.d("UI अनुवाद (AI, $lang) नहीं हुआ: ${e.message?.take(100)}")
                 }
                 val t = table(lang)
                 for (j in jobs) {
@@ -93,29 +87,39 @@ object UiMt {
         }
     }
 
-    private fun mlkit(lang: String, jobs: List<Job>): Map<String, String> {
-        val target = TranslateLanguage.fromLanguageTag(lang) ?: return emptyMap()
+    /**
+     * internet वाला अनुवाद: कई लाइनें एक साथ ("\n" से जोड़कर, उसी क्रम में लौटती हैं). URL छोटा रहे इसलिए छोटे-छोटे हिस्से.
+     * गिनती न मिले (किसी लाइन में "\n" था) = वह हिस्सा एक-एक करके.
+     */
+    private fun web(lang: String, jobs: List<Job>): Map<String, String> {
         val out = HashMap<String, String>()
+        status = "अनुवाद हो रहा है…"
         for ((from, list) in jobs.groupBy { it.from }) {
-            val src = TranslateLanguage.fromLanguageTag(from) ?: TranslateLanguage.HINDI
-            if (src == target) { list.forEach { out[it.key] = it.text }; continue }
-            val tr = synchronized(translators) {
-                translators.getOrPut("$src>$target") {
-                    Translation.getClient(TranslatorOptions.Builder().setSourceLanguage(src).setTargetLanguage(target).build())
+            if (from == lang) { list.forEach { out[it.key] = it.text }; continue }
+            for (part in WebTr.parts(list.map { it.text })) {
+                val idx = part.map { i -> list[i] }
+                try {
+                    val got = WebTr.split(fetch(from, lang, idx.joinToString("\n") { it.text.replace('\n', ' ') }), idx.size)
+                    if (got != null) idx.forEachIndexed { i, j -> out[j.key] = got[i] }
+                    else for (j in idx) fetch(from, lang, j.text).takeIf { it.isNotBlank() }?.let { out[j.key] = it }
+                } catch (e: java.io.IOException) {
+                    DKLog.d("UI अनुवाद (web) अधूरा: ${e.message?.take(80)}")   // बाकी AI से
                 }
-            }
-            status = "भाषा-पैक तैयार हो रहा है (पहली बार इंटरनेट से)…"
-            Tasks.await(tr.downloadModelIfNeeded(DownloadConditions.Builder().build()), DOWNLOAD_MIN, TimeUnit.MINUTES)
-            status = "अनुवाद हो रहा है…"
-            for (j in list) {
-                try { out[j.key] = Tasks.await(tr.translate(j.text), TEXT_SEC, TimeUnit.SECONDS) }
-                catch (e: Exception) { DKLog.d("UI अनुवाद: ${e.message?.take(80)}") }
             }
         }
         return out
     }
 
-    /** ML Kit में न हो वह भाषा: DK का AI (JSON सूची में, उसी क्रम में) */
+    private fun fetch(from: String, to: String, q: String): String {
+        val url = "https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=" + WebTr.code(from) + "&tl=" + WebTr.code(to) +
+            "&q=" + URLEncoder.encode(q, "UTF-8")
+        http.newCall(okhttp3.Request.Builder().url(url).header("User-Agent", "Mozilla/5.0").build()).execute().use { r ->
+            if (!r.isSuccessful) throw java.io.IOException("HTTP ${r.code}")
+            return WebTr.parse(r.body?.string().orEmpty())
+        }
+    }
+
+    /** web से न मिला: DK का AI (JSON सूची में, उसी क्रम में) */
     private fun ai(lang: String, jobs: List<Job>): Map<String, String> {
         val c = app ?: return emptyMap()
         val name = WorldLangs.english(lang)
@@ -161,6 +165,4 @@ object UiMt {
     private const val BATCH = 40
     private const val GATHER_MS = 350L
     private const val RETRY_MS = 10 * 60_000L
-    private const val DOWNLOAD_MIN = 10L
-    private const val TEXT_SEC = 20L
 }

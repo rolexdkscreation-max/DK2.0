@@ -76,3 +76,15 @@ if `main` moved, update the branch and re-run tests first. Merging to `main` tri
 - बग: मैनेजर → गिट → डिबगर → प्लानर → कोडर → रिव्यूअर → टेस्टर
 - GitHub मोड: token + चुना रिपो. नॉर्मल मोड: गिट बंद, कोड फ़ाइल-नाम के साथ. token गलत/रिपो not found = रुककर बताओ + नॉर्मल मोड का विकल्प
 - कोई रिपो कोड में तय नहीं; रिपो/branch screen पर चुने जाते हैं
+
+## 8. APK का साइज़ — भारी चीज़ ऐप के अंदर नहीं, internet से download (मालिक का साफ़ नियम, 25 नवंबर 2026)
+
+हर कोडिंग एजेंट / इंसान / कोई भी जो इस repo में काम करे, उसके लिए:
+
+- कोई भी चीज़ जो APK का साइज़ बढ़ाए (करीब 1 MB या ज़्यादा) — SDK/library जिसमें native `.so` हो, ML/AI/आवाज़ के मॉडल, भाषा-पैक, बड़े फ़ॉन्ट, वीडियो/ऑडियो, बड़े assets — **APK में मत डालो।**
+- ऐसी चीज़ **internet से download** होनी चाहिए: पहली बार ज़रूरत पड़ने पर download, फिर फ़ोन में (filesDir/cache) रखो — जैसे Supertonic की आवाज़ें/मॉडल। या उसकी जगह internet वाली API (बिना भारी SDK) इस्तेमाल करो।
+- नई dependency जोड़ने से पहले देखो वह कितनी भारी है। PR में लिखो: APK पहले कितना था, अब कितना (CI का DK.apk)। साइज़ 1 MB से ज़्यादा बढ़े तो वह PR गलत है — रास्ता बदलो।
+- `app/build.gradle.kts` में जानी-मानी भारी libraries (ML Kit, TensorFlow Lite, MediaPipe, OpenCV, FFmpeg, sherpa-onnx वगैरह) `ApkSizeRuleTest` रोक देता है। पहले से मौजूद onnxruntime (Supertonic के लिए, सिर्फ़ arm64) ही अपवाद है।
+- उदाहरण: ML Kit translate ने APK 27 MB → 34 MB कर दिया था, इसलिए हटाया गया; UI अनुवाद अब internet से होता है (UiMt.kt)।
+
+English: Never bundle heavy things (≥ ~1 MB: native-.so SDKs, ML/voice models, language packs, big fonts/media) into the APK. Download them from the internet on first use and cache them, or use a lightweight web API instead. Report APK size before/after in every PR that adds a dependency. `ApkSizeRuleTest` blocks known heavy libraries in app/build.gradle.kts.
