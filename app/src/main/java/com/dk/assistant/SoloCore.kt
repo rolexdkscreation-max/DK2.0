@@ -288,8 +288,10 @@ object Solo {
         val gone = a.subList(pre, a.size - suf)
         val added = b.subList(pre, b.size - suf)
         val sb = StringBuilder("=== $path " + (if (old == null) "(NEW FILE)" else "(changed around line ${pre + 1})") + " ===\n")
-        for (l in gone) { if (sb.length > max) break; sb.append("- ").append(l).append('\n') }
-        for (l in added) { if (sb.length > max) break; sb.append("+ ").append(l).append('\n') }
+        for (l in gone.map { "- $it" } + added.map { "+ $it" }) {
+            if (sb.length > max) break
+            sb.append(l).append('\n')
+        }
         if (sb.length > max) sb.append("(diff cut - READ the file to see the rest)\n")
         return sb.toString().trimEnd()
     }

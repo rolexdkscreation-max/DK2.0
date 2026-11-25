@@ -158,13 +158,14 @@ object CoderShots {
                 if (sha.isBlank()) {
                     CoderSession.add("e", "📸 GitHub पर branch नहीं मिली (" + branches.joinToString() + ") — रिपो/branch जाँचें")
                 } else {
-                    withContext(Dispatchers.IO) { gh.dispatchWorkflow(repo, UI_WORKFLOW, branch) }
-                    CoderSession.add("s", "📸 branch $branch पर emulator चला दिया ($UI_WORKFLOW) — ऐप की स्क्रीनें (नई + पुरानी main वाली) खोलकर screenshot ले रहा है। " +
+                    withContext(Dispatchers.IO) { gh.dispatchWorkflow(repo, Shots.UI_WORKFLOW, branch) }
+                    CoderSession.add("s", "📸 branch $branch पर emulator चला दिया (${Shots.UI_WORKFLOW}) — ऐप की स्क्रीनें (नई + पुरानी main वाली) खोलकर screenshot ले रहा है। " +
                         "20-40 मिनट में तस्वीरें इसी चैट में आएँगी (टैप = बड़ी)।")
                     fetchLater(app, gh, repo, sha, UI_WAIT_MS, untilName = UI_RUN)
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
                 CoderSession.add("e", "📸 screenshot वाला emulator नहीं चला पाया: " + (e.message ?: e.javaClass.simpleName).take(160) +
                     " — token में Actions: Read and write दें, या GitHub → Actions → \"UI Preview\" → Run workflow (branch $branch)")
             }
