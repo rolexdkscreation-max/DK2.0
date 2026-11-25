@@ -63,7 +63,8 @@ class LiveTextPersonaAgentNov25Test {
         assertTrue(PrivacyGate.explicitOk(PrivacyGate.Kind.SCREEN, "तुरंत ऐड करो, कार्ट में ऐड करो"))
         assertTrue(PrivacyGate.explicitOk(PrivacyGate.Kind.SCREEN, "कैश ऑन डिलीवरी कर दो"))
         assertFalse(PrivacyGate.explicitOk(PrivacyGate.Kind.SCREEN, "कार्ट में मत डालो"))
-        assertTrue(src("tools/ToolAgent.kt").contains("PrivacyGate.explicitOk(pk, goal)"))
+        assertTrue(src("tools/ToolAgent.kt").contains("pk != com.dk.assistant.PrivacyGate.Kind.GALLERY &&"))
+        assertTrue(src("tools/ToolAgent.kt").contains("PrivacyGate.screenTask(goal)"))
     }
 
     @Test fun shopping_ownerSaid_noExtraAsk_payNever() {
