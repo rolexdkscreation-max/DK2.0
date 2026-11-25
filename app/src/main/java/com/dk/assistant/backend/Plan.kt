@@ -50,6 +50,10 @@ object Plan {
         return effective(parse(Prefs.str(c, LEVEL, "free")), Prefs.long(c, UNTIL, 0L), now)
     }
 
+    /** 25 नवंबर 2026: प्रोफ़ाइल के verified टिक के लिए - सिर्फ़ याद रखा लाइसेंस (बिना सर्वर वाले build का OWNER नहीं) */
+    fun saved(c: Context): Level = parse(Prefs.str(c, LEVEL, "free"))
+    fun savedUntil(c: Context): Long = Prefs.long(c, UNTIL, 0L)
+
     /** सर्वर से आया स्तर याद रखो */
     fun note(c: Context, level: String, expiresAt: Long) {
         Prefs.edit(c) { putString(LEVEL, parse(level).name.lowercase()); putLong(UNTIL, expiresAt.coerceAtLeast(0L)) }
