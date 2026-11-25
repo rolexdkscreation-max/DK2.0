@@ -81,7 +81,7 @@ object GeminiChatChain {
     const val ALL_FAILED_LOG = "[AI Service] सारे मॉडल / keys व्यस्त (429/503) - Server busy"
 
     /** सिर्फ़ तब जब सारे मॉडल (और सारी keys) fail - यूज़र की भाषा में */
-    const val BUSY_HI = "सर्वर अभी व्यस्त है, कृपया एक मिनट बाद फिर कोशिश करें।"
+    const val BUSY_HI = "सर्वर अभी थोड़ा busy है, बस एक मिनट बाद फिर से कोशिश कीजिए।"
     const val BUSY_EN = "Server busy, please try again in a minute."
 
     /** सारी गलतियाँ भीड़ / limit वाली (429 / 503)? - तब ऊपर वाला दोस्ताना संदेश */

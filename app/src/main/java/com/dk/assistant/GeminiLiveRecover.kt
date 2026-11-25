@@ -97,7 +97,7 @@ internal fun GeminiLive.stuckNoSwap() {
 /** 21 नवंबर 2026: भेजने लायक बात नहीं मिली = चुप नहीं; स्क्रीन पर + फ़ोन की अपनी आवाज़ में साफ़ "फिर से बोलिए" (मिनट में एक बार) */
 internal fun GeminiLive.askAgain() {
     val now = System.currentTimeMillis()
-    DKState.hint("जवाब अटक गया — कृपया एक बार फिर बोलिए")
+    DKState.hint("जवाब अटक गया — एक बार फिर बोलिए")
     if (!isPlaying() && DKState.mode == Mode.THINKING) setMode(Mode.LISTENING)
     if (!LiveRecover.lastChanceOk(now, askAgainAt)) return
     askAgainAt = now

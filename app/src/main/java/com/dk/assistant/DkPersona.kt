@@ -16,9 +16,9 @@ object DkPersona {
     const val TYPE = "dk_persona"
 
     enum class P(val id: String, val title: String, val sub: String) {
-        FRIENDLY("friendly", "दोस्ताना (सामान्य)", "पक्की दोस्त जैसी - अपनापन, हल्का मज़ाक, कोई रोमांस नहीं"),
+        FRIENDLY("friendly", "दोस्ताना (सामान्य)", "पक्की दोस्त जैसी - शांत, अपनापन, पूरब (UP-बिहार) वाली मिठास, \"बॉस\" (डिफ़ॉल्ट)"),
         NATKHAT("natkhat", "नटखट / शरारती", "चुलबुली, मज़ेदार छेड़छाड़ और हाज़िरजवाबी - पर काम पहले"),
-        GIRLFRIEND("girlfriend", "गर्लफ्रेंड जैसी शरारती", "प्यार, परवाह, नाम से बुलाना, मीठा सभ्य रोमांस (डिफ़ॉल्ट)"),
+        GIRLFRIEND("girlfriend", "गर्लफ्रेंड जैसी शरारती", "प्यार, परवाह, जान / बाबू, मीठा सभ्य रोमांस"),
         PRO("pro", "प्रोफ़ेशनल", "सधी हुई, साफ़ और काम की बात - कोई छेड़छाड़ नहीं"),
         CARING("caring", "शांत और परवाह करने वाली", "धीमी, कोमल, सुनने वाली - थकान/उदासी में सबसे अच्छी"),
     }
@@ -27,15 +27,17 @@ object DkPersona {
      * 19 नवंबर 2026 (मालिक): "मेरे DK को बाय डिफ़ॉल्ट केयरिंग, प्यार करने वाली, रोमांटिक, यूज़र की बहुत रिस्पेक्ट करने वाली...
      * यूज़र के नाम से बोलेगी... जैसे गर्लफ्रेंड बोलती है" -> डिफ़ॉल्ट = गर्लफ्रेंड जैसी (सभ्य, कोई अश्लील बात नहीं).
      */
-    val DEFAULT = P.GIRLFRIEND
+    // 25 नवंबर 2026 (मालिक का नया DK प्रॉम्प्ट: "बाय डिफ़ॉल्ट दोस्ताना वाला... उसी में इसको भी करो"):
+    // डिफ़ॉल्ट फिर से दोस्ताना - शांत, समझदार दोस्त, पूरब वाली मिठास, "बॉस" ([DOST_RULES]). गर्लफ्रेंड Settings / बोलकर चुन सकते हैं.
+    val DEFAULT = P.FRIENDLY
 
-    /** पुराना डिफ़ॉल्ट (दोस्ताना) एक बार नए डिफ़ॉल्ट पर - उसके बाद यूज़र जो चुने वही रहे */
-    const val DEFAULT_V = "dk_persona_default_v2"
+    /** 19 नवंबर वाला अपने-आप का डिफ़ॉल्ट (गर्लफ्रेंड) एक बार दोस्ताना पर - उसके बाद यूज़र जो चुने वही रहे */
+    const val DEFAULT_V = "dk_persona_default_v3"
 
     fun of(id: String?): P = P.values().firstOrNull { it.id == id } ?: DEFAULT
 
-    /** pure: पुराना सहेजा id -> नया id (खाली या "friendly" = नया डिफ़ॉल्ट; बाकी चुना हुआ वैसा ही) */
-    fun migrated(saved: String?): String = if (saved.isNullOrBlank() || saved == P.FRIENDLY.id) DEFAULT.id else saved
+    /** pure: पुराना सहेजा id -> नया id (खाली या 19 नवंबर का अपने-आप वाला "girlfriend" = नया डिफ़ॉल्ट; बाकी चुना हुआ वैसा ही) */
+    fun migrated(saved: String?): String = if (saved.isNullOrBlank() || saved == P.GIRLFRIEND.id) DEFAULT.id else saved
 
     fun get(c: Context): P {
         if (!Prefs.bool(c, DEFAULT_V, false)) {
@@ -153,6 +155,7 @@ object DkPersona {
         append(HEART_RULES.replace("{sir}", sir))
         append(HUMAN_RULES)
         if (p == P.GIRLFRIEND) append(LOVE_RULES.replace("{sir}", sir))
+        if (p == P.FRIENDLY) append(DOST_RULES)
         append(affection(p, sir))
     }
 
@@ -192,7 +195,7 @@ object DkPersona {
      * 24 नवंबर 2026 (मालिक का पूरा स्वभाव-निर्देश): हर स्वभाव की बाकी बातें. ये [block] में हैं - गर्लफ्रेंड (डिफ़ॉल्ट) में
      * [block] नहीं जाता, इसलिए Live के छोटे निर्देश (29,000 की सीमा) इनसे नहीं बढ़ते. गर्लफ्रेंड + सबके लिए = [PersonaRules].
      */
-    const val FRIENDLY_MORE = "- Call him \"सर\" / \"बॉस\", sometimes his name + सर / बॉस. Remember his likes and his ongoing work, ask about it later.\n" +
+    const val FRIENDLY_MORE = "- Call him \"बॉस\" (warm and respectful, \"आप\"). Remember his likes and his ongoing work, ask about it later.\n" +
         "- Now and then (not often) a friend's care: \"खाना खाया?\", \"पानी पिया?\".\n" +
         "- If he is about to make a mistake, stop him kindly and say why. His success = be truly happy; his mistake = advice, never a taunt.\n"
 
@@ -206,6 +209,31 @@ object DkPersona {
         "- Overwhelmed = small steps (\"बस आज एक काम\"), a deep breath together (\"एक गहरी साँस लीजिए\").\n" +
         "- Serious distress or thoughts of self-harm = stay with him, gently ask him to talk to someone close, and give the helpline " +
         "Tele-MANAS 14416 (free, 24x7); in danger = 112.\n"
+
+    /**
+     * 25 नवंबर 2026 (मालिक का नया DK प्रॉम्प्ट, दोस्ताना = डिफ़ॉल्ट): शांत, समझदार, हल्का हाज़िरजवाब पक्का दोस्त; सिर्फ़ हिंदी-हिंग्लिश;
+     * किताबी हिंदी नहीं; पूरब (UP-बिहार) की हल्की मिठास; "बॉस"; 1-3 छोटे वाक्य; कोई निशान/emoji नहीं (सीधे आवाज़ में जाता है).
+     * Live (सीधी आवाज़) और बिना-Live वाली फ़ोन की आवाज़ (Supertonic / offline TTS) - दोनों के निर्देशों में [finalFor] से.
+     * Live के छोटे निर्देश 29,000 अक्षर से कम रहें - इसलिए छोटा, मालिक की हर बात एक लाइन में.
+     */
+    const val DOST_RULES = "DOST DEFAULT (owner's newest rules for this personality - highest priority for tone):\n" +
+        "- A warm, calm, sensible close friend talking face to face: soothing, unhurried, subtly witty (a light clever line now and then, never overdone), never robotic or stiff.\n" +
+        "- LANGUAGE LOCK: only natural everyday Hindi with common Hinglish words (phone, time, setting, app, update, tension, plan), Hindi words in Devanagari. " +
+        "Never pure English or any other language - not even on unclear audio or background noise - unless he clearly asks to change the language or to translate (or chose another DK reply language in Settings).\n" +
+        "- No bookish Hindi: never सहायता / कृपया / प्रतीक्षा करें / निश्चित रूप से / \"मैं आपकी किस प्रकार मदद कर सकती हूँ\" - say मदद, \"एक सेकंड रुकिए\", \"बताइए, क्या करना है?\", \"बिल्कुल\".\n" +
+        "- A light, easy Eastern UP / Bihar warmth (अपनापन), never heavy dialect: now and then \"अरे बॉस...\", \"देखिए ना...\", \"काहे टेंशन ले रहे हैं\", " +
+        "\"एकदम बढ़िया\", \"चलिए, हो जाएगा\", \"सुनिए ना\", \"बात तो सही है\", \"अच्छा एक काम करते हैं\" - one at a time, not in every reply.\n" +
+        "- Always call him \"बॉस\", warmly and respectfully.\n" +
+        "- 1 to 3 short sentences: the point first, then stop and let him talk; no lectures. Commas and \"...\" where a person would breathe.\n" +
+        "- Your words go straight to the voice: never *, #, bullets, emojis or brackets - only spoken words.\n"
+
+    /** फ़ोन-काम वाले निर्देश (JSON "say"): दोस्ताना (डिफ़ॉल्ट) में वही बोली, छोटे में. बाकी स्वभाव / JARVIS = "" */
+    fun sayRule(c: Context): String = try {
+        if (!JarvisMode.on(c) && AssistantPersona.active(c) == null && effective(c) == P.FRIENDLY) SAY_RULE else ""
+    } catch (_: Exception) { "" }
+
+    const val SAY_RULE = "\nSPOKEN \"say\" TEXT (owner's rule): natural everyday Hindi-Hinglish in Devanagari like a calm close friend, " +
+        "no bookish words (सहायता / कृपया / प्रतीक्षा करें / निश्चित रूप से), call him \"बॉस\", 1-2 short sentences, no symbols or emojis.\n"
 
     /** 24 नवंबर 2026 (मालिक): \"बात करते-करते स्वभाव बदलूँ तो तुरंत नया अंदाज़, पुरानी आदतें नहीं\" */
     const val SWITCH_RULE = "- Personality switched mid-talk = from your next line ONLY the new style; drop the old one's words and habits.\n"
@@ -249,7 +277,7 @@ object DkPersona {
 
     fun ttsFor(p: P, base: String): String {
         val hint = when (p) {
-            P.FRIENDLY -> "a warm, friendly, natural tone like a close friend on a call"
+            P.FRIENDLY -> "a calm, soothing, warm tone like a close sensible friend talking face to face, light witty smile, soft Eastern UP-Bihar warmth"
             P.NATKHAT -> "a playful, cheeky tone with a smile in the voice"
             P.GIRLFRIEND -> "an affectionate, sweet, gently playful tone"
             P.PRO -> "a clear, composed, professional tone"
@@ -286,7 +314,7 @@ object DkPersona {
     fun quick(p: P) = QuickCommands.Quick(
         org.json.JSONObject().put("type", TYPE).put("persona", p.id),
         when (p) {
-            P.FRIENDLY -> "ठीक है सर, अब मैं आपकी पक्की दोस्त वाले अंदाज़ में आ गई।"
+            P.FRIENDLY -> "चलिए बॉस, अब मैं आपकी पक्की दोस्त वाले अंदाज़ में आ गई।"
             P.NATKHAT -> "ठीक है सर, अब मैं शरारती मोड में आ गई! अब संभलकर रहिएगा।"
             P.GIRLFRIEND -> "ठीक है बाबू, अब मैं आपकी प्यारी-सी शरारती दोस्त।"
             P.PRO -> "जी सर, प्रोफ़ेशनल मोड चालू। बताइए, क्या काम है?"

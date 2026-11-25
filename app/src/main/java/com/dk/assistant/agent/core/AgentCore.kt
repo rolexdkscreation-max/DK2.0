@@ -46,11 +46,11 @@ enum class ActionMethod { ACCESSIBILITY_CLICK, GESTURE_ON_ELEMENT_BOUNDS, SET_TE
 
 /** ऐसी स्क्रीन जहाँ DK अपने-आप आगे नहीं जाता - यूज़र खुद करे */
 enum class Blocker(val hi: String, val en: String) {
-    LOGIN("लॉग-इन माँगा जा रहा है - कृपया खुद लॉग-इन कर लें", "The app is asking you to log in - please log in yourself"),
+    LOGIN("लॉग-इन माँगा जा रहा है - आप खुद लॉग-इन कर लीजिए", "The app is asking you to log in - please log in yourself"),
     CAPTCHA("CAPTCHA आया है - इसे आपको खुद भरना होगा", "A CAPTCHA appeared - please solve it yourself"),
-    TWO_FACTOR("सुरक्षा कोड (2-step) माँगा गया है - कृपया खुद डालें", "A security / 2-step code is needed - please enter it yourself"),
-    SECURITY_CHECK("ऐप ने सुरक्षा जाँच दिखाई है - कृपया खुद देख लें", "The app is showing a security check - please handle it yourself"),
-    PERMISSION_PROMPT("Android इजाज़त माँग रहा है - कृपया खुद हाँ/ना चुनें", "Android is asking for a permission - please choose yourself"),
+    TWO_FACTOR("सुरक्षा कोड (2-step) माँगा गया है - आप खुद डाल दीजिए", "A security / 2-step code is needed - please enter it yourself"),
+    SECURITY_CHECK("ऐप ने सुरक्षा जाँच दिखाई है - आप खुद देख लीजिए", "The app is showing a security check - please handle it yourself"),
+    PERMISSION_PROMPT("Android इजाज़त माँग रहा है - आप खुद हाँ/ना चुन लीजिए", "Android is asking for a permission - please choose yourself"),
 }
 
 enum class FailureReason {

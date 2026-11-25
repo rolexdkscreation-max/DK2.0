@@ -93,7 +93,7 @@ object LiveRecover {
      * (नई बातचीत). अब handle तभी हटे जब वही handle दोबारा अटका (सत्र सच में खराब); वरना उसी से बातचीत वहीं से.
      */
     /** अटका + बदलने की सीमा पूरी + भेजने लायक बात नहीं = फ़ोन की आवाज़ में यही (SYSTEM NOTE नहीं) */
-    const val ASK_AGAIN_LINE = "माफ़ कीजिए, आपकी बात मुझ तक नहीं पहुँची। कृपया एक बार फिर से बोलिए।"
+    const val ASK_AGAIN_LINE = "अरे, आपकी बात मुझ तक ठीक से नहीं पहुँची... एक बार फिर से बोलिए ना।"
 
     fun dropHandle(again: Boolean, handle: String?, lastStuckHandle: String?): Boolean =
         again && handle != null && handle == lastStuckHandle

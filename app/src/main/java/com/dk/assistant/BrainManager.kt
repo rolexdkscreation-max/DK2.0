@@ -1089,7 +1089,8 @@ class BrainManager(private val ctx: Context) {
             append("\n" + NowClock.line())
             append(TalkStyle.FRIEND_HI)   // मालिक का लिखा "करीबी दोस्त" हिस्सा (शब्दशः)
             // 20 नवंबर 2026 (मालिक: context छोटा): गर्लफ्रेंड वाला स्वभाव FRIEND MODE से ऊपर है (उसी में लिखा) = छोटे निर्देशों में दोनों नहीं
-            if (Prefs.friendMode(ctx) && (JarvisMode.on(ctx) || DkPersona.effective(ctx) != DkPersona.P.GIRLFRIEND)) append("\n").append(FriendStyle.persona(f, user))
+            // 25 नवंबर 2026: दोस्ताना (डिफ़ॉल्ट) में दोस्त वाली बातें DkPersona.DOST_RULES में = यह दोबारा नहीं (छोटे निर्देश 29,000 से कम)
+            if (Prefs.friendMode(ctx) && (JarvisMode.on(ctx) || DkPersona.effective(ctx).let { it != DkPersona.P.GIRLFRIEND && it != DkPersona.P.FRIENDLY })) append("\n").append(FriendStyle.persona(f, user))
             append(CareTime.block())
             if (JarvisMode.on(ctx)) append(JarvisMode.block(user)) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(user, lite = true))).append(SpeakingStyle.block(user)).append(DkPersona.finalBlock(ctx, Prefs.userName(ctx)))
             append(AssistantPersona.block(ctx))
@@ -1150,6 +1151,7 @@ class BrainManager(private val ctx: Context) {
             append(TaskSense.PROMPT).append("\n").append(ActFirstRule.TEXT).append("\n")   // नवंबर 2026: काम / सवाल / जवाब / बातचीत - पहले पहचानो
             if (Prefs.friendMode(ctx)) append(FriendStyle.persona(dkFemale(), user)).append(FriendTalk.block(ctx)).append("\n")
             append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(Prefs.userName(ctx), Prefs.assistantName(ctx))).append(OwnerProfile.block(ctx))
+            append(DkPersona.sayRule(ctx))   // 25 नवंबर 2026: फ़ोन वाले काम में बोली जाने वाली लाइन भी दोस्ताना अंदाज़ में (offline आवाज़)
         }
         return intro + BASE_PROMPT
     }

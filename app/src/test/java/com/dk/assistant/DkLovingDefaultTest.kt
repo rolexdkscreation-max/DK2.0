@@ -8,10 +8,13 @@ import org.junit.Test
 /** 19 नवंबर 2026 (मालिक): डिफ़ॉल्ट DK = केयरिंग, प्यार वाली, इज़्ज़त करने वाली, नाम से बुलाने वाली - सभ्य, कोई अश्लील बात नहीं */
 class DkLovingDefaultTest {
 
+    // 25 नवंबर 2026 (मालिक ने डिफ़ॉल्ट फिर बदला: "बाय डिफ़ॉल्ट दोस्ताना वाला"): 19 नवंबर का अपने-आप वाला गर्लफ्रेंड एक बार दोस्ताना पर
     @Test fun oldDefaultMovesOnce_choiceKept() {
-        assertEquals("girlfriend", DkPersona.migrated(null))
-        assertEquals("girlfriend", DkPersona.migrated(""))
-        assertEquals("girlfriend", DkPersona.migrated("friendly"))
+        assertEquals("friendly", DkPersona.migrated(null))
+        assertEquals("friendly", DkPersona.migrated(""))
+        assertEquals("friendly", DkPersona.migrated("girlfriend"))
+        assertEquals("friendly", DkPersona.migrated("friendly"))
+        assertEquals("dk_persona_default_v3", DkPersona.DEFAULT_V)   // नया निशान = पुराने फ़ोनों पर भी एक बार चले
         assertEquals("pro", DkPersona.migrated("pro"))
         assertEquals("natkhat", DkPersona.migrated("natkhat"))
         assertEquals("caring", DkPersona.migrated("caring"))

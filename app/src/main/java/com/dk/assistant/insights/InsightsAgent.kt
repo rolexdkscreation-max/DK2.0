@@ -385,7 +385,7 @@ object InsightsAgent {
         if (km?.isKeyguardLocked == true) {
             // नवंबर 2026: लॉक पर ऐप खोलने का दिखावा नहीं - मालिक के अनलॉक करने तक (45 सेकंड) रुको, पट्टी पर साफ़ लिखा
             lockedNow = true
-            TaskStatus.step(KEY, "फ़ोन लॉक है - कृपया अनलॉक करें, फिर मैं आपके सामने ऐप खोलूँगी")
+            TaskStatus.step(KEY, "फ़ोन लॉक है - एक बार अनलॉक कर दीजिए, फिर मैं आपके सामने ऐप खोलूँगी")
             val until = System.currentTimeMillis() + 45_000
             while (km?.isKeyguardLocked == true && System.currentTimeMillis() < until && job?.isCancelled != true) kotlinx.coroutines.delay(500)
             lockedNow = false

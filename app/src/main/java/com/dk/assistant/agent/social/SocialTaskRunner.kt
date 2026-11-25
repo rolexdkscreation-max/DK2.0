@@ -274,11 +274,11 @@ class SocialTaskRunner(
                 val sure = step.requireBoth || (words.isNotEmpty() && r.obs?.hasText(*words.toTypedArray()) == true)
                 sm.go(ExecPhase.COMPLETED)
                 if (sure) report(TaskStatus.COMPLETED, withWarnings(doneMessage()))
-                else report(TaskStatus.SUBMITTED_UNVERIFIED, "\"${step.name}\" दबा दिया, पर पक्का नहीं दिखा कि हो गया - कृपया ${task.platform.label} में एक बार देख लें")
+                else report(TaskStatus.SUBMITTED_UNVERIFIED, "\"${step.name}\" दबा दिया, पर पक्का नहीं दिखा कि हो गया - ${task.platform.label} में एक बार देख लीजिए")
             }
             is ActionResult.Failed -> if (r.reason == FailureReason.NOT_VERIFIED) {
                 sm.go(ExecPhase.VERIFYING); sm.go(ExecPhase.COMPLETED)
-                report(TaskStatus.SUBMITTED_UNVERIFIED, "\"${step.name}\" दबा दिया, पर पक्का नहीं हो पाया कि हो गया - कृपया ${task.platform.label} में देख लें")
+                report(TaskStatus.SUBMITTED_UNVERIFIED, "\"${step.name}\" दबा दिया, पर पक्का नहीं हो पाया कि हो गया - ${task.platform.label} में देख लीजिए")
             } else fail("\"${step.name}\" नहीं दब पाया - कुछ पोस्ट/भेजा नहीं गया")
             is ActionResult.Blocked -> fail("${r.blocker.hi} - काम रोक दिया")
         }
