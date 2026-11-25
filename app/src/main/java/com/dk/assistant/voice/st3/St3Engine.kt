@@ -315,7 +315,7 @@ object St3Engine {
                             if (first) St3Stats.testFirstAudio(System.currentTimeMillis() - askedAt)
                             if (!first) kotlinx.coroutines.runBlocking { q.send(St3Synth.silence(300)) }
                             first = false
-                            kotlinx.coroutines.runBlocking { q.send(St3Synth.pcm16(wav)) }
+                            kotlinx.coroutines.runBlocking { q.send(St3Synth.pcm16(St3Loud.speech(wav))) }   // 25 नवंबर 2026: Gemini जितनी तेज़
                         }
                     } catch (e: Throwable) {
                         Quiet.note(e); failure = e.message ?: e.javaClass.simpleName

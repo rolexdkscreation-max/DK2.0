@@ -64,7 +64,7 @@ object OfflineVoice {
                                 if (gen.get() != my) return@synthBlocking
                                 if (!first) kotlinx.coroutines.runBlocking { q.send(St3Synth.silence(250)) }
                                 first = false
-                                kotlinx.coroutines.runBlocking { q.send(St3Synth.pcm16(wav)) }
+                                kotlinx.coroutines.runBlocking { q.send(St3Synth.pcm16(St3Loud.speech(wav))) }   // 25 नवंबर 2026: Gemini जितनी तेज़
                             }
                         } catch (e: CancellationException) { throw e
                         } catch (e: Throwable) {

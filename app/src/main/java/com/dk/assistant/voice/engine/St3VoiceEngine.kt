@@ -6,6 +6,7 @@ import com.dk.assistant.voice.st3.St3Config
 import com.dk.assistant.voice.st3.St3Emotion
 import com.dk.assistant.voice.st3.St3Engine
 import com.dk.assistant.voice.st3.St3Load
+import com.dk.assistant.voice.st3.St3Loud
 import com.dk.assistant.voice.st3.St3Prosody
 import com.dk.assistant.voice.st3.St3Store
 import com.dk.assistant.voice.st3.St3Story
@@ -97,7 +98,8 @@ object St3VoiceEngine : VoiceEngine {
             }
             var samples = 0
             St3Engine.synthBlocking(c, said, voice, maxSteps, pick, split, (if (natural) St3Prosody.speedMul(said) else 1f) * moodSpeed) { raw ->
-                val wav = if (mood != null) St3Emotion.perform(raw, mood) else raw
+                // 25 नवंबर 2026 (मालिक: "ऑफ़लाइन आवाज़ बहुत धीमी सुनाई देती है"): Gemini जितने स्तर पर ([St3Loud])
+                val wav = if (mood != null) St3Loud.mood(St3Emotion.perform(raw, mood)) else St3Loud.speech(raw)
                 if (!first) out.write(ByteArray(St3Synth.SILENCE_24K_BYTES))
                 first = false
                 if (firstOfAnswer && samples == 0) {
