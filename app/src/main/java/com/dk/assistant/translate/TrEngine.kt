@@ -52,7 +52,7 @@ object TrEngine {
 
     const val VOICE = "Zephyr"
     private const val FRAME = 640 // 40 ms @16 kHz
-    private const val VERDICT_MS = 800L
+    private const val VERDICT_MS = 500L
     private const val MAX_LINES = 40
 
     @Volatile var ui: Ui? = null
@@ -297,8 +297,11 @@ object TrEngine {
     private fun aHeld(): Boolean {
         val au = audio ?: return true
         val now = System.currentTimeMillis()
-        val busy = ptt || !micOn || now < bBusyUntil || au.partner.busy() || (au.headset == null && (au.hindi.busy() || speak?.pending() == true))
-        if (busy) pauseUntil = now + 300
+        // 25 नवंबर 2026 (मालिक: "बोलते-बोलते भी सुन ले, एक सेकंड की देरी नहीं"): हिंदी बज रही हो तब भी सुनना चालू -
+        // स्पीकर की हिंदी माइक में आई तो भाषा-छन्नी (TrLang.verdict = DROP) उसे खुद फेंक देती है. सिर्फ़ सामने वाले की भाषा
+        // स्पीकर पर बजते समय रुको (वरना वही वापस अनुवाद होगा), और वह भी थोड़ी देर.
+        val busy = ptt || !micOn || now < bBusyUntil || au.partner.busy()
+        if (busy) pauseUntil = now + 150
         return busy || now < pauseUntil
     }
 
@@ -332,8 +335,8 @@ object TrEngine {
                 } else {
                     a?.send(bytes); spoke += 40
                     silent = if (speech) 0 else silent + 40
-                    // ठहराव पर / लंबी बात में छोटे ठहराव पर / 8 सेकंड पर - अनुवाद शुरू (streaming: टुकड़ों में)
-                    // 25 नवंबर 2026 (मालिक: "जवाब तुरंत बने"): ठहराव 480 -> 320 ms, लंबी बात 4.5 -> 3.5 s
+                    // ठहराव पर / लंबी बात में छोटे ठहराव पर / 6 सेकंड पर - अनुवाद शुरू (streaming: टुकड़ों में)
+                    // 25 नवंबर 2026 (मालिक: "जवाब तुरंत बने, टुकड़ों में"): ठहराव 480 -> 300 ms, लंबी बात 4.5 -> 2.5 s, 9 -> 6 s
                     if (TrVoice.turnEnds(spoke, silent)) {
                         a?.streamEnd(); inSpeech = false
                         if (status == St.LISTENING) setStatus(St.TRANSLATING)
@@ -408,8 +411,9 @@ object TrEngine {
                     val g = TrLang.guess(heard)
                     if (chosen == TrLang.AUTO && g.isNotEmpty() && g != TrLang.UNKNOWN && g != TrLang.HINDI && g != detected) { detected = g; main.post { if (running && !offline) rebuildB(force = false) } }
                 }
-                TrLang.Verdict.DROP -> { aBuf.clear(); au.hindi.flush(); aLine?.let { top.remove(it) } }
-                else -> { aBuf.clear(); au.hindi.flush(); aLine?.let { it.note = TrPrompt.NOT_UNDERSTOOD }; msg = TrPrompt.NOT_UNDERSTOOD }
+                // इस turn की आवाज़ अभी बजी ही नहीं (aBuf में रुकी थी) - पिछले अनुवाद की चल रही आवाज़ नहीं काटनी
+                TrLang.Verdict.DROP -> { aBuf.clear(); aLine?.let { top.remove(it) } }
+                else -> { aBuf.clear(); aLine?.let { it.note = TrPrompt.NOT_UNDERSTOOD }; msg = TrPrompt.NOT_UNDERSTOOD }
             }
             Unit
         }

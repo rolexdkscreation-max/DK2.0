@@ -25,16 +25,23 @@ object TrVoice {
     const val NO_AUDIO_MS = 1300L
 
     /** बोलने वाले का ठहराव (ms) - इतनी चुप्पी = बात खत्म, तुरंत अनुवाद (पहले 480) */
-    const val END_SILENCE_MS = 320
-    /** लंबी बात में छोटे ठहराव पर ही टुकड़ा भेज दो (पहले 4.5 s) */
-    const val LONG_SPEECH_MS = 3500
+    const val END_SILENCE_MS = 300
+    /** लंबी बात में छोटे ठहराव पर ही टुकड़ा भेज दो (पहले 4.5 s) - टुकड़ों में अनुवाद */
+    const val LONG_SPEECH_MS = 2500
     const val SHORT_PAUSE_MS = 160
     /** इससे लंबी बात बिना ठहराव = टुकड़ा भेजो (पहले 9 s) */
-    const val MAX_SPEECH_MS = 8000
+    const val MAX_SPEECH_MS = 6000
 
     /** माइक: अभी बात का टुकड़ा खत्म मानें? (Live को audioStreamEnd) */
     fun turnEnds(spokeMs: Int, silentMs: Int): Boolean =
         silentMs >= END_SILENCE_MS || (spokeMs >= LONG_SPEECH_MS && silentMs >= SHORT_PAUSE_MS) || spokeMs >= MAX_SPEECH_MS
+
+    /**
+     * स्क्रीन पर सिर्फ़ ताज़ा बात (मालिक: "जो बोला वही और उसका अनुवाद दिखे, अगला बोले तो पहले वाला हट जाए"):
+     * सूची की आख़िरी पंक्ति जिसमें कुछ लिखा है.
+     */
+    fun current(list: List<TrEngine.Line>): TrEngine.Line? =
+        list.lastOrNull { it.orig.isNotBlank() || it.tr.isNotBlank() || it.note.isNotBlank() }
 
     /** Live की आवाज़ न आए तो अगला कौन (क्रम में) */
     fun fallbacks(hasKey: Boolean, online: Boolean, geminiBlocked: Boolean): List<Src> =

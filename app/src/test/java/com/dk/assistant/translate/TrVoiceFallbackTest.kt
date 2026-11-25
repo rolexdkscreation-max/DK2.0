@@ -37,10 +37,27 @@ class TrVoiceFallbackTest {
     @Test fun faster_turnEnd() {
         assertFalse(TrVoice.turnEnds(1000, 280))
         assertTrue(TrVoice.turnEnds(1000, 320))
-        assertTrue(TrVoice.turnEnds(3600, 160))
+        assertTrue(TrVoice.turnEnds(2600, 160))
+        assertTrue(TrVoice.turnEnds(6000, 0))
         assertTrue(TrVoice.turnEnds(8000, 0))
         assertTrue(TrVoice.END_SILENCE_MS < 480)
         assertTrue(TrLive.setupJson("gemini-3.1-flash-live-preview", "p", "Zephyr").contains("\"silenceDurationMs\":300"))
+    }
+
+    @Test fun screen_showsOnlyLatest() {
+        val a = TrEngine.Line(false, "mr").apply { orig = "नमस्कार"; tr = "नमस्ते" }
+        val b = TrEngine.Line(false, "mr").apply { orig = "कसे आहात"; tr = "कैसे हो" }
+        val empty = TrEngine.Line(false, "mr")
+        assertEquals(b, TrVoice.current(listOf(a, b)))
+        assertEquals(a, TrVoice.current(listOf(a, empty)))
+        assertEquals(null, TrVoice.current(emptyList()))
+    }
+
+    @Test fun keepsListening_whileHindiPlays() {
+        val e = src("translate/TrEngine.kt")
+        val held = e.substringAfter("private fun aHeld()").substringBefore("private fun micLoop")
+        assertFalse(held.contains("hindi.busy()"))
+        assertTrue(held.contains("partner.busy()"))
     }
 
     @Test fun bcp_forBothSides() {

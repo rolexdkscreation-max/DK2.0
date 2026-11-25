@@ -124,7 +124,7 @@ class TranslatorActivity : AppCompatActivity(), TrEngine.Ui {
         topBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(6), px(6), px(6), px(6)) }
         topScroll = ScrollView(this).apply { addView(topBox); setBackgroundResource(R.drawable.glass_card) }
         UiLang.keep(topBox)
-        root.addView(topScroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(topScroll, LinearLayout.LayoutParams(-1, 0, 1.3f))
 
         // नीचे: मैं
         root.addView(header("मेरी बात (अनुवाद सहित)"))
@@ -228,27 +228,32 @@ class TranslatorActivity : AppCompatActivity(), TrEngine.Ui {
 
     override fun onClosed() { if (!isFinishing) { closing = true; finish() } }
 
+    /**
+     * 25 नवंबर 2026 (मालिक: "स्क्रीन बहुत छोटा दिखता है; जो बोला वही और उसका अनुवाद दिखे, अगला बोले तो पहले वाला हटे"):
+     * हर हिस्से में सिर्फ़ ताज़ा बात - बड़े अक्षरों में ([TrVoice.current]).
+     */
     private fun fill(box: LinearLayout, list: List<TrEngine.Line>, mine: Boolean) {
         box.removeAllViews()
-        for (l in list) {
-            val item = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL; setPadding(px(12), px(8), px(12), px(8))
-                setBackgroundResource(if (mine) R.drawable.glass_bubble_me else R.drawable.glass_bubble_dk)
-            }
-            val lang = TrLang.of(l.lang)?.hi ?: ""
-            if (!mine) {
-                // बड़ा: हिंदी अनुवाद; छोटा: असली बात
-                if (l.tr.isNotBlank()) item.addView(tv(l.tr, 18f, k.text))
-                if (l.orig.isNotBlank()) item.addView(tv((if (lang.isNotEmpty()) "$lang: " else "") + l.orig, 13f, k.sub))
-            } else {
-                if (l.orig.isNotBlank()) item.addView(tv("मैं: " + l.orig, 16f, k.text))
-                if (l.tr.isNotBlank()) item.addView(tv((if (lang.isNotEmpty()) "$lang: " else "") + l.tr, 17f, k.accent))
-                if (l.read.isNotBlank() && l.read != l.tr) item.addView(tv("(हिंदी में पढ़ें: ${l.read})", 13f, k.sub))
-            }
-            if (l.note.isNotBlank()) item.addView(tv(l.note, 13f, WARN))
-            if (item.childCount > 0) box.addView(item, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = px(6) })
+        val l = TrVoice.current(list) ?: run {
+            box.addView(tv(if (mine) "बड़ा बटन दबाकर हिंदी बोलें या नीचे लिखें" else "सामने वाले की बात यहाँ दिखेगी", 16f, k.hint))
+            return
         }
+        val item = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(14), px(12), px(14), px(12)) }
+        val lang = TrLang.of(l.lang)?.hi ?: ""
+        if (!mine) {
+            // ऊपर: सामने वाले ने जो बोला (असली भाषा); नीचे बड़ा: हिंदी अनुवाद
+            if (l.orig.isNotBlank()) item.addView(tv((if (lang.isNotEmpty()) "$lang: " else "") + l.orig, 22f, k.sub))
+            if (l.tr.isNotBlank()) item.addView(big(l.tr, 30f, k.text))
+        } else {
+            if (l.orig.isNotBlank()) item.addView(tv("मैं: " + l.orig, 22f, k.sub))
+            if (l.tr.isNotBlank()) item.addView(big((if (lang.isNotEmpty()) "$lang: " else "") + l.tr, 28f, k.accent))
+            if (l.read.isNotBlank() && l.read != l.tr) item.addView(tv("(हिंदी में पढ़ें: ${l.read})", 18f, k.sub))
+        }
+        if (l.note.isNotBlank()) item.addView(tv(l.note, 16f, WARN))
+        box.addView(item, LinearLayout.LayoutParams(-1, -2))
     }
+
+    private fun big(t: String, size: Float, color: Int) = tv(t, size, color).apply { setTypeface(typeface, Typeface.BOLD); setPadding(0, px(8), 0, 0) }
 
     private fun showMic() {
         micBtn.text = if (TrEngine.micOn) "सुनना: चालू (बंद करें)" else "सुनना: बंद (चालू करें)"
