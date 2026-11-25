@@ -18,7 +18,7 @@ class DkaiUltraBadgeTest {
     @Test fun ultraIsOnlyANameForAuto() {
         assertEquals("DKAI Ultra", DkaiUltra.NAME)
         assertEquals("हर काम में मदद • All-rounded fast • Free", DkaiUltra.ROW_SUB)
-        assertEquals("DKAI Ultra ▾", DkaiUltra.chip(null))
+        assertEquals("DKAI Ultra ▾", DkaiUltra.chip("Auto"))
         assertEquals("Gemma 4 ▾", DkaiUltra.chip("Gemma 4"))
         val sheet = src("dkai/DkaiSheets.kt")
         // काम वही: Auto पंक्ति अब भी कुछ न चुनना (null) सेट करती है, चुनी = cur == null
@@ -26,7 +26,8 @@ class DkaiUltraBadgeTest {
         assertTrue(sheet.contains("SelectedModel.set(c, null)"))
         assertTrue(sheet.contains("logoRes = R.drawable.ic_dk"))
         assertFalse(sheet.contains("\"Auto\", \"काम के हिसाब से"))
-        assertTrue(src("dkai/DkaiScreen.kt").contains("DkaiUltra.chip("))
+        assertTrue(src("dkai/DkaiScreen.kt").contains("DkaiUltra.chip(if (ch == null) \"Auto\""))
+        assertTrue("लाइव निर्देश छोटे रहें", AssistantBrand.ULTRA_RULE.length < 200)
         val ui = src("dkai/DkaiUi.kt")
         assertTrue(ui.contains("ScaleType.FIT_CENTER")); assertTrue(ui.contains("DkaiTheme.LOGO_TILE"))
     }
@@ -36,7 +37,7 @@ class DkaiUltraBadgeTest {
         assertTrue(r.contains(AssistantBrand.ULTRA_RULE))
         assertTrue(r.endsWith(AssistantBrand.PRIVACY_RULE))
         val u = AssistantBrand.ULTRA_RULE
-        for (w in listOf("DKAI Ultra", "image generation", "only at the END", "Never put", "never invent")) assertTrue(w, u.contains(w))
+        for (w in listOf("DKAI Ultra", "fastest", "image generation", "real current ones first", "LAST", "invent nothing")) assertTrue(w, u.contains(w))
         // "मेरा सबसे तेज़ AI मॉडल DKAI Ultra है" हटता नहीं, पर किसी कंपनी से जोड़ा तो हटे
         assertFalse(AnswerGuard.selfIdentity("मेरा सबसे तेज़ AI मॉडल DKAI Ultra है।"))
         assertTrue(AnswerGuard.selfIdentity("मेरा DKAI Ultra Google के Gemini मॉडल पर आधारित है।"))

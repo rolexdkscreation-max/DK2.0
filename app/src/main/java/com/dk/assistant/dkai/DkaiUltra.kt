@@ -11,6 +11,9 @@ object DkaiUltra {
     /** बाक़ी पंक्तियों जैसा आख़िर में "• Free" */
     const val ROW_SUB = "$SUB • Free"
 
-    /** इनपुट बार का मॉडल चिप: कुछ न चुना = DKAI Ultra (पहले "Auto") */
-    fun chip(chosen: String?): String = (chosen ?: NAME) + " ▾"
+    /** पुराना अंदरूनी नाम - कुछ न चुना. सिर्फ़ दिखाते समय [NAME] बनता है */
+    const val AUTO = "Auto"
+
+    /** इनपुट बार का मॉडल चिप: "Auto" (कुछ न चुना) = DKAI Ultra, बाक़ी चुना हुआ मॉडल वैसा ही */
+    fun chip(label: String): String = (if (label == AUTO) NAME else label) + " ▾"
 }

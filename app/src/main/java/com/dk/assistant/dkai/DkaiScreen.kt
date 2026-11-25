@@ -1019,7 +1019,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         // 20 नवंबर 2026: चिप = केंद्रीय selectedModel ([SelectedModel]); कुछ न चुना = "Auto" (पहले जैसी routing)
         val ch = SelectedModel.get(c)
         // 25 नवंबर 2026: कुछ न चुना = "DKAI Ultra" (पहले "Auto" लिखा था - काम वही, [DkaiUltra])
-        if (::modelPill.isInitialized) modelPill.text = DkaiUltra.chip(ch?.let { DkaiCore.modelPill(DkaiKit.providerName(it.provider), it.model) })
+        if (::modelPill.isInitialized) modelPill.text = DkaiUltra.chip(if (ch == null) "Auto" else DkaiCore.modelPill(DkaiKit.providerName(ch.provider), ch.model))
     }
 
     // ================================================================== आवाज़ (State 2/3)
