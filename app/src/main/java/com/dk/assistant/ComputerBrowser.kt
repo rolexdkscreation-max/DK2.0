@@ -9,6 +9,7 @@ import android.view.View
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import com.dk.assistant.agent.master.BrowserRules
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -56,16 +57,32 @@ return JSON.stringify(out);})()"""
 
     private fun q(s: String) = JSONObject.quote(s)
 
+    /** [n] नंबर या बटन का नाम -> उस element को ढूँढने वाला JavaScript */
+    private fun el(v: Any?) = when (v) {
+        is Number -> "document.querySelector('[data-dk-i=\"${v.toInt()}\"]')"
+        is String -> if (v.toIntOrNull() != null) "document.querySelector('[data-dk-i=\"${v.toInt()}\"]')"
+            else "(function(t){t=t.toLowerCase();var c=[].slice.call(document.querySelectorAll('[data-dk-i],a,button,[role=button],input[type=submit]'));" +
+                "return c.find(function(e){return ((e.innerText||e.value||e.getAttribute('aria-label')||'')+'').trim().toLowerCase()==t})||" +
+                "c.find(function(e){return ((e.innerText||e.value||e.getAttribute('aria-label')||'')+'').toLowerCase().indexOf(t)>=0})})(${q(v)})"
+        else -> "null"
+    }
+
+    /**
+     * 25 नवंबर 2026 (मालिक: ब्राउज़र एजेंट): दबाने से पहले बटन का नाम पढ़ो (दबाओ नहीं) - [BrowserRules.riskyClick] के लिए.
+     * Enter = उस फ़ॉर्म का जमा करने वाला बटन. null = click / enter नहीं.
+     */
+    fun labelJs(a: JSONObject): String? = when {
+        a.has("click") -> "(function(){var e=" + el(a.opt("click")) + ";if(!e)return '';return ((e.innerText||e.value||e.getAttribute('aria-label')||e.getAttribute('title')||'')+'').replace(/\\s+/g,' ').trim().slice(0,80)})()"
+        a.has("enter") -> "(function(){var e=" + el(a.opt("enter")) + ";if(!e)e=document.activeElement;if(!e||!e.form)return '';" +
+            "var b=e.form.querySelector('button[type=submit],input[type=submit],button:not([type])');return b?((b.innerText||b.value||'')+'').replace(/\\s+/g,' ').trim().slice(0,80):''})()"
+        else -> null
+    }
+
+    /** मास्टर चालू हो तो ब्राउज़र के ऊपर पहरा: खतरे वाला बटन = [ask] से पूछो, हर कदम [log] में */
+    class Guard(val ask: suspend (String) -> Boolean, val log: (String) -> Unit)
+
     /** एक action -> JavaScript. null = अनजाना action */
     fun actionJs(a: JSONObject): String? {
-        fun el(v: Any?) = when (v) {
-            is Number -> "document.querySelector('[data-dk-i=\"${v.toInt()}\"]')"
-            is String -> if (v.toIntOrNull() != null) "document.querySelector('[data-dk-i=\"${v.toInt()}\"]')"
-                else "(function(t){t=t.toLowerCase();var c=[].slice.call(document.querySelectorAll('[data-dk-i],a,button,[role=button],input[type=submit]'));" +
-                    "return c.find(function(e){return ((e.innerText||e.value||e.getAttribute('aria-label')||'')+'').trim().toLowerCase()==t})||" +
-                    "c.find(function(e){return ((e.innerText||e.value||e.getAttribute('aria-label')||'')+'').toLowerCase().indexOf(t)>=0})})(${q(v)})"
-            else -> "null"
-        }
         val pre = "(function(){var e="
         return when {
             a.has("click") -> pre + el(a.opt("click")) + ";if(!e)return 'ERROR: element नहीं मिला';e.scrollIntoView({block:'center'});e.click();return 'clicked: '+((e.innerText||e.value||'')+'').trim().slice(0,60)})()"
@@ -165,16 +182,36 @@ return JSON.stringify(out);})()"""
      * @param actions [{"click":3}, {"type":[5,"text"]}, {"enter":5}, {"select":[2,"Hindi"]}, {"scroll":"down"}, {"wait":2000}, {"back":true}]
      * @param shot स्क्रीनशॉट फ़ाइल का नाम (null = नहीं)
      */
-    suspend fun browse(c: Context, url: String?, actions: JSONArray?, from: Int, max: Int, shot: String?): Pair<String, File?> = withContext(Dispatchers.Main) {
+    suspend fun browse(c: Context, url: String?, actions: JSONArray?, from: Int, max: Int, shot: String?, guard: Guard? = null): Pair<String, File?> = withContext(Dispatchers.Main) {
         val w = view(c)
         val log = StringBuilder()
         if (!url.isNullOrBlank()) {
             val u = url.trim().let { if (it.startsWith("http://") || it.startsWith("https://")) it else "https://$it" }
             waitLoad(w) { w.loadUrl(u) }
+            guard?.log?.invoke("खोला: ${u.take(120)}")
         } else if (w.url.isNullOrBlank()) return@withContext "ERROR: पहले url दें (कोई पेज खुला नहीं)" to null
         js(w, SNAPSHOT_JS)      // [n] नंबर लगाओ ताकि actions उन्हें पहचानें
-        if (actions != null) for (i in 0 until minOf(actions.length(), 12)) {
+        if (actions != null) acts@ for (i in 0 until minOf(actions.length(), 12)) {
             val a = actions.optJSONObject(i) ?: continue
+            if (guard != null) {
+                // 25 नवंबर 2026 (मालिक: "कोई भी एजेंट खुद से खरीदारी, भुगतान, बुकिंग ... नहीं करेगा") - दबाने से पहले नाम पढ़ो
+                val lj = labelJs(a)
+                if (lj != null) {
+                    val label = unquote(js(w, lj))
+                    val k = BrowserRules.riskyClick(label, w.url.orEmpty())
+                    if (k == BrowserRules.Click.PAY) {
+                        log.append(BrowserRules.payNote(label)).append('\n'); guard.log("रुका (भुगतान): $label"); break@acts
+                    }
+                    if (k != null && !guard.ask(BrowserRules.confirmText(k, label, w.url.orEmpty()))) {
+                        log.append(BrowserRules.deniedNote(k, label)).append('\n'); guard.log("मना (${k.hi}): $label"); break@acts
+                    }
+                    if (k != null) guard.log("पुष्टि मिली (${k.hi}): $label")
+                }
+                if (a.has("js") && Regex("\\.click\\(|submit\\(|dispatchEvent").containsMatchIn(a.optString("js"))) {
+                    log.append("ERROR: DK master: use {\"click\":n} / {\"enter\":n} instead of clicking with js\n"); continue@acts
+                }
+                guard.log(BrowserRules.logLine(a))
+            }
             when {
                 a.has("wait") -> { delay(a.optLong("wait", 1000).coerceIn(100, 10_000)); log.append("wait\n") }
                 a.has("back") -> { if (w.canGoBack()) waitLoad(w) { w.goBack() }; log.append("back\n") }
@@ -192,6 +229,11 @@ return JSON.stringify(out);})()"""
             }
         }
         val snap = unquote(js(w, SNAPSHOT_JS))
+        val guardNote = if (guard == null) "" else {
+            val g = BrowserRules.parseGuard(unquote(js(w, BrowserRules.PAGE_GUARD_JS)))
+            if (g.any) guard.log("पेज पर ${BrowserRules.pageHi(g)} - मालिक खुद करेंगे")
+            BrowserRules.pageNote(g, w.url.orEmpty())
+        }
         var file: File? = null
         if (!shot.isNullOrBlank()) file = try {
             val h = H.coerceAtMost(4000)
@@ -202,7 +244,7 @@ return JSON.stringify(out);})()"""
             bmp.recycle(); f
         } catch (_: Exception) { null }
         val head = if (log.isNotEmpty()) "ACTIONS:\n$log\n" else ""
-        (head + format(snap, from, max) + (file?.let { "\n\nSCREENSHOT saved: ${it.name} (देखने के लिए look {\"file\":\"${it.name}\"})" } ?: "")) to file
+        (head + format(snap, from, max) + guardNote + (file?.let { "\n\nSCREENSHOT saved: ${it.name} (देखने के लिए look {\"file\":\"${it.name}\"})" } ?: "")) to file
     }
 
     /** HTML (जैसे SVG चार्ट) -> PNG: अलग छिपा WebView, ताकि खुला ब्राउज़र न बिगड़े */
