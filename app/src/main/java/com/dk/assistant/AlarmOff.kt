@@ -106,10 +106,53 @@ object AlarmOff {
         if (i.resolveActivity(c.packageManager) == null) false else { c.startActivity(i); true }
     } catch (e: Exception) { DKLog.d("Alarm: dismiss intent नहीं चला - ${e.message}"); false }
 
-    /** काम करो; नतीजा (सच): "OK: ..." या "ERROR: ..." */
-    fun run(c: Context, cmd: Cmd): String {
-        if (cmd.mode == Mode.NEXT && pressRinging(cmd)) return "OK: " + ack(cmd)
-        if (intentOff(c, cmd)) return "OK: " + ack(cmd) + " (घड़ी ऐप से)"
+    /** अभी कोई अलार्म बज रहा है? (घड़ी ऐप का notification जिसमें बंद / स्नूज़ बटन हो). null = पता नहीं (Notification access नहीं) */
+    private fun ringing(): Boolean? {
+        val l = DKNotifListener.instance ?: return null
+        val list = try { l.activeNotifications?.toList().orEmpty() } catch (_: Exception) { return null }
+        return list.filter { isClockPkg(it.packageName) }.any { sbn ->
+            val titles = sbn.notification?.actions?.map { it.title?.toString().orEmpty() }.orEmpty()
+            pick(titles, false) >= 0 || pick(titles, true) >= 0
+        }
+    }
+
+    /**
+     * 25 नवंबर 2026 (मालिक: "अलार्म बंद नहीं हुआ तो बोलना चाहिए कि नहीं हुआ" - झूठा "बंद कर दिया" नहीं).
+     * pure: बटन / intent भेजने के बाद नतीजा. [wasRinging] = पहले बज रहा था; [stillRinging] = थोड़ी देर बाद भी बज रहा (null = पता नहीं).
+     * बज रहा था और अब भी बज रहा = बंद नहीं हुआ (सच बताओ).
+     */
+    fun verdict(c: Cmd, sent: Boolean, wasRinging: Boolean?, stillRinging: Boolean?): String = when {
+        !sent -> FAIL
+        wasRinging == true && stillRinging == true -> STILL
+        else -> "OK: " + ack(c)
+    }
+
+    const val STILL = "ERROR: अलार्म अभी भी बज रहा है — बंद नहीं हुआ। घड़ी ऐप में खुद बंद करें (स्क्रीन पर बंद / Stop दबाएँ)"
+    const val FAIL = "ERROR: अलार्म बंद नहीं हुआ — घड़ी ऐप खोलकर खुद बंद करें"
+
+    /** थोड़ा रुककर देखो अब भी बज रहा है? (1.6 सेकंड तक) */
+    private suspend fun stillRinging(): Boolean? {
+        var r: Boolean? = ringing()
+        var n = 0
+        while (r == true && n < 4) { kotlinx.coroutines.delay(400); r = ringing(); n++ }
+        return r
+    }
+
+    /** काम करो; नतीजा (सच): "OK: ..." या "ERROR: ..." - बजता अलार्म सच में रुका तभी "बंद कर दिया" */
+    suspend fun run(c: Context, cmd: Cmd): String {
+        val was = ringing()
+        if (cmd.mode == Mode.NEXT && pressRinging(cmd)) {
+            val still = stillRinging()
+            if (still != true) return verdict(cmd, true, was, still)
+            // बटन दबाया पर अब भी बज रहा - Android वाला तरीका भी आज़माओ, फिर सच बताओ
+            val sent = intentOff(c, cmd)
+            return verdict(cmd, sent, was, if (sent) stillRinging() else true).let { if (it.startsWith("ERROR")) STILL else it }
+        }
+        if (intentOff(c, cmd)) {
+            if (was != true) return "OK: " + ack(cmd) + " (घड़ी ऐप से)"
+            val still = stillRinging()
+            return verdict(cmd, true, was, still).let { if (it.startsWith("OK")) "$it (घड़ी ऐप से)" else it }
+        }
         return if (DKNotifListener.instance == null) "ERROR: अलार्म बंद नहीं हुआ — DK को Notification access दें, या घड़ी ऐप में खुद बंद करें"
         else "ERROR: इस फ़ोन की घड़ी ऐप ने अलार्म बंद करने की बात नहीं मानी — घड़ी ऐप खोलकर बंद करें"
     }

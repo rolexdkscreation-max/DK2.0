@@ -1207,6 +1207,7 @@ Available actions:
 {"type":"click","id":N}                           tap element N from the list
 {"type":"long_click","id":N}                      long press element N (e.g. select a photo)
 {"type":"type","id":N,"text":"..."}               put text into editable element N (omit id = focused field)
+{"type":"type","id":N,"text":""}                  ERASE / clear the text in box N ("मिटा दो", "हटा दो", "clear") - anything typed can always be erased
 {"type":"enter"}                                  press keyboard search/enter on focused field
 {"type":"scroll","direction":"down|up|left|right"}
 {"type":"tap","x":X,"y":Y}                        tap screen pixel (use only if no element fits)

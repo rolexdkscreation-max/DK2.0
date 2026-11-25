@@ -1850,6 +1850,16 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     // 16 नवंबर 2026 (ऑडिट S3): + लगातार लंबी बातों पर एक भी शब्द न लिखा हो (capHealth) = चुप caption पर इंतज़ार नहीं
     internal fun captionOn() = caption?.let { it.ready && it.working && !capHealth.stale(it.textAt) } == true
 
+    /** Live का अपना लिखा "आप:" कब ([LiveUserText]) */
+    @Volatile internal var liveWroteAt = 0L
+
+    /** 25 नवंबर 2026 (मालिक): बोली हुई बात तुरंत स्क्रीन पर - caption ने इस बार कुछ नहीं लिखा तो Live का text ([LiveUserText]) */
+    internal fun showLiveUser(text: String) {
+        if (!LiveUserText.show(captionOn(), DKState.lastUserAt, speechStartAt, liveWroteAt)) return
+        DKState.user(text)
+        liveWroteAt = DKState.lastUserAt
+    }
+
     /** 21 नवंबर 2026: स्क्रीन पर लिखावट-बंद की चेतावनी ("" = सब ठीक) - नियम [CaptionWarn] */
     internal fun captionWarnNow(): String {
         val c = caption

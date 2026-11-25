@@ -150,10 +150,12 @@ object ShopRules {
     private val CART_W = listOf("add to cart", "add to bag", "add to basket", "add to trolley", "add item", "कार्ट में डालें", "कार्ट में जोड़ें", "बैग में डालें", "बैग में जोड़ें")
 
     /** बटन का नाम -> [Tap] (null = आम बटन, आराम से दबाओ) */
-    fun tap(label: String): Tap? {
+    fun tap(label: String, cod: Boolean = false): Tap? {
         val l = " " + label.lowercase().replace(Regex("[\\s\\u00a0\"()]+"), " ").trim() + " "
         if (l.isBlank()) return null
         return when {
+            // 25 नवंबर 2026 (मालिक: "कैश ऑन डिलीवरी कर दो"): खुद COD कहा = COD वाला विकल्प ऑर्डर का कदम है, ऑनलाइन भुगतान नहीं
+            cod && has(l, COD_W) && !has(l, ONLINE_W) -> Tap.BUY
             has(l, PAY_W) -> Tap.PAY
             has(l, BUY_W) -> Tap.BUY
             has(l, CART_W) -> Tap.CART
@@ -164,8 +166,43 @@ object ShopRules {
     /** मालिक ने खुद कार्ट में डालने को कहा ("कार्ट में डाल दो") - तब कार्ट के लिए दोबारा नहीं पूछना */
     fun cartAsked(goal: String): Boolean {
         val g = goal.lowercase()
-        return listOf("कार्ट में डाल", "कार्ट में जोड़", "कार्ट में ऐड", "cart me daal", "cart mein daal", "cart me add", "add to cart", "add it to cart",
+        return listOf("कार्ट में डाल", "कार्ट में जोड़", "कार्ट में ऐड", "कार्ड में ऐड", "कार्ड में डाल", "कार्ट मे ऐड", "कार्ट में एड",
+            "ऐड टू कार्ट", "ऐड करो", "ऐड कर दो", "add kar do", "add karo", "card me add", "cart mein add", "cart me dal", "cart me daal", "cart mein daal", "cart me add", "add to cart", "add it to cart",
             "बैग में डाल", "bag me daal", "कार्ट में रख").any { g.contains(it) }
+    }
+
+    private val COD_W = listOf("cash on delivery", "pay on delivery", "cash/card on delivery", " cod ", "कैश ऑन डिलीवरी", "डिलीवरी पर नकद", "डिलीवरी पर भुगतान")
+    private val ONLINE_W = listOf(" upi ", "upi id", "upi pin", "debit card", "credit card", "net banking", "netbanking", "wallet", " emi ")
+    private val COD_ASK = listOf("कैश ऑन डिलीवरी", "कैश ऑन डिलिवरी", "कैश आन डिलीवरी", "cash on delivery", "cash on delivary", " cod ", "सीओडी",
+        "डिलीवरी पर पैसे", "डिलीवरी पे पैसे", "pay on delivery")
+    private val BUY_ASK = listOf("आगे प्रोसेस", "आगे बढ़", "आगे बढ़ाओ", "प्रोसीड", "प्रोसेस कर", "proceed", "aage process", "aage badh",
+        "ऑर्डर कर दो", "ऑर्डर कर दीजिए", "ऑर्डर प्लेस", "ऑर्डर दे दो", "order kar do", "place order", "order place", "checkout", "चेकआउट",
+        "खरीद लो", "खरीद दो", "buy kar do", "buy now")
+
+    /** मालिक ने खुद कैश ऑन डिलीवरी कहा ("कैश ऑन डिलीवरी कर दो") */
+    fun codAsked(goal: String): Boolean = (" " + goal.lowercase() + " ").let { g -> COD_ASK.any { g.contains(it) } }
+
+    /** मालिक ने खुद आगे बढ़ने / ऑर्डर करने को कहा ("आगे प्रोसेस करो", "ऑर्डर कर दो", "कैश ऑन डिलीवरी कर दो") */
+    fun buyAsked(goal: String): Boolean = codAsked(goal) || goal.lowercase().let { g -> BUY_ASK.any { g.contains(it) } }
+
+    /**
+     * 25 नवंबर 2026 (मालिक: "तुरंत ऐड करो, कार्ड में ऐड करो" / "आगे प्रोसेस" / "कैश ऑन डिलीवरी कर दो" = तुरंत करो).
+     * pure: इन बटनों [labels] पर मालिक की अपनी बात [goal] से दोबारा पूछे बिना दबा सकते हैं? कार्ट = उसने कार्ट कहा;
+     * खरीदें / ऑर्डर / COD = उसने आगे बढ़ना / ऑर्डर / COD कहा. ऑनलाइन भुगतान (UPI / कार्ड / Pay) = कभी नहीं. [isPay] = आम भुगतान-जैसा बटन.
+     */
+    fun ownerSaid(labels: List<String>, goal: String, isPay: (String) -> Boolean): Boolean {
+        if (labels.isEmpty()) return false
+        val cod = codAsked(goal)
+        var shop = false
+        for (l in labels) {
+            when (tap(l, cod)) {
+                Tap.CART -> if (cartAsked(goal)) shop = true else return false
+                Tap.BUY -> if (buyAsked(goal)) shop = true else return false
+                Tap.PAY -> return false
+                null -> if (isPay(l)) return false
+            }
+        }
+        return shop
     }
 
     /** भुगतान वाला बटन: DK कभी नहीं दबाता - यही लाइन मालिक को */
@@ -175,7 +212,8 @@ object ShopRules {
         "${k.hi} वाला कदम: \"${label.trim().take(60)}\"। क्या मैं दबाऊँ? हाँ या ना बोलिए।"
 
     /** मास्टर चालू हो तो फ़ोन एजेंट / Live को साथ में जाने वाला नियम */
-    const val AGENT_NOTE = "DK MASTER (shopping): add to cart only the exact item he asked for (name, colour, size, price limit) and only after his yes; " +
+    const val AGENT_NOTE = "DK MASTER (shopping): add to cart only the exact item he asked for (name, colour, size, price limit); " +
+        "if he himself clearly said it (\"कार्ट में ऐड करो\", \"आगे प्रोसेस करो\", \"कैश ऑन डिलीवरी कर दो\") do that step at once without asking again, otherwise ask first; " +
         "tell prices only as read on the screen - never guess or invent a price, rating or offer; " +
-        "Buy now / Place order / Checkout = ask him first; never tap Pay / UPI / card / net banking / cash on delivery - stop and hand the payment to him."
+        "cash on delivery only when he said so; never tap Pay / UPI / card / net banking - stop and hand the payment to him."
 }

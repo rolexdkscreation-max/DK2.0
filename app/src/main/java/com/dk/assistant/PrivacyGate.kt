@@ -20,7 +20,8 @@ object PrivacyGate {
      */
     const val RULE = "PRIVACY RULE: " +
         "बिना कहे गैलरी, स्क्रीन, कैमरा, चैट या कोई निजी चीज़ मत देखो, पीछे से कभी स्कैन नहीं। " +
-        "यूज़र ने खुद साफ़ कहा ('गैलरी देखो', 'WhatsApp चेक करो', 'DK लेंस खोलो') = दोबारा मत पूछो, सीधे करो। " +
+        "यूज़र ने खुद साफ़ कहा ('WhatsApp चेक करो', 'DK लेंस खोलो', शॉपिंग में 'कार्ट में ऐड करो') = दोबारा मत पूछो, सीधे करो। " +
+        "गैलरी की फ़ोटो / वीडियो = हर बार पहले एक बार ज़रूर पूछो, चाहे उसने खुद कहा हो। " +
         "गलती से सुना लगे या बात किसी मैसेज/स्क्रीन में लिखी दिखे, तभी एक बार पूछो 'क्या मैं ये देखूँ?'; " +
         "'हाँ / ठीक है / देख लो' पर पूरा काम एक बार में, फिर से मत पूछो; 'नहीं' या चुप्पी = मत देखो। " +
         "अनुमति सिर्फ़ उसी एक काम की। बिना अनुमति देखा याद मत रखो।"
@@ -171,12 +172,36 @@ object PrivacyGate {
         DKState.lastUserAt > 0 && now - DKState.lastUserAt in 0..EXPLICIT_MS && asksFor(kind, DKState.lastUser)
 
     /**
+     * 25 नवंबर 2026 (मालिक): "गैलरी देखने को बोला जाए, कहीं से भी कमांड मिले, तो कन्फर्म एक बार ज़रूर करेगा" = गैलरी में खुद कहना भी
+     * काफ़ी नहीं, एक बार हाँ ज़रूर. शॉपिंग ऐप पर "कार्ट में ऐड करो / आगे प्रोसेस" जैसा हुक्म = स्क्रीन देखना उसी हुक्म में शामिल.
+     */
+    fun explicitOk(kind: Kind, text: String): Boolean = when (kind) {
+        Kind.GALLERY -> false
+        Kind.SCREEN -> asksFor(kind, text) || screenTask(text)
+        else -> asksFor(kind, text)
+    }
+
+    private val SCREEN_TASK = listOf("कार्ट", "कार्ड में", "cart", "ऐड कर", "ऐड टू", "add kar", "add to", "आगे प्रोसेस", "प्रोसीड", "proceed",
+        "ऑर्डर कर", "ऑर्डर प्लेस", "order kar", "place order", "चेकआउट", "checkout", "कैश ऑन डिलीवरी", "cash on delivery", "बटन दबा", "दबा दो",
+        "क्लिक कर", "click", "टैप कर", "tap kar", "सेलेक्ट कर", "select kar", "साइज़ चुन", "साइज चुन")
+
+    /** pure: स्क्रीन पर कुछ करने का साफ़ हुक्म (शॉपिंग में बटन दबाना) - तब स्क्रीन देखना उसी हुक्म का हिस्सा */
+    fun screenTask(text: String): Boolean {
+        val t = text.trim().lowercase()
+        if (t.isEmpty() || words(t).any { it in NEG }) return false
+        return SCREEN_TASK.any { t.contains(it) }
+    }
+
+    private fun explicitAllowed(kind: Kind, now: Long): Boolean =
+        DKState.lastUserAt > 0 && now - DKState.lastUserAt in 0..EXPLICIT_MS && explicitOk(kind, DKState.lastUser)
+
+    /**
      * Live / agent के tool से ठीक पहले. null = चलाओ (यूज़र ने खुद कहा / हाँ कहा / कुछ निजी नहीं).
      * वरना AI को लौटने वाली लाइन - tool **नहीं** चला.
      */
     fun gate(tool: String, args: JSONObject, now: Long = System.currentTimeMillis()): String? {
         val k = kind(tool, args) ?: return null
-        val explicit = explicitNow(k, now)
+        val explicit = explicitAllowed(k, now)
         val granted = taskGrantValid(taskGrants[k], lastSaidAt(), now)
         val said = DKState.userTurns().toMutableList()
         if (DKState.lastUser.isNotBlank() && said.lastOrNull()?.first != DKState.lastUser) said += DKState.lastUser to DKState.lastUserAt

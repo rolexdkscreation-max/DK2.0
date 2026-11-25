@@ -117,16 +117,15 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         // phone ne "bolna khatam" pakda ho to deri wahin se ginti (der se aaye text se nahi)
         if (trace.speechEndAt == 0L || System.currentTimeMillis() - trace.speechEndAt > 5000) eosAt = System.currentTimeMillis()
         // caption chal raha hai to woh pehle hi turant likh chuka - yeh der se aaya text screen par mat daalo
-        if (!captionOn()) DKState.user("$u…")
+        // 25 नवंबर 2026 (मालिक): caption ने इस बार अभी तक कुछ नहीं लिखा = यही text तुरंत दिखाओ ([LiveUserText])
+        showLiveUser("$u…")
         checkMicOff(u)
     }
     // kuch Live model khud bhi bolte-bolte (interim) text dete hain - caption na ho to wahi dikhao
     sc.optJSONObject("interimInputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let { t ->
         Ducker.duck(svc, "Live: user बोल रहा")
-        if (!captionOn()) {
-            val u = synchronized(turnLock) { userText.toString().trim() }
-            DKState.user((if (turnActive) "$u $t" else t).trim() + "…")
-        }
+        val u = synchronized(turnLock) { userText.toString().trim() }
+        showLiveUser((if (turnActive) "$u $t" else t).trim() + "…")
     }
     sc.optJSONObject("modelTurn")?.optJSONArray("parts")?.let { parts ->
         // user ne toka hai: purane jawab ke bache tukde - mat bajao (server "interrupted" bhejega)

@@ -72,6 +72,7 @@ object UiLang {
      */
     fun s(t: String): String {
         if (!en()) return t
+        if (ConvoText.isConvoNow(t)) return t      // 25 नवंबर 2026 (मालिक): बातचीत कभी अनुवाद नहीं ([ConvoText])
         val d = dict
         return when (code) {
             HINGLISH -> (hinglish ?: HinglishText().also { hinglish = it }).tr(t)

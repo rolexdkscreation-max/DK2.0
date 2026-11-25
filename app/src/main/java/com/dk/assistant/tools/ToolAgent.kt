@@ -93,7 +93,7 @@ class ToolAgent(
                 }
                 // 23 नवंबर 2026 (मालिक): यूज़र ने खुद यही कहा (\"WhatsApp पे जाके चेक करो\") = बिना पूछे; बात साफ़ न हो तभी एक बार पूछो
                 val pk = com.dk.assistant.PrivacyGate.kind(c.name, c.args)
-                if (pk != null && !screenOk && com.dk.assistant.PrivacyGate.asksFor(pk, goal)) screenOk = true
+                if (pk != null && !screenOk && com.dk.assistant.PrivacyGate.explicitOk(pk, goal)) screenOk = true
                 if (pk != null && !screenOk) {
                     val k = pk
                     val ans = ask(com.dk.assistant.PrivacyGate.askLine(k))

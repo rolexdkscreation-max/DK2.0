@@ -699,8 +699,9 @@ class AgentRunner(
                     // कार्ट में डालना = मालिक ने खुद न कहा हो तो पहले पूछो. खरीदें / ऑर्डर = नीचे वाला पुराना "हाँ" कार्ड. मास्टर बंद = कुछ नहीं बदलता.
                     if (com.dk.assistant.agent.master.DkMaster.on(svc)) {
                         val subs = if (a.optString("type") == "steps") a.optJSONArray("steps")?.let { st -> (0 until st.length()).mapNotNull { st.optJSONObject(it) } }.orEmpty() else listOf(a)
+                        val cod = com.dk.assistant.agent.master.ShopRules.codAsked(ownerWords(goal))     // 25 नवंबर 2026: खुद "कैश ऑन डिलीवरी" कहा
                         val hit = subs.map { com.dk.assistant.agent.core.OutsideText.label(it, seenScreen) }
-                            .mapNotNull { l -> com.dk.assistant.agent.master.ShopRules.tap(l)?.let { it to l } }
+                            .mapNotNull { l -> (if (cod) com.dk.assistant.agent.master.ShopRules.tap(l, true) else com.dk.assistant.agent.master.ShopRules.tap(l))?.let { it to l } }
                             .maxByOrNull { it.first.ordinal }
                         if (hit != null) {
                             val (k, lab) = hit
@@ -712,7 +713,8 @@ class AgentRunner(
                                 say(com.dk.assistant.agent.master.ShopRules.PAY_HANDOVER)
                                 return
                             }
-                            if (k == com.dk.assistant.agent.master.ShopRules.Tap.CART && !com.dk.assistant.agent.master.ShopRules.cartAsked(goal)) {
+                            if (k == com.dk.assistant.agent.master.ShopRules.Tap.CART && !com.dk.assistant.agent.master.ShopRules.cartAsked(goal) &&
+                                !com.dk.assistant.agent.master.ShopRules.cartAsked(ownerWords(goal))) {
                                 speakJob?.join()
                                 say(com.dk.assistant.agent.master.ShopRules.askLine(k, lab))
                                 DKState.set(Mode.LISTENING)
@@ -742,7 +744,12 @@ class AgentRunner(
                     }
                     if (autoS == null) {
                         val k = com.dk.assistant.agent.core.OutsideText.kind(a, seenScreen, seenPkg)
-                        if (com.dk.assistant.agent.core.OutsideText.needsCard(k, goal)) {
+                        // 25 नवंबर 2026 (मालिक): "कार्ट में ऐड करो" / "आगे प्रोसेस" / "कैश ऑन डिलीवरी कर दो" खुद कहा = वही कदम तुरंत, दोबारा नहीं पूछना
+                        val ownerSaid = k == com.dk.assistant.agent.core.OutsideText.Kind.PAY && com.dk.assistant.agent.master.ShopRules.ownerSaid(
+                            (if (a.optString("type") == "steps") a.optJSONArray("steps")?.let { st -> (0 until st.length()).mapNotNull { st.optJSONObject(it) } }.orEmpty() else listOf(a))
+                                .map { com.dk.assistant.agent.core.OutsideText.label(it, seenScreen) }, ownerWords(goal), com.dk.assistant.agent.core.OutsideText::isPayLabel)
+                        if (ownerSaid) DKLog.d("शॉपिंग: मालिक ने खुद कहा - बिना दोबारा पूछे")
+                        if (!ownerSaid && com.dk.assistant.agent.core.OutsideText.needsCard(k, goal)) {
                             speakJob?.join()
                             val what = com.dk.assistant.auto.AutoSafety.describe(a, seenScreen)
                             say("${k.hi} वाला कदम: $what। क्या मैं करूँ? हाँ या ना बोलिए।")
@@ -1068,5 +1075,12 @@ class AgentRunner(
         val APP_OPENERS = setOf("open_app", "youtube_search", "youtube_play", "web_search", "open_url", "shop_search",
             "directions", "navigate", "map_search", "nearby_go", "open_settings", "dial")
         const val CREATOR_ANSWER = AssistantBrand.CREATOR_ANSWER
+    }
+
+    /** मालिक के अपने हाल के शब्द (AI का लिखा goal नहीं) - 3 मिनट की बातें; कुछ नहीं तो लिखा हुआ काम ([goal], जैसे टाइप किया हुक्म) */
+    private fun ownerWords(goal: String): String {
+        val now = System.currentTimeMillis()
+        val said = DKState.userTurns().filter { now - it.second in 0..180_000L }.joinToString(" । ") { it.first }
+        return said.ifBlank { goal }
     }
 }
