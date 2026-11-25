@@ -48,7 +48,8 @@ object OutsideText {
     private val APP_TO = Regex("(whatsapp|व्हाट्सएप|वाट्सएप|sms|एसएमएस).*(को|\\bko\\b)|(को|\\bko\\b).*(whatsapp|व्हाट्सएप|वाट्सएप|sms|एसएमएस)", RegexOption.IGNORE_CASE)
     private val POST_INTENT = Regex("(post|पोस्ट|share|शेयर|upload|अपलोड|publish|डाल दो|daal do|comment|कमेंट|tweet|status|स्टेटस|story|स्टोरी|reel|रील)", RegexOption.IGNORE_CASE)
 
-    private fun label(a: JSONObject, screen: String): String = buildString {
+    /** बटन का नाम (25 नवंबर 2026: शॉपिंग एजेंट भी पढ़ता है - [com.dk.assistant.agent.master.ShopRules.tap]) */
+    fun label(a: JSONObject, screen: String): String = buildString {
         append(a.optString("text")); append(' '); append(a.optString("label")); append(' ')
         if (a.has("id")) append(AutoSafety.labelOf(screen, a.optInt("id", -1)))
         if (a.optString("type") == "tap") append(AutoSafety.labelAt(screen, a.optInt("x"), a.optInt("y")))

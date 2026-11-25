@@ -649,6 +649,8 @@ internal fun SettingsActivity.masterAgentCard() {
             "पासवर्ड / OTP / CAPTCHA / आधार-बैंक पर रुककर पूछेगा। \"रुको\" बोलते ही काम रुकेगा।")
         hint(box, "ब्राउज़र एजेंट (DK कंप्यूटर): पहले पेज पढ़ता है, Pay / Buy / Book / Submit / Delete / Send जैसा बटन दबाने से पहले पूछता है, " +
             "भुगतान कभी नहीं करता (पेज का लिंक आपको देता है), पासवर्ड / OTP / CAPTCHA वाले पेज पर रुककर आपसे कहता है। हर कदम लॉग में।")
+        hint(box, "शॉपिंग एजेंट: आपका बजट / साइज़ समझकर खोजता है (\"500 के अंदर काली शर्ट\"), स्क्रीन पर सच में दिखे दाम बताता है, " +
+            "कार्ट में डालने से पहले पूछता है, खरीदें / ऑर्डर पर आपकी \"हाँ\" लेता है, और भुगतान कभी नहीं करता - वह आपको सौंपता है।")
         hint(box, "सीधे काम (ऐप खोलो, कॉल, टॉर्च …) पहले जैसे ही। बंद = पुराना तरीका, कोई बदलाव नहीं।")
         val st = android.widget.TextView(this).apply { textSize = 12f; setTextColor(0xCCFFFFFF.toInt()) }
         fun show() { st.text = com.dk.assistant.agent.master.ActionLog.text(this, 15).ifBlank { UiLang.s("अभी कोई काम लॉग नहीं हुआ") } }
