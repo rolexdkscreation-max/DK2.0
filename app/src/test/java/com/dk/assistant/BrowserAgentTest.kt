@@ -59,7 +59,7 @@ class BrowserAgentTest {
 
     @Test fun labelJs_readsButtonWithoutClicking() {
         val j = ComputerBrowser.labelJs(JSONObject().put("click", 7))!!
-        assertTrue(j.contains("[data-dk-i=\\\"7\\\"]")); assertFalse(j.contains(".click()"))
+        assertTrue(j.contains("[data-dk-i=\"7\"]")); assertFalse(j.contains(".click()"))
         assertNotNull(ComputerBrowser.labelJs(JSONObject().put("enter", 3)))
         assertNull(ComputerBrowser.labelJs(JSONObject().put("scroll", "down")))
         // पुराने actions वैसे ही

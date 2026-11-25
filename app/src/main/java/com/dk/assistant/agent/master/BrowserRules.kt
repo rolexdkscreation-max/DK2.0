@@ -92,17 +92,15 @@ return JSON.stringify({
     /** ब्राउज़र के नतीजे के आख़िर में AI के लिए लाइन (कुछ नहीं मिला = खाली) */
     fun pageNote(g: Guard, url: String): String {
         if (!g.any) return ""
-        val what = buildList {
-            if (g.pw) add("password"); if (g.otp) add("OTP"); if (g.card) add("card / CVV"); if (g.captcha) add("CAPTCHA"); if (g.pay || isPaymentUrl(url)) add("payment")
-        }.joinToString(", ")
+        val what = listOf(g.pw to "password", g.otp to "OTP", g.card to "card / CVV", g.captcha to "CAPTCHA", (g.pay || isPaymentUrl(url)) to "payment")
+            .filter { it.first }.joinToString(", ") { it.second }
         return "\n\nDK MASTER: this page asks for $what. DK must NOT fill or solve it. Stop and ask the owner to do this part himself on his phone " +
             "(give him the page link: ${url.take(160)}); continue only after he says it is done."
     }
 
     /** हिंदी में छोटा कारण - लॉग / स्क्रीन */
-    fun pageHi(g: Guard): String = buildList {
-        if (g.pw) add("पासवर्ड"); if (g.otp) add("OTP"); if (g.card) add("कार्ड"); if (g.captcha) add("CAPTCHA"); if (g.pay) add("भुगतान")
-    }.joinToString(", ")
+    fun pageHi(g: Guard): String = listOf(g.pw to "पासवर्ड", g.otp to "OTP", g.card to "कार्ड", g.captcha to "CAPTCHA", g.pay to "भुगतान")
+        .filter { it.first }.joinToString(", ") { it.second }
 
     /** DK कंप्यूटर के system prompt में (मास्टर चालू हो तो) */
     const val AGENT_NOTE = "- DK MASTER (browser): first read the page (browse without actions) and act only on the numbered elements you saw; " +
