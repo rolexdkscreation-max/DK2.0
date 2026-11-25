@@ -39,7 +39,7 @@ enum class SocialAction(val needsMedia: Boolean, val irreversible: Boolean) {
                 "PHOTO", "POST", "IMAGE", "POST_IMAGE" -> POST_PHOTO
                 "VIDEO" -> POST_VIDEO
                 "REEL", "REELS" -> POST_REEL
-                "STORY", "STORIES" -> POST_STORY
+                "STORY", "STORIES", "STATUS", "POST_STATUS", "WHATSAPP_STATUS", "STATUS_UPDATE", "PUT_STATUS" -> POST_STORY
                 "TEXT", "STATUS_TEXT" -> POST_TEXT
                 "SEND", "MESSAGE" -> SEND_MESSAGE
                 "FILE", "SEND_DOCUMENT", "DOCUMENT", "SEND_PHOTO", "SEND_MEDIA", "SHARE_FILE" -> SEND_FILE
@@ -59,7 +59,9 @@ enum class TaskStatus { RUNNING, WAITING_CONFIRMATION, WAITING_USER, COMPLETED, 
 /** app खोलने का तरीका (Android वाला हिस्सा असल में करता है) */
 sealed class OpenSpec {
     /** jid = WhatsApp में सीधे उसी की चैट ("91…@s.whatsapp.net") - चुनने वाली सूची नहीं */
-    data class ShareMedia(val pkg: String, val mime: String, val uri: String, val targetHints: List<String>, val text: String = "", val jid: String = "") : OpenSpec()
+    data class ShareMedia(val pkg: String, val mime: String, val uri: String, val targetHints: List<String>, val text: String = "", val jid: String = "",
+                          /** 25 नवंबर 2026: एक ही पोस्ट में कई फोटो/वीडियो (Instagram carousel / Facebook) - ACTION_SEND_MULTIPLE. खाली = एक ([uri]) */
+                          val uris: List<String> = emptyList()) : OpenSpec()
     data class ShareText(val pkg: String, val text: String, val targetHints: List<String> = emptyList()) : OpenSpec()
     data class Url(val url: String, val pkg: String) : OpenSpec()
     data class Launch(val pkg: String) : OpenSpec()
@@ -176,13 +178,15 @@ object SocialRequestParser {
         val p = forcePlatform ?: Platform.parse(a.optString("platform")) ?: return Parsed.Err("platform must be instagram, facebook, youtube or whatsapp")
         val act = SocialAction.parse(a.optString("action")) ?: return Parsed.Err("unknown action")
         val wa = act in WHATSAPP_ACTIONS
-        if (p == Platform.WHATSAPP && !wa) return Parsed.Err("WhatsApp supports: read_unread, send_message, send_file, read_chat, search_chat, mute, unmute, mark_read")
+        // 25 नवंबर 2026 (मालिक): WhatsApp स्टेटस = post_story (DK को share की गई फोटो/वीडियो)
+        if (p == Platform.WHATSAPP && !wa && act != SocialAction.POST_STORY)
+            return Parsed.Err("WhatsApp supports: read_unread, send_message, send_file, read_chat, search_chat, mute, unmute, mark_read, post_status (WhatsApp Status)")
         if (p != Platform.WHATSAPP && wa) return Parsed.Err("this action is only for WhatsApp")
         if (p == Platform.INSTAGRAM && act == SocialAction.POST_TEXT) return Parsed.Err("Instagram needs a photo or video")
         if (p == Platform.FACEBOOK && act == SocialAction.POST_REEL) return Parsed.Err("Facebook reels are not supported yet - use post_video")
         if (p == Platform.YOUTUBE && act != SocialAction.POST_REEL && act != SocialAction.POST_VIDEO) return Parsed.Err("YouTube Shorts needs a video - use post_reel (or post_video)")
         val mode = if (a.optString("mode").trim().equals("draft", true)) TaskMode.DRAFT else TaskMode.PUBLISH
-        val caption = a.optString("caption").trim()
+        val caption = a.optString("caption").trim().ifEmpty { if (p == Platform.WHATSAPP && act == SocialAction.POST_STORY) a.optString("message").trim() else "" }
         val message = a.optString("message").trim()
         val contact = a.optString("contact").trim()
         val query = a.optString("query").trim()
@@ -210,8 +214,8 @@ object SocialRequestParser {
         SocialAction.MUTE, SocialAction.UNMUTE, SocialAction.MARK_READ, SocialAction.SEND_FILE)
 }
 
-/** सिर्फ़ वही media जो यूज़र ने खुद DK को share की (कोई और फ़ाइल नहीं) */
-data class SharedItem(val uri: String, val mime: String, val at: Long, val name: String = "")
+/** सिर्फ़ वही media जो यूज़र ने खुद DK को share की (कोई और फ़ाइल नहीं). batch = एक साथ share की गई (गैलरी में कई चुनकर) - वही अंक */
+data class SharedItem(val uri: String, val mime: String, val at: Long, val name: String = "", val batch: Long = 0)
 
 object MediaPolicy {
     fun resolve(requested: String, allowed: List<SharedItem>, wantVideo: Boolean?): SharedItem? {
@@ -220,6 +224,39 @@ object MediaPolicy {
         val r = requested.trim()
         if (r.isEmpty() || r.equals("latest_shared", true) || r.equals("latest", true)) return pool.firstOrNull()
         return pool.firstOrNull { it.uri == r }
+    }
+
+    /** 25 नवंबर 2026 (मालिक: "10 फोटो भेजूँ तो सब पता हो"): "all_shared" / "last_5" / "all" जैसा कई वाला माँगा? */
+    fun isMany(requested: String): Boolean = many(requested.trim().lowercase()) != null
+
+    private val ALL = setOf("all_shared", "all", "batch", "last_batch", "shared_all", "sab", "sabhi", "सब", "सभी")
+    /** null = एक वाला; 0 = आख़िरी बार एक साथ भेजी सब; N = आख़िरी N */
+    private fun many(r: String): Int? = when {
+        r in ALL -> 0
+        Regex("^(?:last|latest|recent)_(\\d{1,2})$").matchEntire(r) != null -> Regex("\\d+").find(r)!!.value.toInt().takeIf { it > 0 }
+        else -> null
+    }
+
+    /**
+     * कई फोटो/वीडियो - शेयर करने के क्रम में (पहली भेजी = पहली). अकेली वाली माँग = पहले जैसा [resolve] (0 या 1).
+     * wantVideo: true = सिर्फ़ वीडियो, false = सिर्फ़ फोटो, null = दोनों.
+     */
+    fun resolveMany(requested: String, allowed: List<SharedItem>, wantVideo: Boolean?, max: Int = 20): List<SharedItem> {
+        val n = many(requested.trim().lowercase()) ?: return listOfNotNull(resolve(requested, allowed, wantVideo))
+        val list = allowed.sortedByDescending { it.at }
+        val head = list.firstOrNull() ?: return emptyList()
+        val picked = if (n == 0) {
+            if (head.batch == 0L) listOf(head) else list.filter { it.batch == head.batch }
+        } else list.take(n)
+        val pool = when (wantVideo) { true -> picked.filter { it.mime.startsWith("video/") }; false -> picked.filter { it.mime.startsWith("image/") }; null -> picked }
+        return pool.sortedBy { it.at }.take(max.coerceAtLeast(1))
+    }
+
+    /** "3 फोटो और 2 वीडियो" */
+    fun countLabel(items: List<SharedItem>): String {
+        val v = items.count { it.mime.startsWith("video/") }
+        val p = items.size - v
+        return listOfNotNull(if (p > 0) "$p फोटो" else null, if (v > 0) "$v वीडियो" else null).joinToString(" और ").ifEmpty { "कुछ नहीं" }
     }
 }
 
@@ -272,5 +309,9 @@ object Selectors {
     val WA_MORE = TargetSpec(listOf("more options", "और विकल्प", "अधिक विकल्प"), listOf("menuitem_overflow"), name = "More options")
     val WA_MUTE = TargetSpec(listOf("mute notifications", "mute", "सूचनाएँ म्यूट करें", "म्यूट करें"), emptyList(), exact = true, name = "Mute")
     val WA_UNMUTE = TargetSpec(listOf("unmute notifications", "unmute", "अनम्यूट करें", "अनम्यूट"), emptyList(), exact = true, name = "Unmute")
+    // WhatsApp स्टेटस (25 नवंबर 2026)
+    val WA_MY_STATUS = TargetSpec(listOf("my status", "मेरा स्टेटस", "my status update"), emptyList(), exact = true, name = "My status")
+    val WA_CAPTION = TargetSpec(listOf("add a caption", "add a caption…", "caption", "कैप्शन जोड़ें", "कैप्शन"), listOf("caption"), editable = true, name = "caption")
+    val WA_STATUS_DONE = listOf("my status", "मेरा स्टेटस", "sending", "भेजा जा रहा")
     val WA_DIALOG_OK = TargetSpec(listOf("ok", "mute", "ठीक है", "म्यूट करें"), listOf("button1", "ok"), exact = true, clickableOnly = true, name = "OK")
 }

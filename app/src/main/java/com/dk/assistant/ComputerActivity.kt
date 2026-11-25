@@ -134,6 +134,8 @@ class ComputerActivity : AppCompatActivity() {
         titles.addView(FutureViews.title(this, Prefs.assistantName(this).uppercase() + " COMPUTER"))
         val top = UiFit.header(this, back, titles, listOf(
             smallBtn("+ जोड़ें") { pick.launch(PICK_TYPES) },   // v5: फ़ोटो / PDF / text DK कंप्यूटर को
+            // 25 नवंबर 2026 (मालिक): DK का ब्राउज़र जिस पेज पर काम कर रहा है / रुका है, वही सामने (काम चलता रहता है)
+            smallBtn("पेज") { openPage() },
             smallBtn("फ़ाइलें") { showFiles() },
             smallBtn("इतिहास") { showHistory() },
             smallBtn("नया") { newSession() },
@@ -306,6 +308,11 @@ class ComputerActivity : AppCompatActivity() {
             .setTitle("कामों का इतिहास")
             .setItems(l.map { TaskHistory.line(it) }.toTypedArray()) { _, _ -> }
             .setNegativeButton("बंद करें", null).show()
+    }
+
+    private fun openPage() {
+        if (ComputerBrowser.lastUrl.isBlank()) Toast.makeText(this, UiLang.s("DK कंप्यूटर ने अभी कोई पेज नहीं खोला"), Toast.LENGTH_SHORT).show()
+        else startActivity(android.content.Intent(this, BrowserShowActivity::class.java))
     }
 
     private fun showFiles() {
