@@ -708,6 +708,7 @@ class AgentRunner(
                             if (k == com.dk.assistant.agent.master.ShopRules.Tap.PAY) {
                                 speakJob?.join()
                                 com.dk.assistant.agent.master.ActionLog.add(svc, "रुका", "भुगतान - मालिक को सौंपा")
+                                ShowPage.appNow(svc, pay = true)     // "पेज दिखाओ" = यही ऐप, यही स्क्रीन
                                 say(com.dk.assistant.agent.master.ShopRules.PAY_HANDOVER)
                                 return
                             }

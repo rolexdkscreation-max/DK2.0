@@ -202,6 +202,14 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- 25 नवंबर 2026: "पेज दिखाओ" - DK कंप्यूटर का चलता ब्राउज़र पूरी स्क्रीन पर -->
+        <activity
+            android:name=".BrowserShowActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize" />
+
         <activity
             android:name=".TeacherActivity"
             android:exported="false"

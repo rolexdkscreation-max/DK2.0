@@ -65,7 +65,7 @@ object BrowserRules {
 
     /** भुगतान कभी DK नहीं करता - पूछने की भी ज़रूरत नहीं */
     fun payNote(label: String) =
-        "STOPPED: \"${label.trim().take(60)}\" is a PAYMENT step. DK never pays. Stop here and tell the owner to open this page and pay himself (give him the page link)."
+        "STOPPED: \"${label.trim().take(60)}\" is a PAYMENT step. DK never pays. Stop here and tell the owner DK kept this page open - he can say \"पेज दिखाओ\" (or tap पेज) and DK opens it on his screen to pay himself (also give him the page link)."
 
     /** पेज पर खतरे वाले खाने: पासवर्ड / OTP / कार्ड / CAPTCHA / भुगतान */
     const val PAGE_GUARD_JS = """(function(){
@@ -95,7 +95,7 @@ return JSON.stringify({
         val what = listOf(g.pw to "password", g.otp to "OTP", g.card to "card / CVV", g.captcha to "CAPTCHA", (g.pay || isPaymentUrl(url)) to "payment")
             .filter { it.first }.joinToString(", ") { it.second }
         return "\n\nDK MASTER: this page asks for $what. DK must NOT fill or solve it. Stop and ask the owner to do this part himself on his phone " +
-            "(give him the page link: ${url.take(160)}); continue only after he says it is done."
+            "(DK keeps the page open: he says \"पेज दिखाओ\" or taps पेज to see it on his screen; link: ${url.take(160)}); continue only after he says it is done."
     }
 
     /** हिंदी में छोटा कारण - लॉग / स्क्रीन */

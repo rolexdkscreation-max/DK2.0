@@ -229,7 +229,12 @@ object BookRules {
         append("DK MASTER (booking): owner's details = ").append(summary(t)).append(". Use exactly these - never change or invent a place, date, name, age or count; ")
         if (t.app == null && apps.size > 1) append("he did not name an app - first ask which one: ").append(apps.joinToString(", ") { it.label }).append("; ")
         else if (t.app == null && apps.size == 1) append("use ").append(apps[0].label).append("; ")
-        else if (t.app == null) append("no booking app for this is installed - tell him and offer to open the website in DK Computer; ")
+        // 25 नवंबर 2026 (मालिक: "ऐप नहीं है तो ब्राउज़र में वो काम चालू होना चाहिए") - पूछना नहीं, फ़ोन के ब्राउज़र में वेबसाइट खोलकर वहीं काम
+        else if (t.app == null) ShowRules.bookWeb(t.kind, null)?.let { append("no booking app for this is installed - do NOT stop: open_url ").append(it).append(" in the phone's browser and do the same steps on that website; ") }
+            ?: append("no booking app for this is installed - tell him and offer to open the website; ")
+        if (t.app != null && apps.none { it.label == t.app.label }) ShowRules.bookWeb(t.kind, t.app.label)?.let {
+            append(t.app.label).append(" app is not installed - do NOT stop: open_url ").append(it).append(" in the phone's browser and book there the same way; ")
+        }
         append("fill only what he told you, ask him for passenger name / age / ID / phone if needed (never make them up); ")
         append("show him the options (time, price) as read on the screen and let him choose; ")
         append("before Book / Confirm / Reserve DK asks him itself - if he says no, stop; ")
@@ -258,5 +263,5 @@ object BookRules {
     fun askLine(t: Trip?, label: String): String =
         "बुकिंग पक्की करने वाला कदम: \"${label.trim().take(50)}\"" + (t?.let { "। ब्योरा: ${summary(it)}" } ?: "") + "। क्या मैं दबाऊँ? हाँ या ना बोलिए।"
 
-    const val PAY_HANDOVER = "अब भुगतान का पेज है — बुकिंग में भुगतान मैं कभी नहीं करती। ऐप इसी पेज पर खुला है, भुगतान आप खुद कीजिए।"
+    const val PAY_HANDOVER = "अब भुगतान का पेज है — बुकिंग में भुगतान मैं कभी नहीं करती। ऐप इसी पेज पर खुला है, भुगतान आप खुद कीजिए। बाद में देखना हो तो बोलिए — पेज दिखाओ।"
 }

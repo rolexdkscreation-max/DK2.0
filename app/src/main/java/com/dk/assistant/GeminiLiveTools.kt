@@ -459,11 +459,16 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                 ?: (if (name == "local_info" && args.optBoolean("go")) localGoTool(args.optString("find")) else null)
                 // 15 नवंबर 2026: बहुत tools हों तो router की खोज ([LiveToolSlim.SEARCH]) + DK AI Plus plug-in tools (हमारा नहीं = null, पुराना रास्ता)
                 ?: (if (name == LiveToolSlim.SEARCH) LiveToolSlim.search(args.optString("query")) else null)
+                // 25 नवंबर 2026 (मालिक): "पेज दिखाओ" DK कंप्यूटर / फ़ोन एजेंट को नया काम नहीं - वही आख़िरी पेज सामने
+                ?: (if ((name == "computer_task" || name == "phone_task") && ShowPage.has() &&
+                        com.dk.assistant.agent.master.ShowRules.isShowAsk(args.optString(if (name == "phone_task") "request" else "task"))) ShowPage.show(svc) else null)
                 ?: com.dk.assistant.plus.tools.PlusTools.runOrNull(svc, name, args)
                 ?: when (name) {
                 "phone_task" -> phoneTask(args.optString("request"))
                 MultiGate.DUP_TOOL -> MultiGate.dupNote()
                 "task_status" -> TaskStatus.summary()
+                // 25 नवंबर 2026 (मालिक): "पेज दिखाओ" = DK का आख़िरी काम वाला पेज / ऐप सामने (पीछे का काम चलता रहता है)
+                "show_page" -> ShowPage.show(svc)
                 "look_screen" -> ScreenLook.liveTool(svc, args.optString("question").ifBlank { DKState.lastUser.trimEnd('…') })
                 "app_studio" -> com.dk.assistant.studio.StudioLink.liveTool(svc, args.optString("action"), args.optString("text"))
                 "phone_call" -> callTool(args.optString("action"), "Gemini")
