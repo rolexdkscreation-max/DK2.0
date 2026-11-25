@@ -84,12 +84,10 @@ class ConnectorsActivity : AppCompatActivity() {
             "Token सिर्फ़ इसी फ़ोन में रहते हैं (Android Keystore से बंद) - किसी server पर नहीं जाते. सब मुफ़्त (निजी इस्तेमाल).")
 
         listCard()   // 24 नवंबर 2026 (मालिक): हर जुड़ने वाली चीज़ की एक साफ़ सूची - आइकन, नाम, विवरण, + / −
+        // 25 नवंबर 2026 (मालिक: "दो-दो नहीं दिखना चाहिए"): नीचे बिना फ़ोटो वाली पुरानी पंक्तियाँ नहीं -
+        // सूची में जिस पर दबाया, सिर्फ़ उसी का पूरा हिस्सा (काम, जाँचो, token, server) सूची के ठीक नीचे खुलता है
+        detailFor(openId)
         section("g_setup", "Google: एक बार की तैयारी", "Drive, Gmail, Calendar वग़ैरह के लिए - 10 मिनट, सिर्फ़ एक बार") { box -> googleSetup(box) }
-        Catalog.GOOGLE.forEach { d -> googleCard(d) }
-        githubCard()
-        metaCard()
-        agentCard()
-        mcpCard()
         section("later", "जल्द आने वाले", null) { box ->
             text(box, "Notion, Telegram bot, Spotify, Microsoft Outlook / OneDrive, Dropbox - अगले version में.\n" +
                 "तब तक: इनमें से किसी का MCP server हो तो नीचे \"MCP server\" में URL डालकर अभी जोड़ सकते हैं.")
@@ -216,6 +214,17 @@ class ConnectorsActivity : AppCompatActivity() {
         }
         build()
         toast(r.title + ": " + UiLang.s(if (r.kind == Kind.MCP) "नीचे हर server के साथ \"हटाओ\" है" else "हटा दिया"))
+    }
+
+    /** सूची में चुने कनेक्टर का पूरा हिस्सा (एक ही) - [ConnectorList.detailKind] */
+    private fun detailFor(id: String?) {
+        when (ConnectorList.detailKind(id)) {
+            Kind.GOOGLE -> Catalog.GOOGLE.firstOrNull { it.id == id }?.let { googleCard(it) }
+            Kind.GITHUB -> githubCard()
+            Kind.META -> { metaCard(); agentCard() }
+            Kind.MCP -> mcpCard()
+            Kind.AGENT, null -> Unit
+        }
     }
 
     // ------------------------------------------------------------ Google
