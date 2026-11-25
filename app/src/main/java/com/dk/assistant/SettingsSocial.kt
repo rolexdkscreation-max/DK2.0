@@ -15,6 +15,7 @@ import com.dk.assistant.insights.Platform
 internal fun SettingsActivity.secSocial() {
     socialReportsCard()   // 24 नवंबर 2026 (मालिक): DK सोशल एजेंट → रिपोर्ट्स
     socialSpecialistCard()
+    contentWritingCard()   // 24 नवंबर 2026: DK कंटेंट राइटिंग (शुरू में बंद)
     card("सोशल रिव्यू कैसे करें", "एक बार बोलें — DK खुद ऐप खोलकर हर रील / वीडियो के आँकड़े देखकर पूरी रिपोर्ट बताएगा", startOpen = true) { box ->
         hint(box, "बोलें: \"हे DK, इंस्टाग्राम का पूरा रिव्यू करो\", \"यूट्यूब स्टूडियो चेक करो - कौन सा वीडियो चला\", " +
             "\"फेसबुक पर रीच क्यों गिर रही है\", \"तीनों सोशल मीडिया का एनालिसिस करो\". DK लाइव में भी यही बोलें।\n\n" +
@@ -155,6 +156,17 @@ internal fun SettingsActivity.socialSpecialistCard() {
             "• कैप्शन के लिए Gemini key चाहिए (वही जो DK में है)। पहली बार गैलरी पहचान में कुछ मिनट लगते हैं।\n" +
             "• Instagram / Facebook / YouTube ऐप के नए डिज़ाइन से कोई बटन न मिले तो DK रुककर बता देगा।\n" +
             "• मॉडल: Apple MobileCLIP2 (सिर्फ़ निजी इस्तेमाल का लाइसेंस)।")
+    }
+}
+
+/** 24 नवंबर 2026 (मालिक: DK CONTENT WRITING): अलग स्विच, शुरू में बंद. चालू = Settings की "स्टोरी राइटर" पंक्ति "DK कंटेंट राइटिंग" बन जाती है */
+internal fun SettingsActivity.contentWritingCard() {
+    card("DK कंटेंट राइटिंग", "कहानी + फैक्ट्स वीडियो + स्क्रिप्ट + कैप्शन/हैशटैग + स्क्रिप्ट सुधार + फ़ोटो से स्क्रिप्ट - एक ही जगह") { box ->
+        flagSwitch(box, "कंटेंट राइटिंग चालू", com.dk.assistant.plus.FeatureFlags.CONTENT_WRITING)
+        hint(box, "कहानी का तरीका बिल्कुल पहले जैसा (वही Story Writer)। बाकी में: मज़बूत हुक, आसान बोलचाल की हिंदी, आख़िर तक रोकने वाला सवाल, छोटा CTA। " +
+            "फैक्ट्स = 30-45 सेकंड, स्क्रिप्ट = 60 सेकंड (बदल सकते हैं)। जो बात छूटी हो सिर्फ़ वही पूछेगा। सच्चे फैक्ट्स, पुराना कंटेंट दोहराएगा नहीं।")
+        hint(box, "हर स्क्रिप्ट के साथ बोलने का अंदाज़न समय + \"सेव / बदलो / कैप्शन + हैशटैग\"। वही AI key जो कहानी में लगती है। बंद = पहले जैसा Story Writer।")
+        row(box, button("खोलें") { startActivity(android.content.Intent(this, ContentWriterActivity::class.java)) })
     }
 }
 

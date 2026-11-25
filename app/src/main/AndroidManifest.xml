@@ -265,6 +265,12 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- 24 नवंबर 2026: DK कंटेंट राइटिंग (कहानी = ऊपर वाला Story Writer ही) -->
+        <activity
+            android:name=".ContentWriterActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
         <activity
             android:name=".CodingActivity"
             android:exported="false"

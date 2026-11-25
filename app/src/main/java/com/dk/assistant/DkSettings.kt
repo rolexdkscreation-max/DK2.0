@@ -121,6 +121,9 @@ object DkSettings {
         // 15 नवंबर 2026 (मालिक: 4 हिस्से) - टूल एजेंट, वॉइस गार्डियन, SOS सबको पूरी कॉल. (रोमांटिक 18+ बोलकर नहीं - सहमति सिर्फ़ Settings में)
         Item("tool_agent", "टूल एजेंट (Retry Loop)", "brain", FeatureFlags.TOOL_AGENT, false,
             listOf("टूल एजेंट", "tool agent", "retry loop", "रिट्राई लूप"), store = STORE_FLAGS),
+        // 24 नवंबर 2026 (मालिक: DK CONTENT WRITING)
+        Item("content_writing", "DK कंटेंट राइटिंग", "social", FeatureFlags.CONTENT_WRITING, false,
+            listOf("कंटेंट राइटिंग", "कंटेंट राइटर", "content writing", "content writer"), store = STORE_FLAGS),
         // 24 नवंबर 2026 (मालिक: Universal AI Action Agent)
         Item("master_agent", "DK मास्टर एजेंट", "brain", FeatureFlags.MASTER_AGENT, false,
             listOf("मास्टर एजेंट", "master agent", "डीके मास्टर", "एक्शन एजेंट"), store = STORE_FLAGS),
