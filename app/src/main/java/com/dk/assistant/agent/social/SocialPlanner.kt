@@ -6,9 +6,49 @@ import java.net.URLEncoder
 /** request -> कदमों की सूची (pure). media / फ़ोन नंबर पहले से तय (Android हिस्सा देता है) */
 object SocialPlanner {
 
-    fun plan(id: String, r: SocialRequest, media: SharedItem?, phoneDigits: String?, contactName: String = r.contact): SocialTask {
+    /**
+     * 25 नवंबर 2026 (मालिक: "10 फोटो भेजूँ तो सब पोस्ट हों"):
+     * many (2+) = एक ही पोस्ट में सब (Instagram carousel / Facebook) - सिर्फ़ [canOnePost] वाले काम.
+     * seq = (यह कौन सा, कुल कितने) - स्टोरी / स्टेटस / रील एक-एक करके; पहले वाले सवाल में ही सबकी बात.
+     */
+    fun plan(id: String, r: SocialRequest, media: SharedItem?, phoneDigits: String?, contactName: String = r.contact,
+             many: List<SharedItem> = emptyList(), seq: Pair<Int, Int> = 1 to 1): SocialTask {
+        val t = plan1(id, r, media, phoneDigits, contactName, many.takeIf { it.size > 1 && canOnePost(r) }.orEmpty())
+        val (i, n) = seq
+        if (n <= 1) return t
+        val head = "${r.platform.label} ${where(r)} में ये $n ${kindMany(many)}"
+        val tail = " एक-एक करके डाल दूँ? (एक \"हाँ\" = सब)"
+        val first = if (r.confirmExtra.isBlank()) head + captionPart(r.caption) + tail else "${r.confirmExtra}। $head$tail"
+        return t.copy(confirmText = if (i <= 1) first else "($i/$n) " + t.confirmText)
+    }
+
+    /** एक ही पोस्ट में कई फोटो/वीडियो जा सकते हैं (ऐप की अपनी सुविधा) */
+    fun canOnePost(r: SocialRequest): Boolean =
+        (r.platform == Platform.INSTAGRAM || r.platform == Platform.FACEBOOK) && (r.action == SocialAction.POST_PHOTO || r.action == SocialAction.POST_VIDEO)
+
+    /** Instagram एक पोस्ट में 10 तक लेता है */
+    fun onePostMax(p: Platform): Int = if (p == Platform.INSTAGRAM) 10 else 20
+
+    private fun where(r: SocialRequest) = when {
+        r.platform == Platform.WHATSAPP -> "स्टेटस"
+        r.action == SocialAction.POST_STORY -> "स्टोरी"
+        r.action == SocialAction.POST_REEL && r.platform == Platform.YOUTUBE -> "Shorts"
+        r.action == SocialAction.POST_REEL -> "रील"
+        else -> "अलग-अलग पोस्ट"
+    }
+
+    private fun kindMany(m: List<SharedItem>): String = if (m.isEmpty()) "फोटो/वीडियो" else MediaPolicy.countLabel(m)
+
+    private fun mimeOf(m: List<SharedItem>): String {
+        val types = m.map { it.mime.substringBefore('/') }.distinct()
+        return when { m.isEmpty() -> "*/*"; m.map { it.mime }.distinct().size == 1 -> m[0].mime; types.size == 1 -> types[0] + "/*"; else -> "*/*" }
+    }
+
+    private fun plan1(id: String, r: SocialRequest, media: SharedItem?, phoneDigits: String?, contactName: String, many: List<SharedItem>): SocialTask {
         val S = Selectors
         val cap = r.caption
+        val multi = many.size > 1
+        val uris = if (multi) many.map { it.uri } else emptyList()
         return when (r.platform) {
             Platform.INSTAGRAM -> {
                 val m = media!!
@@ -26,11 +66,11 @@ object SocialPlanner {
                             add(PlanStep.AdvanceUntil(S.IG_NEXT, S.IG_CAPTION, max = 3))
                             if (cap.isNotEmpty()) add(PlanStep.Type(S.IG_CAPTION, cap))
                             if (!reel) songStep(r, S.IG_ADD_MUSIC, S.IG_SHARE)?.let { add(it) }
-                            addAll(tagSteps(r, S.IG_TAG_PEOPLE, S.IG_SHARE, photoTap = !reel && !m.mime.startsWith("video/")))
+                            addAll(tagSteps(r, S.IG_TAG_PEOPLE, S.IG_SHARE, photoTap = !reel && !multi && !m.mime.startsWith("video/")))
                             add(PlanStep.Final(S.IG_SHARE, S.IG_DONE, S.IG_CAPTION))
                         }
-                        SocialTask(id, r.platform, r.action, r.mode, OpenSpec.ShareMedia(r.platform.pkg, m.mime, m.uri, hint), steps,
-                            ask(r, "Instagram पर यह ${kind(m)}" + captionPart(cap) + " पोस्ट कर दूँ?"))
+                        SocialTask(id, r.platform, r.action, r.mode, OpenSpec.ShareMedia(r.platform.pkg, if (multi) mimeOf(many) else m.mime, m.uri, hint, uris = uris), steps,
+                            ask(r, "Instagram पर " + (if (multi) "ये ${MediaPolicy.countLabel(many)} एक ही पोस्ट में" else "यह ${kind(m)}") + captionPart(cap) + " पोस्ट कर दूँ?"))
                     }
                 }
             }
@@ -53,8 +93,8 @@ object SocialPlanner {
                         songStep(r, S.FB_MUSIC, S.FB_POST)?.let { add(it) }
                         add(PlanStep.Final(S.FB_POST, S.FB_DONE, S.FB_POST))
                     }
-                    SocialTask(id, r.platform, r.action, r.mode, OpenSpec.ShareMedia(r.platform.pkg, m.mime, m.uri, S.FB_FEED_HINT, cap), steps,
-                        ask(r, "Facebook पर यह ${kind(m)}" + captionPart(cap) + " पोस्ट कर दूँ?"))
+                    SocialTask(id, r.platform, r.action, r.mode, OpenSpec.ShareMedia(r.platform.pkg, if (multi) mimeOf(many) else m.mime, m.uri, S.FB_FEED_HINT, cap, uris = uris), steps,
+                        ask(r, "Facebook पर " + (if (multi) "ये ${MediaPolicy.countLabel(many)} एक ही पोस्ट में" else "यह ${kind(m)}") + captionPart(cap) + " पोस्ट कर दूँ?"))
                 }
             }
             // 16 नवंबर 2026 (मालिक): YouTube Shorts - वीडियो share -> (Next) -> शीर्षक/कैप्शन -> "हाँ" -> Upload
@@ -86,6 +126,19 @@ object SocialPlanner {
                             listOf(PlanStep.Final(S.WA_SEND, listOfNotNull(m.name.substringBeforeLast('.').take(24).takeIf { it.length >= 3 }), S.WA_SEND)),
                             "$contactName को WhatsApp पर यह फ़ाइल भेज दूँ: \"${short(label)}\"?")
                     }
+                    // 25 नवंबर 2026 (मालिक): WhatsApp स्टेटस - share की गई फोटो/वीडियो सीधे "My status" (jid status@broadcast),
+                    // कैप्शन लिखकर, आख़िरी "भेजें" सिर्फ़ "हाँ" के बाद
+                    SocialAction.POST_STORY -> {
+                        val m = media!!
+                        val steps = buildList {
+                            add(PlanStep.Tap(S.WA_MY_STATUS, optional = true))
+                            if (cap.isNotEmpty()) add(PlanStep.Type(S.WA_CAPTION, cap, optional = true))
+                            add(PlanStep.Final(S.WA_SEND, S.WA_STATUS_DONE, S.WA_SEND))
+                        }
+                        SocialTask(id, r.platform, r.action, r.mode,
+                            OpenSpec.ShareMedia(r.platform.pkg, m.mime, m.uri, emptyList(), jid = STATUS_JID), steps,
+                            ask(r, "WhatsApp स्टेटस पर यह ${kind(m)}" + captionPart(cap) + " डाल दूँ?"))
+                    }
                     SocialAction.READ_CHAT -> SocialTask(id, r.platform, r.action, r.mode, chat!!, listOf(PlanStep.Read(25)), "")
                     SocialAction.MARK_READ -> SocialTask(id, r.platform, r.action, r.mode, chat!!, listOf(PlanStep.Read(1)), "")
                     SocialAction.SEARCH_CHAT -> SocialTask(id, r.platform, r.action, r.mode, OpenSpec.Launch(r.platform.pkg),
@@ -100,6 +153,8 @@ object SocialPlanner {
         }
     }
 
+    const val STATUS_JID = "status@broadcast"
+
     /** WhatsApp के लिए नंबर: सिर्फ़ अंक, 10 अंक = भारत (+91) मानो */
     fun waDigits(raw: String, defaultCountry: String = "91"): String? {
         var d = raw.filter { it.isDigit() }
@@ -113,6 +168,7 @@ object SocialPlanner {
     /** 16 नवंबर 2026: स्पेशलिस्ट ने जो चुना/लिखा (फोटो, कैप्शन, हैशटैग, गाना, टैग) - वह सब सुनाकर आख़िर में "हाँ" पूछो */
     private fun ask(r: SocialRequest, plain: String): String = if (r.confirmExtra.isBlank()) plain
         else "${r.platform.label} पर सब तैयार है - ${r.confirmExtra}। " + when {
+            r.platform == Platform.WHATSAPP -> "स्टेटस पर डाल दूँ?"
             r.action == SocialAction.POST_STORY -> "स्टोरी में डाल दूँ?"
             r.platform == Platform.YOUTUBE -> "Short अपलोड (पब्लिक) कर दूँ?"
             else -> "पब्लिक (शेयर) कर दूँ?"
@@ -147,8 +203,9 @@ object SocialPlanner {
     fun unsupported(r: SocialRequest): List<String> = buildList {
         val song = r.song.isNotBlank()
         val tags = r.tags.isNotEmpty()
-        if (r.action == SocialAction.POST_STORY && song) add("स्टोरी में गाना मैं नहीं लगा पाता")
-        if (r.action == SocialAction.POST_STORY && tags) add("स्टोरी में टैग मैं नहीं कर पाता")
+        if (r.platform == Platform.WHATSAPP && r.action == SocialAction.POST_STORY && (song || tags)) add("WhatsApp स्टेटस में गाना/टैग मैं नहीं लगाता")
+        else if (r.action == SocialAction.POST_STORY && song) add("स्टोरी में गाना मैं नहीं लगा पाता")
+        if (r.action == SocialAction.POST_STORY && tags && r.platform != Platform.WHATSAPP) add("स्टोरी में टैग मैं नहीं कर पाता")
         if (r.platform == Platform.YOUTUBE && tags) add("YouTube Shorts पर लोगों को टैग नहीं होता")
         if (r.platform == Platform.FACEBOOK && r.action == SocialAction.POST_TEXT && song) add("सिर्फ़ लिखी पोस्ट में गाना नहीं लगता")
         if (r.platform == Platform.FACEBOOK && r.action == SocialAction.POST_TEXT && tags) add("सिर्फ़ लिखी पोस्ट में टैग मैं नहीं करता")

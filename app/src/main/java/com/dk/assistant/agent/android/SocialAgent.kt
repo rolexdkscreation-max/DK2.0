@@ -67,6 +67,7 @@ object SocialAgent {
         val smartOn = FeatureFlags.on(svc, FeatureFlags.SOCIAL_SPECIALIST)
         if (req.smart && !smartOn)
             return err("specialist_off", "यह काम \"सोशल पोस्ट स्पेशलिस्ट\" से होता है - Settings > सोशल मीडिया में \"सोशल पोस्ट स्पेशलिस्ट\" चालू कीजिए")
+        var batch: List<SharedItem> = emptyList()
         val fromGallery = smartOn && req.action.needsMedia && (req.mediaQuery.isNotEmpty() || req.media.trim().lowercase() == "latest_gallery")
         val wantGallery = when {
             req.platform == Platform.YOUTUBE -> true
@@ -86,8 +87,19 @@ object SocialAgent {
                     ?: return err("gallery_empty", "गैलरी में कोई ${if (wantGallery == true) "वीडियो" else "फोटो"} नहीं मिली")
             }
         } else if (req.action.needsMedia) {
-            val want = when (req.action) { SocialAction.POST_VIDEO, SocialAction.POST_REEL -> true; SocialAction.POST_PHOTO -> false; else -> null }
-            MediaPolicy.resolve(req.media, SharedMedia.all(svc), want)
+            // 25 नवंबर 2026: कई share कीं ("जो भेजा वो सब") - Instagram/Facebook पोस्ट में फोटो+वीडियो दोनों चलते हैं
+            val manyAsk = MediaPolicy.isMany(req.media)
+            val want = when (req.action) {
+                SocialAction.POST_VIDEO, SocialAction.POST_REEL -> if (manyAsk && SocialPlanner.canOnePost(req)) null else true
+                SocialAction.POST_PHOTO -> if (manyAsk) null else false
+                else -> if (req.platform == Platform.YOUTUBE) true else null
+            }
+            if (manyAsk) {
+                val list = MediaPolicy.resolveMany(req.media, SharedMedia.all(svc), want, SharedMedia.KEEP)
+                if (list.isEmpty()) return err("media_not_allowed", "DK के पास कोई ${if (want == true) "वीडियो" else "फोटो/वीडियो"} नहीं है। गैलरी में फोटो/वीडियो चुनकर Share -> DK दबाइए, फिर दोबारा कहिए।")
+                batch = list
+            }
+            batch.firstOrNull() ?: MediaPolicy.resolve(req.media, SharedMedia.all(svc), want)
                 ?: return err("media_not_allowed", "DK के पास कोई ${if (want == true) "वीडियो" else "फोटो"} नहीं है। गैलरी में फ़ाइल खोलकर Share -> DK दबाइए, फिर दोबारा कहिए।")
         } else if (req.action == SocialAction.SEND_FILE) {
             // नवंबर 2026: बोली गई फ़ाइल फ़ोन में ढूँढो (DK की बनाई / गैलरी / Download…)
@@ -98,7 +110,7 @@ object SocialAgent {
         } else null
         // WhatsApp: नाम -> नंबर
         var phone: String? = null; var who = req.contact
-        if (req.platform == Platform.WHATSAPP && req.action !in setOf(SocialAction.READ_UNREAD, SocialAction.SEARCH_CHAT)) {
+        if (req.platform == Platform.WHATSAPP && req.action !in setOf(SocialAction.READ_UNREAD, SocialAction.SEARCH_CHAT, SocialAction.POST_STORY)) {
             when (val c = contact(svc, req.contact)) {
                 is Contact.Found -> { phone = c.digits; who = c.name }
                 is Contact.Ask -> return err(c.code, c.msg)
@@ -113,20 +125,58 @@ object SocialAgent {
         autoSend = !ownConfirm && req.platform == Platform.WHATSAPP && (req.action == SocialAction.SEND_MESSAGE || req.action == SocialAction.SEND_FILE) &&
             (Prefs.waAutoSend(svc) || ownerAsked)
         val id = "social-" + (++seq) + "-" + (System.currentTimeMillis() % 100000)
-        val task = SocialPlanner.plan(id, if (smartOn && req.smart && media != null) smart(svc, req, media, fromGallery) else req, media, phone, who)
+        val ready = if (smartOn && req.smart && media != null) smart(svc, req, media, fromGallery) else req
+        // 25 नवंबर 2026: कई फोटो/वीडियो - Instagram/Facebook पोस्ट = एक ही पोस्ट में (carousel); स्टोरी/स्टेटस/रील = एक-एक करके, एक "हाँ" से सब
+        val plan = SocialBatch.split(ready, batch)
+        val task = SocialPlanner.plan(id, ready, media, phone, who, many = plan.onePost, seq = 1 to plan.queue.size.coerceAtLeast(1))
         val driver = AccessibilityScreenDriver(svc)
         val r = SocialTaskRunner(driver, { open(svc, it) }, { rep -> onUpdate(svc, rep) })
         runner = r
         startedAt = System.currentTimeMillis(); endedAt = 0L; lastReport = null
+        batchLeft = (plan.queue.size - 1).coerceAtLeast(0); batchAuto = false
         job = svc.scope.launch {
-            try { r.run(task) } catch (e: Exception) { DKLog.d("Social: गलती ${e.javaClass.simpleName}") }
+            var rep: TaskReport? = null
+            try { rep = r.run(task) } catch (e: Exception) { DKLog.d("Social: गलती ${e.javaClass.simpleName}") }
             finally { if (runner === r) runner = null }
+            if (plan.queue.size > 1) runQueue(svc, id, ready, plan.queue, rep, driver)
         }
-        DKLog.d("Social: ${req.platform.label} ${req.action.name.lowercase()} शुरू ($id)")
+        DKLog.d("Social: ${req.platform.label} ${req.action.name.lowercase()} शुरू ($id, ${if (plan.queue.size > 1) "${plan.queue.size} एक-एक करके" else if (plan.onePost.size > 1) "${plan.onePost.size} एक पोस्ट में" else "एक"})")
         return JSONObject().put("status", "started").put("task_id", id)
+            .apply { if (batch.size > 1) put("items", batch.size).put("items_label", com.dk.assistant.agent.social.MediaPolicy.countLabel(batch)) }
+            .apply { if (plan.dropped > 0) put("not_used", plan.dropped).put("why_not_used", "Instagram takes at most ${SocialPlanner.onePostMax(req.platform)} in one post") }
             .put("message", "Started. You will get SYSTEM NOTEs as it progresses. Before anything is posted/sent you get status waiting_confirmation: then ask the user exactly that question and wait for their answer. Never say it is done before the SYSTEM NOTE says completed.")
             .toString()
     }
+
+    /** एक-एक करके बाक़ी वाले (पहले वाले पर मालिक की असली "हाँ" मिल चुकी - उसी सवाल में सब बताया था) */
+    @Volatile private var batchAuto = false
+    @Volatile private var batchLeft = 0
+
+    private suspend fun runQueue(svc: DKAccessibilityService, id: String, req: SocialRequest, queue: List<SharedItem>, first: TaskReport?, driver: AccessibilityScreenDriver) {
+        var done = if (first != null && SocialBatch.ok(first.status)) 1 else 0
+        var last = first
+        if (done == 1) {
+            for ((k, item) in queue.drop(1).withIndex()) {
+                val n = k + 2
+                kotlinx.coroutines.delay(2500)   // पिछला अपलोड शुरू हो जाए, ऐप सँभल जाए
+                if (stopAsked) break
+                batchLeft = queue.size - n; batchAuto = true
+                val t = SocialPlanner.plan("$id-$n", req, item, null, req.contact, seq = n to queue.size)
+                val r = SocialTaskRunner(driver, { open(svc, it) }, { rep -> onUpdate(svc, rep) })
+                runner = r
+                last = try { r.run(t) } catch (e: Exception) { DKLog.d("Social: गलती ${e.javaClass.simpleName}"); null }
+                if (runner === r) runner = null
+                if (last == null || !SocialBatch.ok(last.status)) break
+                done++
+            }
+        }
+        batchAuto = false; batchLeft = 0; stopAsked = false
+        val note = SocialBatch.summary(req.platform.label, done, queue.size, last?.status)
+        DKLog.d("Social $id: एक-एक करके $done/${queue.size}")
+        try { svc.gemLive.visionNote("SYSTEM NOTE: social batch finished - $note Tell the user exactly this, honestly.") } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
+    }
+
+    @Volatile private var stopAsked = false
 
     /**
      * 16 नवंबर 2026: फोटो/वीडियो देखकर कैप्शन + हैशटैग (+ "auto" गाना), और आख़िरी सवाल में सुनाने वाली बात.
@@ -176,7 +226,7 @@ object SocialAgent {
         val tid = args.optString("task_id").trim()
         if (tid.isNotEmpty() && tid != rep.taskId) return err("wrong_task", "Running task is ${rep.taskId}")
         return when (cmd) {
-            "cancel", "stop" -> { r.control(SocialTaskRunner.Control.CANCEL); JSONObject().put("status", "cancelling").put("task_id", rep.taskId).toString() }
+            "cancel", "stop" -> { stopAsked = batchLeft > 0; r.control(SocialTaskRunner.Control.CANCEL); JSONObject().put("status", "cancelling").put("task_id", rep.taskId).toString() }
             "resume", "continue" -> { r.control(SocialTaskRunner.Control.RESUME); JSONObject().put("status", "resuming").put("task_id", rep.taskId).toString() }
             "confirm", "yes" -> {
                 if (rep.status != TaskStatus.WAITING_CONFIRMATION) return err("not_waiting", "The task is not waiting for confirmation (status ${rep.status.name.lowercase()})")
@@ -200,6 +250,15 @@ object SocialAgent {
         DKLog.d("Social ${rep.taskId}: ${rep.status.name.lowercase()} (${rep.step}/${rep.totalSteps})")
         if (rep.status == TaskStatus.RUNNING && rep.step > 0) return   // बीच की हर बात नहीं
         // मालिक ने सेटिंग में पहले ही "हाँ" दे रखी है -> सवाल नहीं, सीधा भेजो (पूरा होने का SYSTEM NOTE बाद में आता है)
+        // 25 नवंबर 2026: एक-एक करके वाले बाक़ी आइटम - पहले सवाल में "एक हाँ = सब" कहकर पूछा था और असली हाँ मिली थी
+        if (rep.status == TaskStatus.WAITING_CONFIRMATION && batchAuto) {
+            runner?.let { DKLog.d("Social ${rep.taskId}: batch - पहले वाली हाँ से"); it.control(SocialTaskRunner.Control.CONFIRM); return }
+        }
+        // बीच वाला (और बाक़ी हैं) पूरा हुआ - Live को छोटी बात, आख़िरी नतीजा runQueue देता है
+        if (batchLeft > 0 && (rep.status == TaskStatus.COMPLETED || rep.status == TaskStatus.SUBMITTED_UNVERIFIED)) {
+            try { svc.gemLive.visionNote("SYSTEM NOTE: social batch item ${rep.taskId} ${rep.status.name.lowercase()}, $batchLeft more to go - continuing automatically. Do not say all are done yet.") } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
+            return
+        }
         if (rep.status == TaskStatus.WAITING_CONFIRMATION && autoSend) {
             runner?.let { autoSend = false; DKLog.d("Social ${rep.taskId}: बिना पूछे भेजो (सेटिंग / मालिक ने खुद कहा)"); it.control(SocialTaskRunner.Control.CONFIRM); return }
         }
@@ -222,7 +281,15 @@ object SocialAgent {
             when (o) {
                 is OpenSpec.ShareMedia -> {
                     val uri = Uri.parse(o.uri)
-                    val base = Intent(Intent.ACTION_SEND).setType(o.mime).putExtra(Intent.EXTRA_STREAM, uri)
+                    // 25 नवंबर 2026: एक पोस्ट में कई (Instagram carousel / Facebook) - सबकी पढ़ने की इजाज़त ClipData से
+                    val list = o.uris.map { Uri.parse(it) }
+                    val raw = if (list.size > 1) Intent(Intent.ACTION_SEND_MULTIPLE).setType(o.mime)
+                        .putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(list))
+                        .apply {
+                            clipData = android.content.ClipData.newRawUri("", list[0]).also { cd -> list.drop(1).forEach { cd.addItem(android.content.ClipData.Item(it)) } }
+                        }
+                    else Intent(Intent.ACTION_SEND).setType(o.mime).putExtra(Intent.EXTRA_STREAM, uri)
+                    val base = raw
                         .apply { if (o.text.isNotEmpty()) putExtra(Intent.EXTRA_TEXT, o.text) }
                         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                     if (o.jid.isNotEmpty()) {
