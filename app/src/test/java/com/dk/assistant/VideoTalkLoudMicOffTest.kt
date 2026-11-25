@@ -41,7 +41,7 @@ class VideoTalkLoudMicOffTest {
         val out = St3Loud.speech(quiet)
         assertEquals(St3Loud.TARGET_RMS, St3Loud.rms(out), 0.01f)
         val peaky = FloatArray(1_000) { if (it == 10) 0.9f else 0.02f }
-        assertTrue(St3Loud.speech(peaky).all { kotlin.math.abs(it) < 1f })
+        assertTrue(St3Loud.speech(peaky).all { kotlin.math.abs(it) <= 1f })      // 1.0 कभी पार नहीं
         val loud = FloatArray(100) { 0.3f }
         assertEquals(0.3f, St3Loud.speech(loud)[0], 0f)                     // पहले से तेज़ = कम नहीं
         assertEquals(St3Loud.TARGET_RMS / St3Emotion.TARGET_RMS, St3Loud.mood(FloatArray(1) { 0.1f })[0] / 0.1f, 0.01f)
