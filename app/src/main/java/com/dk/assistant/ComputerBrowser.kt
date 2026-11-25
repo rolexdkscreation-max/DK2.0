@@ -2,6 +2,8 @@ package com.dk.assistant
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
+import android.content.MutableContextWrapper
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -9,6 +11,7 @@ import android.view.View
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import com.dk.assistant.agent.master.BrowserRules
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -35,6 +38,21 @@ object ComputerBrowser {
     @SuppressLint("StaticFieldLeak") private var web: WebView? = null
     @Volatile private var loaded: CompletableDeferred<Unit>? = null
 
+    /**
+     * 25 नवंबर 2026 (मालिक: "मैं बोलूँ दिखाओ तो वो पेज खोल के मुझे दिखाए"): काम खत्म होते ही ब्राउज़र बंद नहीं -
+     * [PARK_MS] तक वही पेज (login / cart / बुकिंग / भुगतान वाला) ज़िंदा, ताकि [BrowserShowActivity] उसे सामने ला सके.
+     */
+    const val PARK_MS = 30 * 60 * 1000L
+    /** मालिक अभी यह पेज स्क्रीन पर देख रहा है ([BrowserShowActivity]) */
+    @Volatile var shown = false
+        private set
+    @Volatile var lastUrl = ""
+        private set
+    @Volatile var lastTitle = ""
+        private set
+    private val main by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
+    private val killer = Runnable { if (!shown) destroyNow() }
+
     // ------------------------------------------------------------ pure (tests)
     /** पेज पर जो दिखता है: शीर्षक, URL, text, और दबाने/लिखने लायक चीज़ें [n] नंबर के साथ */
     const val SNAPSHOT_JS = """(function(){
@@ -56,16 +74,32 @@ return JSON.stringify(out);})()"""
 
     private fun q(s: String) = JSONObject.quote(s)
 
+    /** [n] नंबर या बटन का नाम -> उस element को ढूँढने वाला JavaScript */
+    private fun el(v: Any?) = when (v) {
+        is Number -> "document.querySelector('[data-dk-i=\"${v.toInt()}\"]')"
+        is String -> if (v.toIntOrNull() != null) "document.querySelector('[data-dk-i=\"${v.toInt()}\"]')"
+            else "(function(t){t=t.toLowerCase();var c=[].slice.call(document.querySelectorAll('[data-dk-i],a,button,[role=button],input[type=submit]'));" +
+                "return c.find(function(e){return ((e.innerText||e.value||e.getAttribute('aria-label')||'')+'').trim().toLowerCase()==t})||" +
+                "c.find(function(e){return ((e.innerText||e.value||e.getAttribute('aria-label')||'')+'').toLowerCase().indexOf(t)>=0})})(${q(v)})"
+        else -> "null"
+    }
+
+    /**
+     * 25 नवंबर 2026 (मालिक: ब्राउज़र एजेंट): दबाने से पहले बटन का नाम पढ़ो (दबाओ नहीं) - [BrowserRules.riskyClick] के लिए.
+     * Enter = उस फ़ॉर्म का जमा करने वाला बटन. null = click / enter नहीं.
+     */
+    fun labelJs(a: JSONObject): String? = when {
+        a.has("click") -> "(function(){var e=" + el(a.opt("click")) + ";if(!e)return '';return ((e.innerText||e.value||e.getAttribute('aria-label')||e.getAttribute('title')||'')+'').replace(/\\s+/g,' ').trim().slice(0,80)})()"
+        a.has("enter") -> "(function(){var e=" + el(a.opt("enter")) + ";if(!e)e=document.activeElement;if(!e||!e.form)return '';" +
+            "var b=e.form.querySelector('button[type=submit],input[type=submit],button:not([type])');return b?((b.innerText||b.value||'')+'').replace(/\\s+/g,' ').trim().slice(0,80):''})()"
+        else -> null
+    }
+
+    /** मास्टर चालू हो तो ब्राउज़र के ऊपर पहरा: खतरे वाला बटन = [ask] से पूछो, हर कदम [log] में */
+    class Guard(val ask: suspend (String) -> Boolean, val log: (String) -> Unit)
+
     /** एक action -> JavaScript. null = अनजाना action */
     fun actionJs(a: JSONObject): String? {
-        fun el(v: Any?) = when (v) {
-            is Number -> "document.querySelector('[data-dk-i=\"${v.toInt()}\"]')"
-            is String -> if (v.toIntOrNull() != null) "document.querySelector('[data-dk-i=\"${v.toInt()}\"]')"
-                else "(function(t){t=t.toLowerCase();var c=[].slice.call(document.querySelectorAll('[data-dk-i],a,button,[role=button],input[type=submit]'));" +
-                    "return c.find(function(e){return ((e.innerText||e.value||e.getAttribute('aria-label')||'')+'').trim().toLowerCase()==t})||" +
-                    "c.find(function(e){return ((e.innerText||e.value||e.getAttribute('aria-label')||'')+'').toLowerCase().indexOf(t)>=0})})(${q(v)})"
-            else -> "null"
-        }
         val pre = "(function(){var e="
         return when {
             a.has("click") -> pre + el(a.opt("click")) + ";if(!e)return 'ERROR: element नहीं मिला';e.scrollIntoView({block:'center'});e.click();return 'clicked: '+((e.innerText||e.value||'')+'').trim().slice(0,60)})()"
@@ -125,7 +159,7 @@ return JSON.stringify(out);})()"""
 
     // ------------------------------------------------------------ Android
     @SuppressLint("SetJavaScriptEnabled")
-    private fun view(c: Context): WebView = web ?: WebView(c.applicationContext).also { w ->
+    private fun view(c: Context): WebView = (web ?: WebView(MutableContextWrapper(c.applicationContext)).also { w ->
         w.settings.javaScriptEnabled = true
         w.settings.domStorageEnabled = true
         w.settings.loadWithOverviewMode = true
@@ -137,12 +171,52 @@ return JSON.stringify(out);})()"""
             override fun onPageFinished(v: WebView?, url: String?) { loaded?.complete(Unit) }
             override fun shouldOverrideUrlLoading(v: WebView?, r: WebResourceRequest?): Boolean {
                 val s = r?.url?.scheme.orEmpty()
+                // मालिक खुद देख रहा है और खुद दबाया (जैसे UPI से भुगतान) = उसका ऐप खोलो; DK अकेले में कभी नहीं
+                if (r != null && s != "http" && s != "https" && shown && r.hasGesture()) openOutside(v?.context, r.url.toString())
                 return s != "http" && s != "https"      // intent:/upi:/tel: वगैरह नहीं खोलते
             }
         }
         w.measure(View.MeasureSpec.makeMeasureSpec(W, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(H, View.MeasureSpec.EXACTLY))
         w.layout(0, 0, W, H)
         web = w
+    }).also { main.removeCallbacks(killer) }
+
+    private fun openOutside(c: Context?, url: String) {
+        val ctx = c ?: return
+        try {
+            val i = if (url.startsWith("intent:")) Intent.parseUri(url, Intent.URI_INTENT_SCHEME).apply { addCategory(Intent.CATEGORY_BROWSABLE) }
+                else Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+            i.component = null; i.selector = null       // वेब पेज किसी ख़ास (छिपे) हिस्से को सीधे न खोल पाए
+            ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) { Quiet.note(e) }
+    }
+
+    /**
+     * [BrowserShowActivity] के लिए: वही चलता WebView (session / cookies / भरा फ़ॉर्म वैसे ही).
+     * ब्राउज़र बंद हो चुका हो तो आख़िरी पता नए सिरे से खोलते हैं. null = दिखाने को कुछ नहीं.
+     */
+    fun showIn(a: android.app.Activity): WebView? {
+        val fresh = web == null
+        if (fresh && lastUrl.isBlank()) return null
+        val w = view(a)
+        (w.context as? MutableContextWrapper)?.baseContext = a
+        (w.parent as? android.view.ViewGroup)?.removeView(w)
+        w.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        shown = true
+        if (fresh) w.loadUrl(lastUrl)
+        return w
+    }
+
+    /** मालिक ने देखना बंद किया = फिर से छिपा (DK का चलता काम वहीं से आगे), [PARK_MS] बाद बंद */
+    fun hide(w: WebView) {
+        (w.parent as? android.view.ViewGroup)?.removeView(w)
+        (w.context as? MutableContextWrapper)?.baseContext = w.context.applicationContext
+        w.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        w.measure(View.MeasureSpec.makeMeasureSpec(W, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(H, View.MeasureSpec.EXACTLY))
+        w.layout(0, 0, W, H)
+        w.url?.let { lastUrl = it }; w.title?.let { lastTitle = it }
+        shown = false
+        main.removeCallbacks(killer); main.postDelayed(killer, PARK_MS)
     }
 
     private suspend fun js(w: WebView, code: String): String = suspendCancellableCoroutine { k ->
@@ -165,16 +239,36 @@ return JSON.stringify(out);})()"""
      * @param actions [{"click":3}, {"type":[5,"text"]}, {"enter":5}, {"select":[2,"Hindi"]}, {"scroll":"down"}, {"wait":2000}, {"back":true}]
      * @param shot स्क्रीनशॉट फ़ाइल का नाम (null = नहीं)
      */
-    suspend fun browse(c: Context, url: String?, actions: JSONArray?, from: Int, max: Int, shot: String?): Pair<String, File?> = withContext(Dispatchers.Main) {
+    suspend fun browse(c: Context, url: String?, actions: JSONArray?, from: Int, max: Int, shot: String?, guard: Guard? = null): Pair<String, File?> = withContext(Dispatchers.Main) {
         val w = view(c)
         val log = StringBuilder()
         if (!url.isNullOrBlank()) {
             val u = url.trim().let { if (it.startsWith("http://") || it.startsWith("https://")) it else "https://$it" }
             waitLoad(w) { w.loadUrl(u) }
+            guard?.log?.invoke("खोला: ${u.take(120)}")
         } else if (w.url.isNullOrBlank()) return@withContext "ERROR: पहले url दें (कोई पेज खुला नहीं)" to null
         js(w, SNAPSHOT_JS)      // [n] नंबर लगाओ ताकि actions उन्हें पहचानें
-        if (actions != null) for (i in 0 until minOf(actions.length(), 12)) {
+        if (actions != null) acts@ for (i in 0 until minOf(actions.length(), 12)) {
             val a = actions.optJSONObject(i) ?: continue
+            if (guard != null) {
+                // 25 नवंबर 2026 (मालिक: "कोई भी एजेंट खुद से खरीदारी, भुगतान, बुकिंग ... नहीं करेगा") - दबाने से पहले नाम पढ़ो
+                val lj = labelJs(a)
+                if (lj != null) {
+                    val label = unquote(js(w, lj))
+                    val k = BrowserRules.riskyClick(label, w.url.orEmpty())
+                    if (k == BrowserRules.Click.PAY) {
+                        log.append(BrowserRules.payNote(label)).append('\n'); guard.log("रुका (भुगतान): $label"); break@acts
+                    }
+                    if (k != null && !guard.ask(BrowserRules.confirmText(k, label, w.url.orEmpty()))) {
+                        log.append(BrowserRules.deniedNote(k, label)).append('\n'); guard.log("मना (${k.hi}): $label"); break@acts
+                    }
+                    if (k != null) guard.log("पुष्टि मिली (${k.hi}): $label")
+                }
+                if (a.has("js") && Regex("\\.click\\(|submit\\(|dispatchEvent").containsMatchIn(a.optString("js"))) {
+                    log.append("ERROR: DK master: use {\"click\":n} / {\"enter\":n} instead of clicking with js\n"); continue@acts
+                }
+                guard.log(BrowserRules.logLine(a))
+            }
             when {
                 a.has("wait") -> { delay(a.optLong("wait", 1000).coerceIn(100, 10_000)); log.append("wait\n") }
                 a.has("back") -> { if (w.canGoBack()) waitLoad(w) { w.goBack() }; log.append("back\n") }
@@ -192,6 +286,14 @@ return JSON.stringify(out);})()"""
             }
         }
         val snap = unquote(js(w, SNAPSHOT_JS))
+        val guardNote = if (guard == null) "" else {
+            val g = BrowserRules.parseGuard(unquote(js(w, BrowserRules.PAGE_GUARD_JS)))
+            if (g.any) guard.log("पेज पर ${BrowserRules.pageHi(g)} - मालिक खुद करेंगे")
+            BrowserRules.pageNote(g, w.url.orEmpty())
+        }
+        // "पेज दिखाओ" के लिए याद (कहाँ पहुँचा) - भुगतान वाला पेज अलग से निशान
+        lastUrl = w.url.orEmpty(); lastTitle = w.title.orEmpty()
+        ShowPage.dkWeb(lastUrl, lastTitle, pay = log.contains("PAYMENT step") || BrowserRules.isPaymentUrl(lastUrl))
         var file: File? = null
         if (!shot.isNullOrBlank()) file = try {
             val h = H.coerceAtMost(4000)
@@ -202,7 +304,7 @@ return JSON.stringify(out);})()"""
             bmp.recycle(); f
         } catch (_: Exception) { null }
         val head = if (log.isNotEmpty()) "ACTIONS:\n$log\n" else ""
-        (head + format(snap, from, max) + (file?.let { "\n\nSCREENSHOT saved: ${it.name} (देखने के लिए look {\"file\":\"${it.name}\"})" } ?: "")) to file
+        (head + format(snap, from, max) + guardNote + (file?.let { "\n\nSCREENSHOT saved: ${it.name} (देखने के लिए look {\"file\":\"${it.name}\"})" } ?: "")) to file
     }
 
     /** HTML (जैसे SVG चार्ट) -> PNG: अलग छिपा WebView, ताकि खुला ब्राउज़र न बिगड़े */
@@ -226,10 +328,19 @@ return JSON.stringify(out);})()"""
         } catch (_: Exception) { null } finally { try { v.destroy() } catch (e: Exception) { Quiet.note(e) } }
     }
 
-    /** काम खत्म = ब्राउज़र बंद (memory खाली) */
+    /**
+     * काम खत्म = ब्राउज़र अभी बंद नहीं: [PARK_MS] तक पेज ज़िंदा ("पेज दिखाओ" पर वही), फिर बंद (memory खाली).
+     * मालिक देख रहा हो ([shown]) तो तब तक बिल्कुल नहीं.
+     */
     fun close() {
+        if (web == null) return
+        main.removeCallbacks(killer)
+        main.postDelayed(killer, PARK_MS)
+    }
+
+    private fun destroyNow() {
         val w = web ?: return
         web = null
-        android.os.Handler(android.os.Looper.getMainLooper()).post { try { w.stopLoading(); w.destroy() } catch (e: Exception) { Quiet.note(e) } }
+        try { (w.parent as? android.view.ViewGroup)?.removeView(w); w.stopLoading(); w.destroy() } catch (e: Exception) { Quiet.note(e) }
     }
 }

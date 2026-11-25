@@ -15,7 +15,7 @@ import org.json.JSONObject
 internal suspend fun GeminiLive.phoneTask(req: String): String {
     val running = taskQueue?.takeIf { it.running }
     if (running != null) {
-        if (TaskQueue.isStop(req)) { stopQueue("phone_task: \"${req.take(20)}\""); return TaskQueue.stoppedNote() }
+        if (TaskQueue.isStop(req)) { com.dk.assistant.agent.master.DkMaster.stopped(svc, req); stopQueue("phone_task: \"${req.take(20)}\""); return TaskQueue.stoppedNote() }
         // कतार ने सवाल पूछा था और Gemini ने जवाब phone_task में भेज दिया - वही जवाब
         if (running.asking) { queueAnswer?.complete(req); return "QUEUE_OK: the phone took this as the answer to its question. Say only \"ठीक है\" - no tool call." }
         // काम के बीच नया काम = कतार के आख़िर में
@@ -287,12 +287,18 @@ internal suspend fun GeminiLive.phoneTaskOne(req: String, queued: Boolean = fals
     val failBefore = DKState.failedAt
     // 22 नवंबर 2026 (मालिक): कतार का काम = सिर्फ़ वही ("followers देखो" = सिर्फ़ followers), इधर-उधर नहीं
     if (queued) note = (TaskQueue.FOCUS_NOTE + "\n" + note).trim()
+    // 24 नवंबर 2026 (मालिक: Universal AI Action Agent): मास्टर चालू = प्लान स्क्रीन पर, निजी जानकारी भेजने से पहले "हाँ", एजेंट को सख़्त नियम, लॉग
+    val (mPre, mBlock) = com.dk.assistant.agent.master.DkMaster.before(svc, req)
+    if (mBlock != null) return mBlock
+    if (mPre != null) note = (note + "\n" + mPre.note).trim()
     val job = agent.run(req, speak = false, note = note)
     // v3.41: 20s -> 7s. Gemini tool ke jawab tak CHUP rehta hai - 20s chuppi = "sun hi nahi raha". Ab 7s me
     // "kar raha hoon" bolta hai; kaam peeche chalta rehta hai aur poora hote hi lateNote se batata hai.
     // v3.87: कतार में = पूरा होने तक (90s) रुको, फिर अगला काम; बाद वाला संदेश नहीं
     val finished = withTimeoutOrNull(if (queued) 90_000 else AGENT_WAIT_MS) { job.join() } != null
     if (queued && !finished) job.cancel()
+    // 25 नवंबर 2026 (मालिक): बाद में "पेज दिखाओ" = जिस ऐप में यह काम हुआ, वही स्क्रीन
+    if (finished) ShowPage.appNow(svc)
     val reply = DKState.lastReply.takeIf { it != before && it.isNotBlank() }
     if (!finished && !queued) {
         log("phone_task ${AGENT_WAIT_MS / 1000}s में पूरा नहीं - Gemini को सच बताया (चल रहा है), पूरा होने पर बताऊँगा")
@@ -311,4 +317,5 @@ internal suspend fun GeminiLive.phoneTaskOne(req: String, queued: Boolean = fals
         }
     }
     return LiveFast.agentResult(finished, reply, failed = finished && DKState.failedAt != failBefore)
+        .also { if (mPre != null) com.dk.assistant.agent.master.DkMaster.after(svc, if (finished) it else "चल रहा है: ${req.take(60)}") }
 }

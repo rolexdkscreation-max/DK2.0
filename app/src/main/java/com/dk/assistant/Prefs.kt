@@ -100,6 +100,8 @@ object Prefs {
 
     // ---- profile
     fun userName(c: Context) = sp(c).getString("user_name", "") ?: ""
+    /** 25 नवंबर 2026: प्रोफ़ाइल का असली नाम (verified टिक इसी के आगे). DK जिस नाम से बुलाता है वह [userName] ही */
+    fun realName(c: Context) = sp(c).getString("real_name", "") ?: ""
     fun assistantName(c: Context) = (sp(c).getString("assistant_name", "DK") ?: "DK").ifBlank { "DK" }
     fun personality(c: Context) = sp(c).getString("personality", "") ?: ""
     fun wakeWords(c: Context): List<String> {

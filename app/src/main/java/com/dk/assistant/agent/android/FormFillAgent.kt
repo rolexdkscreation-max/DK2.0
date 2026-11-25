@@ -8,6 +8,9 @@ import com.dk.assistant.Mode
 import com.dk.assistant.agent.core.DriverResult
 import com.dk.assistant.agent.core.FormFill
 import com.dk.assistant.agent.core.ScreenObservation
+import com.dk.assistant.agent.master.ActionLog
+import com.dk.assistant.agent.master.DkMaster
+import com.dk.assistant.agent.master.FormRules
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
@@ -21,6 +24,9 @@ import org.json.JSONObject
  *   ऐप बदल गया तो कुछ नहीं छूता, Live को बताता है.
  * - submit: सिर्फ़ मालिक की साफ़ "हाँ" (confirm=true) के बाद.
  * एक समय में एक ही काम (Mutex) - दो काम आपस में नहीं टकराते.
+ * 25 नवंबर 2026 (फ़ॉर्म एजेंट, DK मास्टर चालू): नंबर वाला मान मालिक के अपने शब्दों / याद से ही, पहचान वाले खाने पर मालिक की अपनी "हाँ",
+ * CAPTCHA मालिक खुद, सबमिट पर मालिक की अपनी "हाँ" (AI का confirm=true काफ़ी नहीं), Pay बटन कभी नहीं, हर कदम लॉग में ([FormRules]).
+ * मास्टर बंद = बिल्कुल पहले जैसा.
  */
 object FormFillAgent {
     private val lock = Mutex()
@@ -29,6 +35,8 @@ object FormFillAgent {
     @Volatile private var fields: List<FormFill.Field> = emptyList()
     private val filled = LinkedHashMap<String, String>()
     private const val MAX_SCROLLS = 8
+    /** मास्टर: "सबमिट कर दूँ?" कब पूछा गया (मालिक की अपनी "हाँ" इसके बाद की होनी चाहिए) */
+    @Volatile private var submitAskedAt = 0L
 
     suspend fun liveTool(svc: DKAccessibilityService, args: JSONObject): String {
         val act = args.optString("action").trim().lowercase()
@@ -82,6 +90,11 @@ object FormFillAgent {
         fields = fs
         synchronized(filled) { filled.clear() }
         DKLog.d("फ़ॉर्म भरना: $app में ${fs.size} खाने मिले")
+        submitAskedAt = 0L
+        if (DkMaster.on(svc)) {
+            ActionLog.add(svc, "फ़ॉर्म", "$app में ${fs.size} खाने पढ़े")
+            return FormFill.describe(app, fs, texts) + FormRules.readNote(fs.map { it.label })
+        }
         return FormFill.describe(app, fs, texts)
     }
 
@@ -110,6 +123,7 @@ object FormFillAgent {
         val want = FormFill.match(fields, field) ?: return "NOT FOUND: no field named '$field'. Fields are:\n" +
             fields.mapIndexed { i, f -> FormFill.line(i, f) }.joinToString("\n") + "\nAsk the user which one."
         if (want.secret) return "PRIVATE FIELD '${want.label}': DK does not type passwords / OTP / PIN. Ask the user to type it himself on the screen."
+        if (DkMaster.on(svc)) masterFill(svc, want, value)?.let { return it }
         val d = AccessibilityScreenDriver(svc)
         val now = screen(d, svc.packageName)
         if (now == null || now.pkg != pkg) return "PAUSED: the form app ($app) is not on the screen now - DK did not switch apps or press back. " +
@@ -141,6 +155,10 @@ object FormFillAgent {
         d.pause(400)
         synchronized(filled) { filled[want.key] = value.trim() }
         val left = fields.filter { f -> !f.secret && f.value.isBlank() && synchronized(filled) { f.key !in filled } }
+        if (DkMaster.on(svc)) {
+            ActionLog.add(svc, "फ़ॉर्म", "भरा: ${want.label.take(40)}")   // मान नहीं - निजी हो सकता है
+            if (left.isEmpty()) submitAskedAt = System.currentTimeMillis()
+        }
         DKLog.d("फ़ॉर्म भरना: '${want.label}' भरा")
         return "FILLED '${want.label}' = \"${value.trim()}\" in $app (same screen, no back). " +
             (if (left.isEmpty()) "All fields are done - read back the values and ask 'सबमिट कर दूँ?'. Only after yes: action=submit confirm=true."
@@ -148,13 +166,18 @@ object FormFillAgent {
     }
 
     private suspend fun submit(svc: DKAccessibilityService, confirm: Boolean): String {
-        if (!confirm) return "WAITING_CONFIRMATION: read back what was filled and ask the user 'सबमिट कर दूँ?'. Only after a clear yes call action=submit confirm=true."
+        if (!confirm) {
+            submitAskedAt = System.currentTimeMillis()
+            return "WAITING_CONFIRMATION: read back what was filled and ask the user 'सबमिट कर दूँ?'. Only after a clear yes call action=submit confirm=true."
+        }
         if (pkg.isBlank()) return "NO FORM READ YET."
+        val master = DkMaster.on(svc)
         val d = AccessibilityScreenDriver(svc)
         repeat(MAX_SCROLLS + 1) { i ->
             val o = screen(d, svc.packageName) ?: return "FAILED: screen not readable."
             if (o.pkg != pkg) return "PAUSED: the form app ($app) is not on the screen - nothing submitted."
             FormFill.submitButton(o)?.let { b ->
+                if (master) masterSubmit(svc, b.text.ifBlank { b.desc })?.let { return it }
                 val r = d.click(o, b)
                 d.pause(1_200)
                 val after = screen(d, svc.packageName)
@@ -167,6 +190,47 @@ object FormFillAgent {
         }
         return "NOT FOUND: no Submit / Next / Save button. Ask the user to press it."
     }
+
+    /** मास्टर: भरने से पहले. null = भरो; वरना यही Live को */
+    private fun masterFill(svc: DKAccessibilityService, want: FormFill.Field, value: String): String? {
+        val t = FormRules.type(want.label)
+        if (t == FormRules.Type.CAPTCHA) {
+            ActionLog.add(svc, "रुका", "CAPTCHA - मालिक खुद भरेंगे")
+            return FormRules.CAPTCHA_NOTE
+        }
+        val owner = DKState.ownerSaid(OWNER_MS) + " • " + com.dk.assistant.Memory.facts(svc).joinToString(" • ")
+        if (!FormRules.fromOwner(value, owner)) {
+            ActionLog.add(svc, "रुका", "'${want.label.take(40)}' का नंबर मालिक ने नहीं बोला - नहीं भरा")
+            return FormRules.NOT_FROM_OWNER
+        }
+        if (t == FormRules.Type.IDENTITY) {
+            com.dk.assistant.plus.ConfirmGate.check(svc, "${want.label.take(40)} भरूँ?", "${want.label.take(40)}: ${FormRules.mask(value)}",
+                "form_identity_" + want.key)?.let { line ->
+                ActionLog.add(svc, "पुष्टि", "पहचान वाला खाना: ${want.label.take(40)} - मालिक से पूछा")
+                return line
+            }
+            ActionLog.add(svc, "पुष्टि", "पहचान वाला खाना: ${want.label.take(40)} - मालिक ने हाँ कहा")
+        }
+        return null
+    }
+
+    /** मास्टर: सबमिट से पहले. Pay = कभी नहीं; बाकी = मालिक की अपनी "हाँ" ("सबमिट कर दूँ?" के बाद) */
+    private fun masterSubmit(svc: DKAccessibilityService, label: String): String? {
+        if (FormRules.submitKind(label) == FormRules.Submit.PAY) {
+            ActionLog.add(svc, "रुका", "फ़ॉर्म का आख़िरी बटन भुगतान ($label) - नहीं दबाया")
+            return FormRules.PAY_NOTE
+        }
+        val byLabel = fields.associate { f -> f.label to (synchronized(filled) { filled[f.key] } ?: "") }.filterValues { it.isNotBlank() }
+        com.dk.assistant.plus.ConfirmGate.check(svc, "फ़ॉर्म सबमिट करूँ? ($label)", "$app: " + FormRules.readBack(byLabel), "form_submit", submitAskedAt)?.let { line ->
+            ActionLog.add(svc, "पुष्टि", "सबमिट - मालिक की हाँ नहीं सुनी, पूछा")
+            return line
+        }
+        ActionLog.add(svc, "सबमिट", "$app: '$label' - मालिक ने हाँ कहा")
+        submitAskedAt = 0L
+        return null
+    }
+
+    private const val OWNER_MS = 15 * 60_000L
 
     private fun status(): String {
         if (pkg.isBlank()) return "No form is open. Call action=read when the user is on a form."

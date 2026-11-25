@@ -45,3 +45,15 @@ object UnlockSwipe {
         else -> "$p% — बीच में" + if (p == DEF) " (डिफ़ॉल्ट, पहले जैसा)" else ""
     }
 }
+
+/**
+ * 24 नवंबर 2026 (मालिक): swipe से PIN वाला हिस्सा न आए = फ़ोन लॉक करके फिर जगाना, फिर swipe ([PhoneUnlocker.enter]).
+ * Pure (JUnit). GLOBAL_ACTION_LOCK_SCREEN Android 9 (API 28) से.
+ */
+object UnlockRetry {
+    const val MAX_RELOCKS = 1
+    const val RELOCK_WAIT_MS = 600L
+    const val SWIPES_AFTER_RELOCK = 2
+
+    fun relock(done: Int, sdk: Int): Boolean = sdk >= 28 && done < MAX_RELOCKS
+}

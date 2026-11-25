@@ -89,5 +89,12 @@ object UnlockRules {
 
     /** मालिक को बोला जाने वाला कारण (PIN नहीं डाला) */
     fun reason(v: Verdict): String =
-        "${com.dk.assistant.PhoneLockVoice.UNLOCK_FAIL} सुरक्षा: ${v.hi}, इसलिए PIN नहीं डाला। फ़ोन खुद खोलिए।"
+        "${com.dk.assistant.PhoneLockVoice.UNLOCK_FAIL} सुरक्षा: ${v.hi}, इसलिए PIN नहीं डाला। " + hint(v)
+
+    /** 24 नवंबर 2026: सिर्फ़ "खुद खोलिए" नहीं - क्या करें कि अगली बार एक बार बोलते ही खुले */
+    fun hint(v: Verdict): String = when (v) {
+        Verdict.NOT_READY -> "Settings → फ़ोन लॉक / अनलॉक में वॉइस गार्डियन में अपनी आवाज़ सिखाइए, या \"सिर्फ़ मालिक की आवाज़\" बंद कीजिए।"
+        Verdict.NO_INTENT, Verdict.NO_VOICE, Verdict.SHORT -> "एक बार फिर साफ़ बोलिए - \"डीके फोन अनलॉक करो\"।"
+        else -> "फ़ोन खुद खोलिए।"
+    }
 }

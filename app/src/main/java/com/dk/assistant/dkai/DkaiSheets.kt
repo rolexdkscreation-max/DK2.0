@@ -28,8 +28,8 @@ object DkaiSheets {
             rows.removeAllViews()
             val groups = DkaiModelList.groups(c)
             val cur = SelectedModel.get(c)
-            // Auto = कुछ न चुनना = पहले जैसी routing (काम के हिसाब से मॉडल)
-            rows.addView(DkaiUi.row(c, DkaiIcon.Kind.AGENT, "Auto", "काम के हिसाब से अपने-आप मॉडल (पहले जैसा)", cur == null, DkaiTheme.CYAN) {
+            // Auto = कुछ न चुनना = पहले जैसी routing (काम के हिसाब से मॉडल). 25 नवंबर 2026: दिखने में "DKAI Ultra" + DK लोगो ([DkaiUltra]) - काम वही
+            rows.addView(DkaiUi.row(c, DkaiIcon.Kind.AGENT, DkaiUltra.NAME, DkaiUltra.ROW_SUB, cur == null, DkaiTheme.CYAN, logoRes = R.drawable.ic_dk) {
                 DkaiUi.close(s.root, layer); SelectedModel.set(c, null); s.renderModel()
             })
             if (groups.isEmpty()) rows.addView(DkaiTheme.text(c, "अभी कोई key नहीं डली - सेटिंग्स → AI दिमाग में Gemini / Groq / OpenRouter / Z.ai / NVIDIA की key डालें।",
@@ -85,7 +85,33 @@ object DkaiSheets {
     fun profile(s: DkaiScreen) {
         val c = s.activity
         lateinit var layer: DkaiUi.Layer
-        val (card, body) = DkaiUi.modal(c, "Profile", "DK आपको इसी नाम से बुलाता है") { DkaiUi.close(s.root, layer) }
+        val (card, body) = DkaiUi.modal(c, "Profile", "असली नाम • DK आपको किस नाम से बुलाए") { DkaiUi.close(s.root, layer) }
+        // 25 नवंबर 2026 (मालिक): असली नाम + उसके आगे लाइसेंस वाला verified टिक (मालिक / प्रीमियम / बेसिक अलग रंग, मुफ़्त = नहीं)
+        val tier = com.dk.assistant.ui.VerifiedBadge.of(c)
+        fun cap(t: String) = DkaiTheme.text(c, t, 12f, DkaiTheme.GRAY).apply { setPadding(DkaiUi.d(c, 2f), DkaiUi.d(c, 6f), 0, DkaiUi.d(c, 6f)) }
+        body.addView(cap("असली नाम (Real name)"))
+        val real = DkaiUi.field(c, "जैसे: धीरज कुमार सिंह", Prefs.realName(c))
+        val tick = ImageView(c).apply {
+            tier?.let { setImageDrawable(com.dk.assistant.ui.VerifiedTickDrawable(it.color)); contentDescription = "Verified • ${it.label}" }
+            setTag(com.dk.assistant.PlainLook.SKIP, true)
+            visibility = if (com.dk.assistant.ui.VerifiedBadge.show(Prefs.realName(c), tier)) View.VISIBLE else View.GONE
+        }
+        val realRow = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        realRow.addView(real, LinearLayout.LayoutParams(0, -2, 1f))
+        realRow.addView(tick, LinearLayout.LayoutParams(DkaiUi.d(c, 26f), DkaiUi.d(c, 26f)).apply { leftMargin = DkaiUi.d(c, 10f) })
+        body.addView(realRow, LinearLayout.LayoutParams(-1, -2))
+        real.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(x: CharSequence?, a: Int, b: Int, n: Int) {}
+            override fun onTextChanged(x: CharSequence?, a: Int, b: Int, n: Int) {}
+            override fun afterTextChanged(x: android.text.Editable?) {
+                tick.visibility = if (com.dk.assistant.ui.VerifiedBadge.show(x?.toString().orEmpty(), tier)) View.VISIBLE else View.GONE
+            }
+        })
+        body.addView(DkaiTheme.text(c, tier?.let { "Verified • ${it.label} (${it.hi}) - टिक सिर्फ़ असली नाम के आगे" }
+            ?: "Basic / Premium लाइसेंस डालने पर असली नाम के आगे verified टिक आएगा", 11.5f, if (tier != null) DkaiTheme.SUB else DkaiTheme.HINT).apply {
+            setPadding(DkaiUi.d(c, 2f), DkaiUi.d(c, 6f), 0, 0)
+        })
+        body.addView(cap("DK आपको किस नाम से बुलाए"))
         val name = DkaiUi.field(c, "आपका नाम", Prefs.userName(c))
         body.addView(name, LinearLayout.LayoutParams(-1, -2))
         val facts = Memory.facts(c).size
@@ -95,7 +121,7 @@ object DkaiSheets {
         body.addView(DkaiUi.twoButtons(c,
             DkaiUi.button(c, "Manage Memory", DkaiTheme.FIELD, DkaiTheme.SUB) { DkaiUi.close(s.root, layer); c.startActivity(android.content.Intent(c, MemoryActivity::class.java)) },
             DkaiUi.button(c, "Save") {
-                Prefs.edit(c) { putString("user_name", name.text.toString().trim().take(40)) }
+                Prefs.edit(c) { putString("user_name", name.text.toString().trim().take(40)); putString("real_name", real.text.toString().trim().take(60)) }
                 DkaiUi.close(s.root, layer); s.toast("नाम सेव हो गया")
             }))
         layer = DkaiUi.open(s.root, card, DkaiUi.Place.CENTER)

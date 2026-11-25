@@ -695,6 +695,51 @@ class AgentRunner(
                     // 16 नवंबर 2026 (ऑडिट G3): भुगतान / ऑर्डर / डिलीट, और बिना कहे भेजना / पोस्ट = मालिक की अपनी "हाँ".
                     // AI का "पूछ लिया / हाँ मिल गया" नहीं चलता - स्क्रीन की कोई लिखावट AI को बहका भी दे तो मालिक की "हाँ" चाहिए.
                     // 18 नवंबर 2026 (मालिक: कार्ड पॉप-अप नहीं): स्क्रीन का कार्ड नहीं - DK आवाज़ में एक बार पूछता है, ऐप मालिक का जवाब खुद सुनता है.
+                    // 25 नवंबर 2026 (शॉपिंग एजेंट, DK मास्टर चालू): भुगतान वाला बटन कभी नहीं (मालिक को सौंपो);
+                    // कार्ट में डालना = मालिक ने खुद न कहा हो तो पहले पूछो. खरीदें / ऑर्डर = नीचे वाला पुराना "हाँ" कार्ड. मास्टर बंद = कुछ नहीं बदलता.
+                    if (com.dk.assistant.agent.master.DkMaster.on(svc)) {
+                        val subs = if (a.optString("type") == "steps") a.optJSONArray("steps")?.let { st -> (0 until st.length()).mapNotNull { st.optJSONObject(it) } }.orEmpty() else listOf(a)
+                        val hit = subs.map { com.dk.assistant.agent.core.OutsideText.label(it, seenScreen) }
+                            .mapNotNull { l -> com.dk.assistant.agent.master.ShopRules.tap(l)?.let { it to l } }
+                            .maxByOrNull { it.first.ordinal }
+                        if (hit != null) {
+                            val (k, lab) = hit
+                            com.dk.assistant.agent.master.ActionLog.add(svc, "शॉपिंग बटन", "${k.hi}: ${lab.take(60)}")
+                            if (k == com.dk.assistant.agent.master.ShopRules.Tap.PAY) {
+                                speakJob?.join()
+                                com.dk.assistant.agent.master.ActionLog.add(svc, "रुका", "भुगतान - मालिक को सौंपा")
+                                ShowPage.appNow(svc, pay = true)     // "पेज दिखाओ" = यही ऐप, यही स्क्रीन
+                                say(com.dk.assistant.agent.master.ShopRules.PAY_HANDOVER)
+                                return
+                            }
+                            if (k == com.dk.assistant.agent.master.ShopRules.Tap.CART && !com.dk.assistant.agent.master.ShopRules.cartAsked(goal)) {
+                                speakJob?.join()
+                                say(com.dk.assistant.agent.master.ShopRules.askLine(k, lab))
+                                DKState.set(Mode.LISTENING)
+                                val ans = svc.hearForAgent()
+                                ans?.let { DKState.user(it) }
+                                val yes = com.dk.assistant.agent.core.ConfirmGate.isYes(ans.orEmpty())
+                                com.dk.assistant.agent.master.ActionLog.add(svc, "पुष्टि", "कार्ट: " + if (yes) "हाँ" else "नहीं / जवाब नहीं")
+                                if (!yes) { say("ठीक है, कार्ट में नहीं डाला — काम यहीं रोक दिया।"); return }
+                                DKState.set(Mode.WORKING)
+                            }
+                        }
+                        // 25 नवंबर 2026 (बुकिंग एजेंट): Book / Confirm ride / Reserve = हर बार ब्योरे के साथ मालिक की अपनी "हाँ" (भुगतान ऊपर ही रुक जाता है)
+                        val trip = com.dk.assistant.agent.master.DkMaster.trip
+                        val bk = subs.map { com.dk.assistant.agent.core.OutsideText.label(it, seenScreen) }
+                            .firstOrNull { l -> com.dk.assistant.agent.master.BookRules.tap(l, trip != null) == com.dk.assistant.agent.master.BookRules.Tap.BOOK }
+                        if (bk != null) {
+                            speakJob?.join()
+                            say(com.dk.assistant.agent.master.BookRules.askLine(trip, bk))
+                            DKState.set(Mode.LISTENING)
+                            val ans = svc.hearForAgent()
+                            ans?.let { DKState.user(it) }
+                            val yes = com.dk.assistant.agent.core.ConfirmGate.isYes(ans.orEmpty())
+                            com.dk.assistant.agent.master.ActionLog.add(svc, "पुष्टि", "बुकिंग (${bk.take(40)}): " + if (yes) "हाँ" else "नहीं / जवाब नहीं")
+                            if (!yes) { say("ठीक है, बुकिंग पक्की नहीं की — काम यहीं रोक दिया।"); return }
+                            DKState.set(Mode.WORKING)
+                        }
+                    }
                     if (autoS == null) {
                         val k = com.dk.assistant.agent.core.OutsideText.kind(a, seenScreen, seenPkg)
                         if (com.dk.assistant.agent.core.OutsideText.needsCard(k, goal)) {
