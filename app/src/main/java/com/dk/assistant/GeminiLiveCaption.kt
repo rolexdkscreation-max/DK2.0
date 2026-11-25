@@ -73,6 +73,8 @@ internal fun GeminiLive.onCaption(t: String, final: Boolean) {
     // जगाओ और PIN वाला हिस्सा माँगो (PIN नहीं - वह पक्की बात + आवाज़ की जाँच के बाद नीचे runLockNow में)
     if (!final && !micMuted && ComputerSession.ask == null && !isPlaying() && UnlockPreWake.wanted(t, Prefs.wakeWords(svc), dkOnlyNow)) svc.preWakeUnlock("Live caption")
     if (final && !micMuted && ComputerSession.ask == null) {
+        // 24 नवंबर 2026: ढीली पहचान से सिर्फ़ इरादा (Gemini का phone_task unlock आए तो PIN रुके नहीं); DK की गूँज नहीं
+        if (!(isPlaying() || System.currentTimeMillis() - playEnd < 1500)) com.dk.assistant.voice.UnlockGuard.said(t)
         PhoneLockVoice.instant(t, Prefs.wakeWords(svc), needName = dkOnlyNow)?.let { act ->
             val dkNear = isPlaying() || System.currentTimeMillis() - playEnd < 1500
             if (!(dkNear && BargeGate.isEcho(t, dkHeardNow()))) runLockNow(PhoneLockVoice.quick(act), t, "caption")

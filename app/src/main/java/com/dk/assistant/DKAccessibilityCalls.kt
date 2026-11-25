@@ -41,9 +41,15 @@ import org.json.JSONObject
 // यह code पहले DKAccessibilityService.kt में था; सिर्फ़ जगह बदली है, व्यवहार वही (extension functions, वही state DKAccessibilityService में)।
 
 internal suspend fun DKAccessibilityService.onIncomingCall(who0: String, ask: String? = null) {
+    // 24 नवंबर 2026 (मालिक: "घंटी बजे तो पहली प्राथमिकता मेरी आवाज़ - DK लाइव न जुड़ा हो तब भी"): Live की बात करने वाली
+    // लाइन नहीं = उसी पल फ़ोन का कान (CallEar, बिना इंटरनेट), एलान के साथ-साथ. न चल सके = पहले जैसा
+    val liveMic = DKState.live && gemLive.canTalk()
+    val ownEar = !liveMic && callEar.start()
     if (!Prefs.announceCalls(this)) {
         // 15 नवंबर 2026: एलान बंद हो तब भी DK लाइव "उठा लो" सुनती है - घंटी धीमी, ताकि आवाज़ सुनाई दे
-        if (DKState.live) { calls.quietRinger(); scope.launch { delay(1_000); while (calls.ringing || calls.inCall) delay(500); calls.restoreRinger() } }
+        // 24 नवंबर 2026: Live बंद में भी (जड़: पहले सिर्फ़ Live में घंटी धीमी होती, आम सुनना घंटी के शोर में बात खो देता)
+        calls.quietRinger(); scope.launch { delay(1_000); while (calls.ringing || calls.inCall) delay(500); calls.restoreRinger() }
+        scope.launch { while (calls.ringing) delay(300); callPending = false; callEar.stop() }
         return
     }
     callPending = true
@@ -97,6 +103,12 @@ internal suspend fun DKAccessibilityService.onIncomingCall(who0: String, ask: St
     // v4.6 मालिक: "जवाब देते में यूज़र बोलेगा 'डीके फोन उठा लो' तो फटाक से पहले फोन उठाएगा" - एलान अलग चलता है,
     // अपने माइक (callBargeEar) से साथ-साथ सुनना. Google माइक वाले तरीके में पहले जैसा: एलान पूरा, फिर सुनो
     val announce = scope.launch { try { speaker.speakCall(msg) } finally { callAnnouncing = false } }
+    // 24 नवंबर 2026: फ़ोन का कान चल रहा = एलान के बीच भी सुन रहा (DK के नाम वाली बात), उसका इंतज़ार नहीं
+    if (ownEar || callEar.running) {
+        scope.launch { delay(1_000); while (calls.ringing || calls.inCall) delay(500); speaker.restoreCallVolume(); calls.restoreRinger() }
+        scope.launch { while (calls.ringing) delay(300); callPending = false; callEar.stop() }
+        return
+    }
     if (!callBargeEar()) announce.join()
     scope.launch { delay(1_000); while (calls.ringing || calls.inCall) delay(500); speaker.restoreCallVolume(); calls.restoreRinger() }
 
