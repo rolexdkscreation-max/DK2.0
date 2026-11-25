@@ -94,6 +94,8 @@ android {
                 "lib/x86/libonnxruntime.so", "lib/x86/libonnxruntime4j_jni.so",
                 "lib/x86_64/libonnxruntime.so", "lib/x86_64/libonnxruntime4j_jni.so",
                 "lib/armeabi-v7a/libonnxruntime.so", "lib/armeabi-v7a/libonnxruntime4j_jni.so",
+                // 25 नवंबर 2026: फ़ोन वाला UI अनुवाद (ML Kit, हर ABI ~16 MB) भी सिर्फ़ arm64 - बाकी पर DK का AI (UiMt.offline)
+                "lib/x86/libtranslate_jni.so", "lib/x86_64/libtranslate_jni.so", "lib/armeabi-v7a/libtranslate_jni.so",
             )
         }
     }
