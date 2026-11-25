@@ -211,7 +211,7 @@ class ContentWriterActivity : AppCompatActivity() {
         parts.music.forEach { m ->
             musicRow.addView(pill("♪ " + m.name + if (m.mood.isNotBlank()) " · " + m.mood else "") {
                 try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(m.url))) } catch (_: Exception) { toast("YouTube नहीं खुला") }
-            }.apply { setOnLongClickListener { if (m.why.isNotBlank()) toast(m.why); true } },
+            }.apply { setOnLongClickListener { m.why.takeIf { it.isNotBlank() }?.let { w -> toast(w) }; true } },
                 LinearLayout.LayoutParams(-2, (40 * dp).toInt()).apply { marginEnd = (8 * dp).toInt() })
         }
         musicBox.visibility = if (parts.music.isEmpty()) View.GONE else View.VISIBLE
