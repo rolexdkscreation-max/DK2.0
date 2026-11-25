@@ -41,7 +41,9 @@ class ScanPanel(private val act: AppCompatActivity, private val startLive: () ->
     private var feed: CameraFeed? = null
     private var wantJob: Runnable? = null
     private var asked = false
-    private val listener: () -> Unit = { view.post { sync() } }
+    /** 25 नवंबर 2026: लेंस माँगा था पर DK लाइव अभी जुड़ी नहीं - जुड़ते ही (कभी भी) खोलो, 20 सेकंड पर हार नहीं */
+    private var pendingFront: Boolean? = null
+    private val listener: () -> Unit = { view.post { pendingFront?.let { f -> if (shown && liveReady()) { wantJob?.let { view.removeCallbacks(it) }; wantJob = null; open(f) } }; sync() } }
 
     init {
         view.addView(cam, FrameLayout.LayoutParams(-1, -1))
@@ -53,6 +55,8 @@ class ScanPanel(private val act: AppCompatActivity, private val startLive: () ->
         }
         // 23 नवंबर 2026 (मालिक: "ऊपर दो बटन ज़रूर दिखें और काम करें"): ऊपर-बाएँ स्क्रीन शेयर, ऊपर-दाएँ कैमरा आगे/पीछे.
         // हालत वाली पट्टी इनके बीच (दोनों तरफ़ बटन जितनी जगह छोड़कर)
+        // 25 नवंबर 2026: हालत वाली पट्टी दबाओ = लेंस फिर से (रुका / नहीं खुला हो तब)
+        status.setOnClickListener { if (shown && !(feed?.running == true)) show(front = LiveVision.cameraFront, userTap = true) }
         view.addView(status, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
             topMargin = d(12f); leftMargin = d(TOP_BTN_DP + 18f); rightMargin = d(TOP_BTN_DP + 18f)
         })
@@ -127,15 +131,26 @@ class ScanPanel(private val act: AppCompatActivity, private val startLive: () ->
         wantJob?.let { view.removeCallbacks(it) }; wantJob = null
         if (liveReady()) { open(front); return }
         say("DK लाइव चालू हो रही है… जुड़ते ही DK लेंस")
+        pendingFront = front
         if (!DKState.live) startLive()
-        val until = System.currentTimeMillis() + 20_000
+        // 25 नवंबर 2026 (मालिक: "DK लेंस कभी-कभी नहीं खुलता"): पहले 20 सेकंड में न जुड़े तो छोड़ देता था.
+        // अब 45 सेकंड तक देखता रहे, बीच में एक बार DK लाइव फिर से चालू करे; उसके बाद भी जुड़ते ही अपने-आप (listener)
+        val start = System.currentTimeMillis()
+        var kicked = false
         val r = object : Runnable {
             override fun run() {
                 if (!shown) return
+                val gone = System.currentTimeMillis() - start
                 when {
                     liveReady() -> { wantJob = null; open(front) }
-                    System.currentTimeMillis() < until -> view.postDelayed(this, 500)
-                    else -> { wantJob = null; say("DK लाइव नहीं जुड़ी — माइक दबाकर फिर कोशिश करें") }
+                    DKAccessibilityService.instance == null && gone > 4_000 -> {
+                        wantJob = null; say("फ़ोन कंट्रोल (Accessibility) बंद है — उसे चालू करें, फिर स्कैन दबाएँ")
+                    }
+                    gone < 45_000 -> {
+                        if (!kicked && gone > 15_000 && !DKState.live) { kicked = true; startLive() }
+                        view.postDelayed(this, 500)
+                    }
+                    else -> { wantJob = null; say("DK लाइव नहीं जुड़ी — इंटरनेट देखें; जुड़ते ही लेंस अपने-आप खुलेगा") }
                 }
             }
         }
@@ -143,8 +158,10 @@ class ScanPanel(private val act: AppCompatActivity, private val startLive: () ->
     }
 
     private fun open(front: Boolean) {
+        pendingFront = null
         val r = LiveVision.setCamera(act, true, if (front) "front" else "back")
         if (r.startsWith("This Live model")) say("यह Gemini Live मॉडल तस्वीर नहीं लेता — सेटिंग्स में दूसरा मॉडल चुनें")
+        else if (r.startsWith("DK Live is not connected")) { want(front); return }   // पल भर में टूटी - जुड़ते ही फिर
         sync()
     }
 
@@ -171,13 +188,17 @@ class ScanPanel(private val act: AppCompatActivity, private val startLive: () ->
         val front = LiveVision.cameraFront
         feed2.start(front,
             onOk = { LiveVision.onCameraStarted(front); view.post { say("") } },
-            onFail = { why -> UiLang.toast(act, "DK लेंस नहीं खुला: $why", Toast.LENGTH_LONG).show(); LiveVision.onCameraStopped(why) })
+            onFail = { why ->
+                UiLang.toast(act, "DK लेंस नहीं खुला: $why", Toast.LENGTH_LONG).show(); LiveVision.onCameraStopped(why)
+                if (shown) say("DK लेंस नहीं खुला — स्कैन फिर दबाएँ")
+            })
     }
 
     /** टैब छोड़ा / ऐप पीछे: कैमरा बंद */
     fun hide() {
         if (!shown) return
         shown = false; showing = false
+        pendingFront = null
         wantJob?.let { view.removeCallbacks(it) }; wantJob = null
         LiveVision.unlisten(listener)
         if (feed?.running == true || LiveVision.cameraWanted) { feed?.stop(); LiveVision.onCameraStopped("स्कैन छोड़ा") }

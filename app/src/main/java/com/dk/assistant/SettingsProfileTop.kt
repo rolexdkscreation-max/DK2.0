@@ -15,8 +15,10 @@ import com.dk.assistant.ui.VerifiedTickDrawable
 
 /**
  * 25 नवंबर 2026 (मालिक: "प्रोफ़ाइल का नाम और उसके आगे का टिक सेटिंग के अंदर सबसे ऊपर टॉप में दिखना चाहिए"):
- *  - Settings खोलते ही सबसे ऊपर: असली नाम + लाइसेंस वाला verified टिक (मालिक सुनहरा / प्रीमियम बैंगनी / बेसिक नीला).
- *    टिक हो तो पट्टी प्रीमियम जैसी (गहरा ढलान + उसी रंग का किनारा). टैप = प्रोफ़ाइल पन्ना.
+ *  - Settings खोलते ही सबसे ऊपर: पहले अक्षर वाला गोल + असली नाम + लाइसेंस वाला verified टिक
+ *    (मालिक सुनहरा / प्रीमियम बैंगनी / बेसिक नीला). टैप = प्रोफ़ाइल पन्ना.
+ *  - मालिक (दूसरी बार): पट्टी बाकी Settings पट्टियों जैसी ही (वही Clay कार्ड) - चारों तरफ़ पीला किनारा/ढलान नहीं;
+ *    टिक वाला नाम सुनहरा; "Verified • Owner • मालिक" वाली लाइन बाहर नहीं, सिर्फ़ अंदर नाम वाले खाने के नीचे.
  *  - प्रोफ़ाइल पन्ने में सबसे ऊपर "असली नाम" का खाना - लिखते ही (लाइसेंस हो तो) उसी जगह टिक.
  * पहले यह सिर्फ़ DKAI चैट की Profile शीट में था ([com.dk.assistant.dkai.DkaiSheets.profile]), Settings में नहीं.
  */
@@ -24,68 +26,50 @@ internal fun SettingsActivity.profileTopCard() {
     val real = Prefs.realName(this)
     val tier = VerifiedBadge.of(this)
     val vt = tier?.takeIf { VerifiedBadge.show(real, it) }   // टिक वाला स्तर (नाम + लाइसेंस दोनों हों तभी)
-    val verified = vt != null
     val box = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
         val pd = (18 * dp).toInt(); setPadding(pd, pd, pd, pd)
         isClickable = true; isFocusable = true
-        contentDescription = VerifiedBadge.headerName(real) + ", " + VerifiedBadge.statusLine(real, tier)
-        background = if (verified) premiumBg(vt?.color ?: 0) else com.dk.assistant.ui.Clay.card(this@profileTopCard)
-        if (verified) setTag(PlainLook.SKIP, true)
+        contentDescription = VerifiedBadge.headerName(real) + (if (vt != null) ", Verified" else "")
+        background = com.dk.assistant.ui.Clay.card(this@profileTopCard)       // बाकी पट्टियों वाला ही कार्ड
         setOnClickListener {
             startActivity(android.content.Intent(this@profileTopCard, SettingsActivity::class.java).putExtra("section", "profile"))
         }
     }
-    val textMain = if (verified) 0xFFFFFFFF.toInt() else com.dk.assistant.ui.ClayTheme.t.text
-    val textSub = if (verified) 0xD9FFFFFF.toInt() else com.dk.assistant.ui.ClayTheme.t.gray
-    // नाम का पहला अक्षर गोल में (टिक वाले का उसी रंग का ढलान)
+    // नाम का पहला अक्षर गोल में (पहले जैसा)
     box.addView(TextView(this).apply {
         text = real.trim().take(1).uppercase().ifBlank { "+" }
-        textSize = 24f; setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER; setTextColor(0xFFFFFFFF.toInt())
+        textSize = 22f; setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER; setTextColor(0xFFFFFFFF.toInt())
         background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
-            intArrayOf(tier?.color ?: com.dk.assistant.ui.ClayTheme.t.accent, 0xFF1E2A4A.toInt())).apply {
-            shape = GradientDrawable.OVAL
-            if (verified) setStroke((2 * dp).toInt(), 0xFFFFFFFF.toInt())
-        }
+            intArrayOf(tier?.color ?: com.dk.assistant.ui.ClayTheme.t.accent, 0xFF1E2A4A.toInt())).apply { shape = GradientDrawable.OVAL }
         setTag(PlainLook.SKIP, true); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-    }, LinearLayout.LayoutParams((56 * dp).toInt(), (56 * dp).toInt()).apply { marginEnd = (14 * dp).toInt() })
+        UiLang.keep(this)
+    }, LinearLayout.LayoutParams((52 * dp).toInt(), (52 * dp).toInt()).apply { marginEnd = (14 * dp).toInt() })
 
     val txt = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
     val nameRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
     val nameTv = TextView(this).apply {
         text = VerifiedBadge.headerName(real); textSize = if (real.isBlank()) 17f else 20f
-        setTypeface(typeface, Typeface.BOLD); setTextColor(textMain); maxLines = 1
+        setTypeface(typeface, Typeface.BOLD); setTextColor(com.dk.assistant.ui.ClayTheme.t.text); maxLines = 1
         ellipsize = android.text.TextUtils.TruncateAt.END
-        if (verified) setTag(PlainLook.SKIP, true)
+        if (real.isNotBlank()) UiLang.keep(this)        // असली नाम का अनुवाद नहीं
     }
     nameRow.addView(nameTv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     if (vt != null) nameRow.addView(ImageView(this).apply {
-        setImageDrawable(VerifiedTickDrawable(vt.color)); contentDescription = "Verified • ${vt.label}"
+        setImageDrawable(VerifiedTickDrawable(vt.color)); contentDescription = "Verified"
         setTag(PlainLook.SKIP, true)
     }, LinearLayout.LayoutParams((22 * dp).toInt(), (22 * dp).toInt()).apply { marginStart = (6 * dp).toInt() })
     txt.addView(nameRow)
-    txt.addView(TextView(this).apply {
-        text = VerifiedBadge.statusLine(real, tier); textSize = 12.5f; setPadding(0, (3 * dp).toInt(), 0, 0)
-        setTextColor(textSub); if (verified) { setTag(PlainLook.SKIP, true); setTypeface(typeface, Typeface.BOLD) }
+    // नाम न लिखा हो तभी छोटी लाइन - नाम हो तो बाहर सिर्फ़ नाम + टिक
+    if (real.isBlank()) txt.addView(TextView(this).apply {
+        text = VerifiedBadge.ADD_HINT; textSize = 12.5f; setPadding(0, (3 * dp).toInt(), 0, 0)
+        setTextColor(com.dk.assistant.ui.ClayTheme.t.gray)
     })
     box.addView(txt, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-    box.addView(TextView(this).apply { text = "›"; textSize = 28f; setTextColor(textSub); if (verified) setTag(PlainLook.SKIP, true) })
+    box.addView(TextView(this).apply { text = "›"; textSize = 28f; setTextColor(com.dk.assistant.ui.ClayTheme.t.gray) })
     container.addView(box, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = (12 * dp).toInt() })
-    // मालिक = सुनहरा धातु जैसा नाम (CONTROL CENTER वाला)
-    if (vt == VerifiedBadge.Tier.OWNER) FutureViews.goldShader(nameTv)
-}
-
-/** प्रीमियम पट्टी: गहरा नीला -> टिक के रंग का गहरा ढलान + उसी रंग का पतला चमकदार किनारा */
-private fun SettingsActivity.premiumBg(color: Int) = GradientDrawable(GradientDrawable.Orientation.TL_BR,
-    intArrayOf(0xFF141B33.toInt(), mix(color, 0xFF141B33.toInt(), 0.55f), mix(color, 0xFF000000.toInt(), 0.35f))).apply {
-    cornerRadius = 22 * dp
-    setStroke((1.5f * dp).toInt().coerceAtLeast(2), color)
-}
-
-private fun mix(a: Int, b: Int, t: Float): Int {
-    fun ch(x: Int, s: Int) = (x shr s) and 0xFF
-    fun m(s: Int) = (ch(a, s) * (1 - t) + ch(b, s) * t).toInt().coerceIn(0, 255)
-    return (0xFF shl 24) or (m(16) shl 16) or (m(8) shl 8) or m(0)
+    // टिक वाला (मालिक/प्रीमियम/बेसिक) = नाम सुनहरे धातु जैसा (CONTROL CENTER वाला)
+    if (vt != null) { nameTv.setTag(PlainLook.SKIP, true); FutureViews.goldShader(nameTv) }
 }
 
 /** प्रोफ़ाइल पन्ने में सबसे ऊपर: असली नाम का खाना + उसके आगे verified टिक (लिखते ही, अपने-आप सेव) */
