@@ -45,7 +45,7 @@ object LiveFast {
      */
     private val INSTANT = setOf(JarvisMode.TYPE, RomanticPersona.TYPE, AssistantPersona.TYPE, DkPersona.TYPE, SideTalk.TYPE, GuardRules.TYPE, GuardModes.TYPE, "volume", "media", "torch", "speaker", "screen_view", "panel", "lock", "unlock", "back", "home",
         "recents", "scroll", "notifications", "quick_settings", "answer_call", "end_call", "who_calls", "screenshot_save", "show_face",
-        "brightness", "rotation", "dnd")
+        "brightness", "rotation", "dnd", com.dk.assistant.translate.TrCommands.TYPE)
     const val SETTLE_MS = 700L
     fun settleMs(type: String): Long = if (type in INSTANT) 0L else SETTLE_MS
     /** काम बीच में रद्द हुआ (आप आगे बोले) - गलती नहीं */

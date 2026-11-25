@@ -29,6 +29,8 @@ object QuickCommands {
         if (t.isEmpty()) return null
         // 15 नवंबर 2026: DK AI Plus - SOS / ड्राइविंग मोड (default बंद सुविधाएँ, बोलकर)
         com.dk.assistant.plus.PlusCommands.parse(t)?.let { return it }
+        // 25 नवंबर 2026: "DK ट्रांसलेटर चालू / बंद करो" (सीधा दुभाषिया - default बंद)
+        com.dk.assistant.translate.TrCommands.parse(t)?.let { return it }
         fun has(vararg w: String) = w.any { t.contains(it) }
         val words = t.split(' ').size
         val onW = has("जला", "चालू", "ऑन", " on", "on ", "खोल", "स्टार्ट", "start", "जगा")
