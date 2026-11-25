@@ -367,6 +367,7 @@ object TrEngine {
                 TrLang.Verdict.DROP -> { aBuf.clear(); au.hindi.flush(); aLine?.let { top.remove(it) } }
                 else -> { aBuf.clear(); au.hindi.flush(); aLine?.let { it.note = TrPrompt.NOT_UNDERSTOOD }; msg = TrPrompt.NOT_UNDERSTOOD }
             }
+            Unit
         }
         if (msg.isNotEmpty()) note(msg)
         lines()
@@ -467,7 +468,10 @@ object TrEngine {
 
     private fun add(list: MutableList<Line>, l: Line) { list.add(l); while (list.size > MAX_LINES) list.removeAt(0) }
 
-    fun setStatus(st: St) { if (status == st) return; status = st; post { ui?.onStatus(st) } }
+    fun setStatus(st: St) {
+        if (status == st) return
+        status = st; post { ui?.onStatus(st) }
+    }
 
     private fun note(s: String) { lastNote = s; DKLog.d("Translator: $s"); post { ui?.onNote(s) } }
 

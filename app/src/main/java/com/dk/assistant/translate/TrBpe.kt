@@ -67,7 +67,10 @@ class TrBpe(
             var lastUnk = false
             for (p in bpe(SPACE + w)) {
                 val id = vocab[p]?.takeIf { it < srcSize }
-                if (id == null) { if (!lastUnk) out.add(UNK.toLong()); lastUnk = true }
+                if (id == null) {
+                    if (!lastUnk) out.add(UNK.toLong())
+                    lastUnk = true
+                }
                 else { out.add(id.toLong()); lastUnk = false }
             }
         }
