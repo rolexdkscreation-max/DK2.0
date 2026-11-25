@@ -723,6 +723,21 @@ class AgentRunner(
                                 DKState.set(Mode.WORKING)
                             }
                         }
+                        // 25 नवंबर 2026 (बुकिंग एजेंट): Book / Confirm ride / Reserve = हर बार ब्योरे के साथ मालिक की अपनी "हाँ" (भुगतान ऊपर ही रुक जाता है)
+                        val trip = com.dk.assistant.agent.master.DkMaster.trip
+                        val bk = subs.map { com.dk.assistant.agent.core.OutsideText.label(it, seenScreen) }
+                            .firstOrNull { l -> com.dk.assistant.agent.master.BookRules.tap(l, trip != null) == com.dk.assistant.agent.master.BookRules.Tap.BOOK }
+                        if (bk != null) {
+                            speakJob?.join()
+                            say(com.dk.assistant.agent.master.BookRules.askLine(trip, bk))
+                            DKState.set(Mode.LISTENING)
+                            val ans = svc.hearForAgent()
+                            ans?.let { DKState.user(it) }
+                            val yes = com.dk.assistant.agent.core.ConfirmGate.isYes(ans.orEmpty())
+                            com.dk.assistant.agent.master.ActionLog.add(svc, "पुष्टि", "बुकिंग (${bk.take(40)}): " + if (yes) "हाँ" else "नहीं / जवाब नहीं")
+                            if (!yes) { say("ठीक है, बुकिंग पक्की नहीं की — काम यहीं रोक दिया।"); return }
+                            DKState.set(Mode.WORKING)
+                        }
                     }
                     if (autoS == null) {
                         val k = com.dk.assistant.agent.core.OutsideText.kind(a, seenScreen, seenPkg)
