@@ -21,7 +21,7 @@ object MergeBrief {
      * @param told बिना-AI पक्का नतीजा ([Seven.resultExplain]) - explain न हो तो यही
      */
     fun text(short: String, task: String, changes: List<Pair<String, String>>, explain: String, told: String, testOk: Boolean?,
-             prUrl: String, github: Boolean, checks: String = "", backup: String = ""): String = buildString {
+             prUrl: String, github: Boolean, checks: String = "", backup: String = "", coder: String = "", shots: String = ""): String = buildString {
         val asks = testOk == true && github && prUrl.isNotBlank()
         // नीचे पूरा "merge कर दूँ?" आएगा - ऊपर वाली छोटी "आगे:" लाइन दोबारा नहीं
         append(short.trim().lines().filterNot { asks && it.startsWith("आगे:") }.joinToString("\n"))
@@ -34,6 +34,8 @@ object MergeBrief {
         if (changes.isEmpty()) append("\n• कोई फ़ाइल नहीं बदली")
         changes.take(25).forEach { (f, w) -> append("\n• ").append(f).append(if (w.isNotBlank()) " — " + clip(w, 220) else "") }
         if (changes.size > 25) append("\n• …और ${changes.size - 25} फ़ाइल (PR में सब)")
+        // 25 नवंबर 2026 (मालिक: "लास्ट में बताएगा क्या फाइल बदला है, क्या कैसे करना है"): काम करने वाले एजेंट की अपनी रिपोर्ट
+        if (coder.isNotBlank()) append("\n\n🧠 एजेंट की रिपोर्ट (क्या बदला, कैसे इस्तेमाल करें, कैसे जाँचा):\n").append(clip(coder.trim(), 1_500))
         val how = explain.trim().ifBlank { told.trim() }
         if (how.isNotEmpty()) append("\n\n⚙️ यह कैसे काम करेगा (आसान भाषा में):\n").append(clip(how, 5_000))
         append("\n\n🧪 जाँच: ").append(when (testOk) {
@@ -43,6 +45,7 @@ object MergeBrief {
         })
         if (testOk == true) append("\n🚫 अभी क्या नहीं हुआ: merge और APK release — वह सिर्फ़ आपकी हाँ से")
         if (backup.isNotBlank()) append("\n🛟 backup: ").append(backup)
+        if (shots.isNotBlank()) append("\n").append(shots.trim())
         if (github && prUrl.isNotBlank()) append("\n🔗 PR: ").append(prUrl)
         if (asks) append("\n\n").append(ASK)
     }

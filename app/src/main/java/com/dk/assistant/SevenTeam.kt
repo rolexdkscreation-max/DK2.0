@@ -510,7 +510,7 @@ class SevenTeam(
         val coded = prog.phase >= TeamProgress.CODED
         if (!coded && solo) {
             // एक-दिमाग: पूरा काम एक ही एजेंट (खोज → पढ़ना → सारे बदलाव → जाँच), हाथ-बदली नहीं
-            ev(Agent.CODER, "एक ही एजेंट पूरा काम करेगा: पहले कोड खोजकर पढ़ेगा, फिर सारे बदलाव, फिर खुद जाँच")
+            ev(Agent.CODER, "एक ही एजेंट पूरा काम करेगा: पहले कोड खोजकर पढ़ेगा, फिर सारे बदलाव, फिर खुद जाँच\n" + Solo.phasesText(git != null))
             val order = Solo.firstOrder(task, brief, spec, acceptance, notTouch, git != null, files.list().size,
                 try { map(ws()) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { "" })
             if (!soloWork(order)) return finish(false, lastBlock)
@@ -729,6 +729,9 @@ class SevenTeam(
         soloMsgs.add("user" to order)
         val formatErrs = mutableListOf<String>()
         val checkErrs = mutableListOf<String>()
+        // 25 नवंबर 2026 (मालिक: "खुद ही काम करे, फिर चेक करे, फिर रिव्यू करे, डीबग करके पूरा फिनिश करे"):
+        // इस राउंड में एजेंट ने अपना diff खुद-रिव्यू के लिए देखा या नहीं
+        var reviewed = false
         for (turn in 1..turns) {
             compactOld(soloMsgs)
             val reply = try { aiAsk(Agent.CODER, Solo.SYSTEM, soloMsgs) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
@@ -775,6 +778,12 @@ class SevenTeam(
                         val probs = soloProblems()
                         out.append(if (probs.isEmpty()) "CHECK: clean ✓ (${files.staged().size} files changed)\n" else "CHECK FOUND PROBLEMS - fix them:\n" + probs.joinToString("\n") { "- $it" } + "\n")
                         did.add(if (probs.isEmpty()) "✓ जाँच साफ़" else "⚠ जाँच: ${probs.size} कमी")
+                        // जाँच साफ़ = उसी नतीजे में अपना पूरा diff (अलग AI कॉल नहीं): एजेंट खुद रिव्यूअर बनकर DONE से पहले देखे
+                        if (probs.isEmpty() && files.staged().isNotEmpty()) {
+                            out.append("\nYOUR DIFF:\n").append(soloDiff()).append('\n').append(Solo.REVIEW_HINT).append('\n')
+                            if (!reviewed) ev(Agent.CODER, "🔍 खुद-रिव्यू: अपना पूरा बदलाव (diff) दोबारा पढ़ रहा हूँ — हर माँगी बात और हर हटाई लाइन")
+                            reviewed = true
+                        }
                     }
                     is Solo.Act.Bad -> out.append("FORMAT PROBLEM: ${a.why}\n")
                     is Solo.Act.Ask -> {
@@ -790,6 +799,14 @@ class SevenTeam(
             if (d != null) {
                 val probs = soloProblems().toMutableList()
                 if (files.staged().isEmpty()) probs.add("NOTHING CHANGED: no file was changed yet - the task needs real code changes")
+                // बड़ा बदलाव और एजेंट ने अपना diff अभी तक नहीं देखा = DONE से पहले एक पूरा खुद-रिव्यू + डिबग राउंड
+                val diff = if (probs.isEmpty() && !reviewed) soloDiff() else ""
+                if (probs.isEmpty() && !reviewed && Solo.needsOwnReview(files.staged().size, Solo.changedLines(diff))) {
+                    reviewed = true
+                    ev(Agent.CODER, "🔍 खुद-रिव्यू + डिबग: ${files.staged().size} फ़ाइलों का पूरा बदलाव दोबारा जाँच रहा हूँ, फिर ही पूरा कहूँगा")
+                    soloMsgs.add("user" to (out.toString().trim() + "\n\n" + Solo.reviewOrder(diff, acceptance)).trim())
+                    continue
+                }
                 if (probs.isEmpty()) {
                     val title = d.title.ifBlank { task.lines().first().take(70) }.take(90)
                     commitMsg = ("DK: " + title).take(100) to title
@@ -810,6 +827,16 @@ class SevenTeam(
         }
         lastBlock = "कोडर $turns जवाबों में काम पूरा नहीं कर पाया" + if (files.staged().isNotEmpty()) " (${files.staged().size} फ़ाइलें बदलीं, पर DONE नहीं हुआ)" else ""
         return false
+    }
+
+    /** अब तक के सारे बदलाव का छोटा diff (खुद-रिव्यू के लिए) */
+    private suspend fun soloDiff(max: Int = 24_000): String {
+        val sb = StringBuilder()
+        for ((p, c) in files.staged()) {
+            if (sb.length > max) { sb.append("(more files - READ them)\n"); break }
+            sb.append(Solo.miniDiff(p, files.original(p), c, maxOf(2_000, max / 4))).append("\n\n")
+        }
+        return sb.toString().trim()
     }
 
     /** इस काम में कोडर ने कौन-सी फ़ाइलें पढ़ीं - बिना पढ़े मौजूदा फ़ाइल पूरी दोबारा नहीं लिखनी */
@@ -1723,7 +1750,8 @@ class SevenTeam(
         ev(Agent.EXPLAINER, shown)
         rep += "\n\n" + shown
         val brief = MergeBrief.text(short, task, changes.entries.map { it.key to it.value }, deep.orEmpty(), told.substringAfter('\n', told),
-            testOk, pr.substringBefore(" ("), git != null, if (testOk == true) passNote else "", backup)
+            testOk, pr.substringBefore(" ("), git != null, if (testOk == true) passNote else "", backup,
+            coder = if (solo) soloSummary else "", shots = if (changes.isEmpty()) "" else Shots.reportNote(changes.keys, git != null))
         return Outcome(rep, files.staged(), testOk, mode, short = short, brief = brief)
     }
 }

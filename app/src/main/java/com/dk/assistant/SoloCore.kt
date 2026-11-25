@@ -257,6 +257,68 @@ object Solo {
         append("\nREAD the exact failing lines first, find the ROOT CAUSE, fix it in the code (never weaken or delete a test to make it pass), CHECK, then DONE.")
     }
 
+    /**
+     * 25 नवंबर 2026 (मालिक: "काम एकदम स्टेप बाय स्टेप... खुद ही काम करे, फिर चेक करे, फिर रिव्यू करे, डीबग करके पूरा फिनिश करे"):
+     * एक ही एजेंट के कदम - स्क्रीन पर पहले ही दिखते हैं, ताकि user को पता रहे अभी कौन-सा कदम चल रहा है.
+     */
+    fun phases(github: Boolean): List<String> = listOfNotNull(
+        "काम समझना और रिपो में सिर्फ़ इसी काम से जुड़ा कोड खोजकर पढ़ना (कहाँ-कहाँ क्या है)",
+        "कदम-दर-कदम पूरा बदलाव (हर ज़रूरी फ़ाइल में)",
+        "खुद जाँच (CHECK: नाम, import, resource, पुराने tests)",
+        "खुद रिव्यू: अपना पूरा diff दोबारा पढ़कर हर माँगी बात और हर हटाई लाइन जाँचना, गलती मिली तो वहीं ठीक",
+        if (github) "GitHub पर असली build + सारे unit tests; fail = log पढ़कर जड़ से ठीक (debug), पास होने तक" else null,
+        "आख़िरी रिपोर्ट: कौन-सी फ़ाइल बदली, क्या बदला, कैसे इस्तेमाल/जाँचें" + if (github) ", और screenshot" else ""
+    )
+
+    /** कदमों की सूची, स्क्रीन के लिए */
+    fun phasesText(github: Boolean): String = "🪜 मेरे कदम (एक-एक करके):\n" + phases(github).mapIndexed { i, x -> "${i + 1}. $x" }.joinToString("\n")
+
+    /**
+     * एक फ़ाइल का छोटा diff (AI के खुद-रिव्यू के लिए): शुरू/आख़िर की एक जैसी लाइनें छोड़कर बीच का बदला हिस्सा,
+     * "- " = हटी लाइन, "+ " = नई लाइन. old null = नई फ़ाइल, new null = फ़ाइल हटाई.
+     */
+    fun miniDiff(path: String, old: String?, new: String?, max: Int = 6_000): String {
+        if (new == null) return "=== $path (DELETED) ==="
+        val a = old?.split("\n").orEmpty()
+        val b = new.split("\n")
+        var pre = 0
+        while (pre < a.size && pre < b.size && a[pre] == b[pre]) pre++
+        var suf = 0
+        while (suf < a.size - pre && suf < b.size - pre && a[a.size - 1 - suf] == b[b.size - 1 - suf]) suf++
+        val gone = a.subList(pre, a.size - suf)
+        val added = b.subList(pre, b.size - suf)
+        val sb = StringBuilder("=== $path " + (if (old == null) "(NEW FILE)" else "(changed around line ${pre + 1})") + " ===\n")
+        for (l in gone.map { "- $it" } + added.map { "+ $it" }) {
+            if (sb.length > max) break
+            sb.append(l).append('\n')
+        }
+        if (sb.length > max) sb.append("(diff cut - READ the file to see the rest)\n")
+        return sb.toString().trimEnd()
+    }
+
+    /** बदली हुई लाइनों की गिनती (बड़ा बदलाव = DONE से पहले अलग से खुद-रिव्यू ज़रूरी) */
+    fun changedLines(diff: String): Int = diff.lines().count { it.startsWith("- ") || it.startsWith("+ ") }
+
+    /** इतना बड़ा बदलाव हो तो DONE से पहले एक पूरा खुद-रिव्यू राउंड (छोटे बदलाव में CHECK के साथ ही diff दिखता है) */
+    fun needsOwnReview(files: Int, lines: Int): Boolean = files >= 2 || lines >= 30
+
+    /** खुद-रिव्यू का आदेश: अपना पूरा diff + जाँचने की सूची. वही एजेंट, वही बातचीत */
+    fun reviewOrder(diffs: String, acceptance: List<String>): String = buildString {
+        append("SELF-REVIEW (you are the reviewer and debugger of your own work now). Your full change so far:\n\n")
+        append(diffs.trim()).append("\n\n")
+        append("Check it line by line before finishing:\n")
+        append("1. Every point of the USER TASK")
+        if (acceptance.isNotEmpty()) append(" and DONE MEANS (").append(acceptance.joinToString("; ").take(600)).append(")")
+        append(" is really implemented AND wired (reachable from the app UI / called from real code), not just written.\n")
+        append("2. Every '- ' line: was removing it really needed? No old feature, setting, string or test may break.\n")
+        append("3. Bugs: wrong names/imports, null cases, missing strings/resources/manifest entries, main-thread work, missing unit test for new logic.\n")
+        append("4. Nothing extra that the user did not ask for.\n")
+        append("If anything is wrong: fix it now (READ / FILE + FIND/REPLACE), CHECK, then DONE. If everything is correct: reply DONE again.")
+    }
+
+    /** CHECK साफ़ होने पर उसी नतीजे में जुड़ने वाली छोटी याद (बिना अलग AI कॉल) */
+    const val REVIEW_HINT = "Before DONE: review this diff yourself (every task point wired end to end, every '- ' line intended, no old feature broken). Fix anything wrong, otherwise DONE."
+
     /** AI ने कोई कमांड नहीं भेजी */
     const val NO_ACTION = "Your reply had no command. Reply ONLY with commands (READ / GREP / LIST / FILE + <<<FIND/<<<REPLACE or <<<FILE / DELETE / CHECK / DONE / ASK)."
 
@@ -268,7 +330,7 @@ HOW YOU WORK
 1. Understand exactly what the user asked (their own words win over any summary). Do ALL of it - every point - nothing extra that was not asked.
 2. Explore first: LIST / GREP / READ to find every place involved (UI, logic, settings, strings, wiring, tests). Read whole functions and their callers. NEVER guess a name, signature, import, id or resource - look it up.
 3. Change the code completely: every file that needs it, wired end to end (the feature must be reachable and work, not just compile). Follow the existing style of the file.
-4. CHECK, fix whatever it reports, then DONE. After DONE the system runs strict checks and (in GitHub mode) the real CI build + unit tests; any failure comes back to you in this same conversation - then fix the ROOT CAUSE.
+4. CHECK, fix whatever it reports. CHECK also shows YOUR OWN DIFF: review it like a strict reviewer (every task point done and wired, every removed line intended, no old feature broken) and debug anything wrong. Only then DONE. After DONE the system runs strict checks and (in GitHub mode) the real CI build + unit tests; any failure comes back to you in this same conversation - then fix the ROOT CAUSE.
 
 COMMANDS (reply with ONLY commands; you may send many in one reply, e.g. several READs at once; results come in the next message)
 READ: path                      whole file with line numbers
@@ -289,7 +351,10 @@ FILE>>>
 DELETE: path
 CHECK                           strict checks now (syntax, names that do not exist, missing resources, protected files, old tests)
 DONE: Short English title for the commit and PR
-Then 2-6 lines in simple Hindi for the user: what you changed, where it is in the app, how to use it.
+Then 3-10 lines in simple Hindi for the user, in this order:
+  बदली फ़ाइलें: each changed file and what changed in it (one short line each)
+  कैसे इस्तेमाल करें: where it is in the app and how to use / see it, step by step
+  कैसे जाँचा: what you checked (CHECK, self-review, test you added)
 ASK: question                   ONLY if it is truly impossible to continue (a secret, a file only the user has). Otherwise decide yourself, sensibly.
 
 RULES
@@ -300,6 +365,7 @@ RULES
 - Keep every old feature working. Do not rename or remove public functions others use without updating every caller (GREP for them).
 - Kotlin: every name you use must exist (GREP it), imports must be right, braces balanced, never write a slash-star inside a KDoc comment, string templates need a dollar sign only when meant.
 - User-visible text in the app: simple Hindi (Devanagari), like the rest of the app. No raw exception text in toasts.
+- Screenshots: when you add or change a screen, also write .github/ui/extra_shots.sh (bash lines run on the emulator by .github/ui/shots.sh with ${'$'}tag set) that open the new screen and take a picture, using the existing helpers: go .SomeActivity [--es section x] ; tap "visible text" ; shot ${'$'}{tag}_20_name 4 . Keep it to a few lines; replace the old content of that file.
 - Do not stop early. DONE only when every point of the task is really implemented and CHECK is clean."""
 }
 
