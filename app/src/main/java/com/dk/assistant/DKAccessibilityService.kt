@@ -189,6 +189,7 @@ class DKAccessibilityService : AccessibilityService() {
         LiveNet.unregister(this)
         com.dk.assistant.inspector.Inspector.stopTimer()
         exitBackup("सेवा बंद")
+        try { callEar.stop() } catch (e: Exception) { Quiet.note(e) }
         instance = null
         DKState.earUp = { true }
         AppVisible.onChange = null
@@ -488,6 +489,8 @@ class DKAccessibilityService : AccessibilityService() {
 
     /** Gemini Live (aawaz se aawaz, real-time) - sabse tez tareeka */
     val gemLive by lazy { GeminiLive(this, agent) }
+    /** 24 नवंबर 2026: घंटी के समय फ़ोन पर ही लगातार सुनने वाला कान ([CallEar]) */
+    internal val callEar by lazy { CallEar(this) }
     /** 18 नवंबर 2026 (मालिक: "सुनना अलग, सोचना-बोलना अलग"): नया अलग-अलग तरीका (Settings → आवाज़ → बातचीत का तरीका) */
     val talk by lazy { com.dk.assistant.talk.TalkLoop(this, agent, speaker) }
     /** अलग तरीका इस समय तक नहीं (कोई पहचान नहीं चली) - तब तक पहले जैसा Gemini Live */
@@ -973,6 +976,8 @@ class DKAccessibilityService : AccessibilityService() {
                     Ducker.releaseWhenQuiet({ !speaker.busy })
                     continue
                 }
+                // 24 नवंबर 2026: घंटी के समय फ़ोन का कान (CallEar) माइक पर है - यहाँ दूसरा माइक नहीं (आवाज़ बँटे नहीं)
+                if (callEar.running) { ear.release(); listener.release(); delay(150); continue }
                 val liveBefore = DKState.live
                 oldEar(liveBefore)                   // Live चालू + पुराना कान = DK सुन रहा है (LISTENING)
                 val heard = hear(wakeGate = !liveBefore && !callRinging())
@@ -996,6 +1001,7 @@ class DKAccessibilityService : AccessibilityService() {
                 misses = 0
                 agent.heardAt = System.currentTimeMillis()
                 val low = heard.lowercase().trim()
+                com.dk.assistant.voice.UnlockGuard.said(heard)   // 24 नवंबर 2026: लंबा वाक्य भी अनलॉक का इरादा (AI के रास्ते आए अनलॉक पर PIN रुके नहीं)
 
                 // ghanti baj rahi hai -> jo bhi bolo woh call ka jawab (wake word ki zarurat nahi)
                 if (calls.ringing || callPending) {

@@ -180,7 +180,7 @@ class SettingsActivity : AppCompatActivity() {
             Triple("auto", "ऑटोनोमस मोड", (if (com.dk.assistant.auto.AutoPrefs.on(this)) "✓ चालू" else "✗ बंद") + " • DK खुद तय करे और खुद करे • API keys • आपातकालीन STOP"),
             Triple("templates", "टेम्पलेट कमांड", "बिना AI के तय साँचे • WhatsApp • अलार्म • मैप • कॉल"),
             Triple("autoreply", "ऑटो रिप्लाई", (if (com.dk.assistant.autoreply.AutoReply.on(this)) "✓ चालू" else "✗ बंद") + " • WhatsApp • WhatsApp Business • Telegram • Messenger — हर ऐप का अपना स्विच"),
-            Triple("social", "सोशल रिव्यू", "इंस्टाग्राम • फेसबुक • यूट्यूब स्टूडियो — हर रील के व्यूज़, रीच क्यों गिरी, ट्रेंड • YouTube चैनल जाँच"),
+            Triple("social", "सोशल रिव्यू", "इंस्टाग्राम • फेसबुक • यूट्यूब स्टूडियो — हर रील के व्यूज़, रीच क्यों गिरी, ट्रेंड • रिपोर्ट्स • YouTube चैनल जाँच"),
             Triple("reels", "रील गिनती और लिमिट", "इंस्टाग्राम • YouTube शॉर्ट्स • फेसबुक — ऊपर गिनती की पट्टी • रोज़ की लिमिट • फ़ोन लॉक / ऐप बंद"),
             Triple("backup", "बैकअप", "DK की याददाश्त Google Drive में • अपना ईमेल डालें • बैकअप / रिस्टोर (ऐप दोबारा डालने पर सब वापस)"),
             Triple("connectors", "कनेक्टर", "Gmail • Drive • Calendar • GitHub • Facebook Page • Instagram • MCP — DK लाइव से बोलकर काम"),

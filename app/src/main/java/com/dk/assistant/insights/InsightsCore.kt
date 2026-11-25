@@ -643,6 +643,11 @@ object InsightsReport {
         append("- ### मोनेटाइज़ेशन और रिकमेंडेशन  (status exactly as read; if a problem: the reason as read, what that policy means, and step-by-step how to fix / request review; if not read say so)\n")
         append("- a table | रील/वीडियो | तारीख़ | व्यूज़ | रीच | लाइक | कमेंट | शेयर | सेव | औसत देखा | (CTR for YouTube) | for up to 10 items\n")
         append("- ### क्या चल रहा है  (what works, with numbers)\n- ### रीच क्यों गिरी / बढ़ी  (data-backed reasons)\n- ### क्या करें  (3-6 concrete actions)\n")
+        // 24 नवंबर 2026 (मालिक: DK SOCIAL AGENT): फ़ॉलोअर ट्रेंड, सबसे अच्छी / कमज़ोर पोस्ट, व्यूज़ कहाँ से, गलतियाँ, ठीक करने से पहले पूछना
+        append("- ### फ़ॉलोअर ट्रेंड  (up / down / same - only if the data shows it, else say \"यह आँकड़ा नहीं मिला\")\n")
+        append("- ### सबसे अच्छी और सबसे कमज़ोर पोस्ट  (one each, by title, with the numbers and why)\n")
+        append("- ### व्यूज़ कहाँ से आ रहे हैं  (traffic sources only from the data)\n- ### गलतियाँ  (2-4 clear mistakes seen in the data)\n")
+        append("After the actions, ask exactly once: \"क्या मैं इनमें से कुछ ठीक कर दूँ?\" - DK changes nothing on its own and NEVER says something was changed, posted or deleted.\n")
         append("## पॉलिसी और एल्गोरिदम\nfor each reviewed platform max 4 short bullets: the main monetization rules, what stops recommendations, how the ranking works (from POLICY), with the official links.\n")
         append("## ट्रेंडिंग और नए आइडिया\nUse the trend research below + the creator's own best topics: 5 concrete reel/video ideas with a hook line each.\n")
         append("## अगले 7 दिन का प्लान\nday-wise short plan.\n")

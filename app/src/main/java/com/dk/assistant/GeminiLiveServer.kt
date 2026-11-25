@@ -112,6 +112,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         speakerBarge.onWords()             // ऑडिट S2
         val u = synchronized(turnLock) { userText.append(t); userText.toString().trim() }
         liveHeard = u; liveHeardAt = System.currentTimeMillis()     // नवंबर 2026 (#4): caption न चले तो बात-खत्म इसी से
+        com.dk.assistant.voice.UnlockGuard.said(u)   // 24 नवंबर 2026: लंबा / थोड़ा गलत सुना "फोन अनलॉक" भी इरादा (PIN फिर भी पूरी जाँच के बाद)
         Lang.noteUser(u)                   // DK AI: "Auto" भाषा - यूज़र की भाषा याद (तय लाइनें उसी में)
         // phone ne "bolna khatam" pakda ho to deri wahin se ginti (der se aaye text se nahi)
         if (trace.speechEndAt == 0L || System.currentTimeMillis() - trace.speechEndAt > 5000) eosAt = System.currentTimeMillis()

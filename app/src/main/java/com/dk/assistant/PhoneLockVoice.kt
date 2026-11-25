@@ -164,6 +164,31 @@ object PhoneLockVoice {
     }
 
     /**
+     * 24 नवंबर 2026 (मालिक: "एक बार बोल दिया तो अनलॉक होना चाहिए"): जड़ - [UnlockGuard] का इरादा सिर्फ़ तब बनता था जब
+     * [instant] पूरा वाक्य पहचाने (1 फ़ालतू शब्द तक). लंबा / थोड़ा गलत सुना वाक्य ("डीके मेरा फोन जल्दी से अनलॉक कर दो यार")
+     * Gemini तक तो पहुँचता, वह phone_task unlock बुलाता, पर इरादा न होने से PIN नहीं डलता ("सुरक्षा: आपने खुद अनलॉक नहीं कहा").
+     * यह ढीली जाँच सिर्फ़ मालिक के माइक की बात पर चलती है और सिर्फ़ इरादा बनाती है - PIN तब भी Gemini/फ़ोन के अनलॉक हुक्म
+     * और (switch चालू हो तो) वॉइस गार्डियन की जाँच के बाद ही. "अनलॉक कर दिया / हो गया" (DK की अपनी गूँज) = नहीं.
+     */
+    fun saysUnlock(heard: String, maxWords: Int = UNLOCK_SAY_MAX_WORDS): Boolean {
+        val t = norm(heard); if (t.isEmpty()) return false
+        val tw = words(t)
+        if (tw.size > maxWords) return false
+        if (tw.any { it in NEG || it in UNLOCK_NOT }) return false
+        if (UNLOCK_ROOTS.any { t.contains(it) }) return true
+        return tw.any { it in DEVICE } && tw.any { it in UNLOCK_OPEN }
+    }
+
+    /** इतने से ज़्यादा शब्द = कोई और लंबी बात (उसमें "अनलॉक" आया) */
+    const val UNLOCK_SAY_MAX_WORDS = 10
+    private val UNLOCK_ROOTS = listOf("अनलॉक", "अनलॉग", "अन लॉक", "अनलाक", "अनलक", "unlock", "un lock", "anlock", "unlok").map { norm(it) }
+    /** "फोन खोलो / फोन ओपन करो / फोन चालू करो" */
+    private val UNLOCK_OPEN = setOf("खोलो", "खोल", "खोलिए", "खोलिये", "ओपन", "open", "kholo", "khol", "चालू", "chalu", "ऑन", "on").map { norm(it) }.toSet()
+    /** हो चुका / सवाल = हुक्म नहीं (DK की गूँज "फ़ोन अनलॉक कर दिया", "अनलॉक कैसे करते हैं") */
+    private val UNLOCK_NOT = setOf("दिया", "गया", "हुआ", "हुई", "गई", "थी", "था", "diya", "gaya", "hua", "done", "unlocked",
+        "कैसे", "kaise", "how", "क्यों", "kyon", "kyu", "why", "बंद", "band", "लॉक्ड").map { norm(it) }.toSet()
+
+    /**
      * v3.151: फ़ोन पर PIN/पैटर्न है पर DK के पास नहीं (या आवाज़ से अनलॉक बंद) - DK क्या बोले।
      * पहले यह सफल गिना जाता था, तो Live "हो गया" बोल देता और फ़ोन बंद रहता।
      */
