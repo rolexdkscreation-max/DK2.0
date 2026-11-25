@@ -114,7 +114,10 @@ object MasterRules {
             Specialist.SOCIAL -> listOf(
                 Step("ऐप खोलना"), Step("काम तैयार करना (कैप्शन / फ़ोटो / मैसेज)"), Step("पोस्ट / भेजने से पहले पूर्वावलोकन और पुष्टि", confirm = true),
             )
-            Specialist.BROWSER -> listOf(Step("ब्राउज़र में पेज खोलना"), Step("पेज पढ़कर काम करना"), Step("नतीजा बताना"))
+            Specialist.BROWSER -> listOf(
+                Step("ब्राउज़र में पेज खोलना"), Step("पहले पेज पढ़ना, फिर सिर्फ़ दिखे हुए बटन / खाने इस्तेमाल करना"),
+                Step("हर कदम के बाद जाँचना कि पेज सच में बदला"), Step("नतीजा बताना (जो पेज ने दिखाया वही)"),
+            )
             Specialist.PHONE -> listOf(Step("ऐप / स्क्रीन खोलना"), Step("काम करना"), Step("जाँचना कि सच में हुआ"))
         }.let { s ->
             // पैसे / वापस न होने वाला / पासवर्ड वगैरह = आख़िरी कदम हमेशा पुष्टि वाला
@@ -141,6 +144,7 @@ object MasterRules {
             Specialist.BOOKING -> append("never make the online payment - stop on the payment page and hand it to the owner; ")
             Specialist.SHOPPING -> append("stop before checkout / payment and hand it to the owner; ")
             Specialist.FORM -> append("never invent personal details - ask the owner for anything you don't know; ")
+            Specialist.BROWSER -> append("read the page before acting, use only what is on the screen, check after each tap that the page changed, try one other way then tell the owner; ")
             else -> Unit
         }
         append("on password / OTP / CAPTCHA / identity screens stop and ask the owner; when unsure ask, don't guess.")

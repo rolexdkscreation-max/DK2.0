@@ -531,7 +531,12 @@ class ComputerAgent(private val c: Context) {
                 val u = a.optString("url").takeIf { it.isNotBlank() }
                 step(if (u != null) "🧭 ब्राउज़र में खोला: ${u.take(90)}" else "🧭 ब्राउज़र में आगे: " + (a.optJSONArray("actions")?.toString()?.take(90) ?: "पेज पढ़ रहा हूँ"))
                 val shot = if (a.optBoolean("screenshot")) "screen_${System.currentTimeMillis() % 100000}" else null
-                val (txt, f) = ComputerBrowser.browse(c, u, a.optJSONArray("actions"), from, ComputerPlan.resultCap(budget), shot)
+                // 25 नवंबर 2026 (मालिक: ब्राउज़र एजेंट) - मास्टर चालू = खतरे वाला बटन पूछकर, पेमेंट कभी नहीं, हर कदम लॉग में
+                val guard = if (com.dk.assistant.agent.master.DkMaster.on(c)) ComputerBrowser.Guard(
+                    ask = { t -> step("❓ इजाज़त माँग रहा हूँ: ${t.lineSequence().first().take(90)}"); ComputerSession.confirm(c, t) },
+                    log = { com.dk.assistant.agent.master.ActionLog.add(c, "ब्राउज़र", it) },
+                ) else null
+                val (txt, f) = ComputerBrowser.browse(c, u, a.optJSONArray("actions"), from, ComputerPlan.resultCap(budget), shot, guard)
                 f?.let { step("📸 स्क्रीनशॉट: ${it.name}") }
                 txt
             }
@@ -744,7 +749,7 @@ RULES:
   "⚠ जो नहीं हो पाया" — honestly, if anything is left.
 - Before done, check yourself: every part of the task answered? numbers verified? requested file created? A quality checker will review your answer.
 - Today: $now (India time).
-${if (facts.isNotBlank()) "\nWHAT YOU KNOW ABOUT THE USER:\n$facts" else ""}
+${if (com.dk.assistant.agent.master.DkMaster.on(c)) com.dk.assistant.agent.master.BrowserRules.AGENT_NOTE + "\n" else ""}${if (facts.isNotBlank()) "\nWHAT YOU KNOW ABOUT THE USER:\n$facts" else ""}
 """.trim()
     }
 
