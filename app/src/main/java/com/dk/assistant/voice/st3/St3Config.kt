@@ -27,7 +27,8 @@ object St3Config {
     const val LANG = "hi"
     const val SAMPLE_RATE = 44_100
 
-    const val SPEED_DEF = 1.05f
+    // 25 नवंबर 2026 (मालिक: "ऑफ़लाइन आवाज़ थोड़ा और फ़ास्ट"): 1.05 -> 1.12 (अपनी चुनी रफ़्तार वैसी ही रहती है)
+    const val SPEED_DEF = 1.12f
     const val SPEED_MIN = 0.70f
     const val SPEED_MAX = 1.60f
     const val STEPS_DEF = 8

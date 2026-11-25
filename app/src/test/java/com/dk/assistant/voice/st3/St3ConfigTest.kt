@@ -43,7 +43,8 @@ class St3ConfigTest {
     }
 
     @Test fun defaults_andLimits() {
-        assertEquals(1.05f, St3Config.SPEED_DEF, 0f)
+        // 25 नवंबर 2026: मालिक ने spec बदली ("ऑफ़लाइन आवाज़ थोड़ा और फ़ास्ट") - 1.05 -> 1.12
+        assertEquals(1.12f, St3Config.SPEED_DEF, 0f)
         assertEquals(8, St3Config.STEPS_DEF)
         assertEquals("hi", St3Config.LANG)
         assertEquals(44_100, St3Config.SAMPLE_RATE)

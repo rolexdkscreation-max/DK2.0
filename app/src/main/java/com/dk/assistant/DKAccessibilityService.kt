@@ -460,13 +460,18 @@ class DKAccessibilityService : AccessibilityService() {
             if (heyDk) scope.launch { delay(800); ensureLoop() }
             return
         }
+        // 25 नवंबर 2026 (मालिक: "माइक / कॉल काटते ही ऑफ़लाइन आवाज़ कुछ बोल देती है - ठीक है, आप नींद आ रहा है"):
+        // जड़: हर बंद पर (बटन से भी) ऑफ़लाइन आवाज़ "ठीक है। ज़रूरत हो तो हे डीके बोलिए।" बोलती थी - ऑफ़लाइन मॉडल "हे डीके"
+        // को अटपटा बोलता है और आपने खुद काटा तो बोलने की ज़रूरत ही नहीं. अब बटन/✕/सूचना से बंद = चुपचाप;
+        // सिर्फ़ बोलकर बंद कराया ("माइक बंद करो") तो छोटा साफ़ "ठीक है बॉस।"
+        val spoken = MicOffSay.line(why)
         scope.launch {
             if (heyDk) {
-                speaker.speak("ठीक है। ज़रूरत हो तो हे डीके बोलिए।")
+                spoken?.let { speaker.speak(it) }
                 delay(800); ensureLoop()
                 return@launch
             }
-            speaker.speak("ठीक है, माइक बंद।")
+            spoken?.let { speaker.speak(it) }
             // v3.59: wake word वाला सुनना भी नहीं - माइक तभी खुलेगा जब आप बटन दबाएँ या लाइव चालू करें
         }
     }

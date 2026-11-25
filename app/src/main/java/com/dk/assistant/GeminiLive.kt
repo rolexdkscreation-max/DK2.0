@@ -601,6 +601,10 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     internal var guardPass = false                    // नाम वाली बात अभी चल रही - इसे दोबारा मत रोको
     internal var guardEndAt = 0L                      // रोकी हुई बात खत्म कब हुई (देर से आते शब्दों का इंतज़ार)
     internal val guardBuf = ArrayDeque<ByteArray>()
+    // 25 नवंबर 2026 (मालिक: "वीडियो चलते भी मेरी बात सुने"): वीडियो का आम स्तर + रोकी आवाज़ का स्तर ([VideoTalk])
+    internal val mediaFloor = VideoTalk.Floor()
+    internal val heldRms = ArrayList<Double>()
+    internal var heldBase = 0.0; internal var heldVad = 0.0; internal var heldVadN = 0; internal var nearHeard = 0
     @Volatile internal var dkOnlyNow = false          // v4.1: Settings → "सिर्फ़ DK बोलने पर सुनो" (हर 3s ताज़ा)
     internal var dkOnlyAt = 0L
     @Volatile internal var guardOn = false            // अभी गार्ड चालू (फ़ोन पर दूसरी आवाज़ बज रही)

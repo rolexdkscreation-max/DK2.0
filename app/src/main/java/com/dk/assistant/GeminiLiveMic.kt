@@ -387,11 +387,13 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                 if (now - dkOnlyAt > 3_000) { dkOnlyAt = now; dkOnlyNow = Prefs.dkOnly(svc) || SideTalk.global.listening(now) }   // नवंबर 2026: सुनने वाला मोड = कुछ देर "सिर्फ़ DK"
                 val dkGate = dkOnlyNow && caption?.usable == true && !CallCmd.windowOpen(now)
                 guardOn = !svc.callRinging() && !callAudioOn && (dkGate || PhoneAudioGuard.active(mediaOn, now - playEnd))
+                if (!guardOn) { if (mediaFloor.level() > 0) mediaFloor.clear() } else if (!guardHeld) mediaFloor.add(rms)
                 if (guardPass && (ev == TurnDetector.Event.SPEECH_END || !turnDet.inSpeech)) guardPass = false
                 if (guardHeld || (guardOn && !guardPass && (ev == TurnDetector.Event.SPEECH_START || turnDet.inSpeech))) {
                     if (!guardHeld) {
                         // नई आवाज़ आई, पर फ़ोन पर वीडियो चल रहा है: पहले सिर्फ़ लिखने वाले को, Gemini को नहीं
                         guardHeld = true; guardOk = false; guardEndAt = 0L; guardBuf.clear()
+                        heldRms.clear(); heldBase = mediaFloor.level(); heldVad = 0.0; heldVadN = 0
                         caption?.discard()
                         if (caption?.usable != true && phoneAudioIgnored == 0)
                             log("वीडियो/गाना चल रहा है और लिखने वाला (caption) बंद - DK का नाम पहचान नहीं सकता, फ़ोन की आवाज़ अनसुनी रहेगी (बात के लिए वीडियो रोकें)")
@@ -399,6 +401,15 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                     }
                     guardBuf.addLast(chunk); capSend(chunk)
                     while (guardBuf.size > PhoneAudioGuard.MAX_HOLD_CHUNKS) guardBuf.removeFirst()
+                    // 25 नवंबर 2026 (मालिक): वीडियो के बीच पास से बोली आपकी आवाज़ (नाम के बिना भी) = आपकी बात ([VideoTalk])
+                    if (!guardOk && !dkOnlyNow && turnDet.inSpeech && heldRms.size < VideoTalk.NEED_CHUNKS) {
+                        heldRms.add(rms); if (prob >= 0f) { heldVad += prob; heldVadN++ }
+                        if (heldRms.size == VideoTalk.NEED_CHUNKS &&
+                            VideoTalk.isUser(heldRms, heldBase, near.level, if (heldVadN == 0) -1f else (heldVad / heldVadN).toFloat())) {
+                            guardOk = true; nearHeard++
+                            if (nearHeard <= 3 || nearHeard % 20 == 0) log("वीडियो के बीच पास से आपकी आवाज़ (स्तर ${heldRms.sorted()[heldRms.size / 2].toInt()}, वीडियो ${heldBase.toInt()}) - नाम के बिना भी सुनी (#$nearHeard)")
+                        }
+                    }
                     if (ev == TurnDetector.Event.SPEECH_END) { guardEndAt = now; caption?.endOfSpeech() }
                     if (guardOk && dkOnlyNow && ownerOn && !ownerSaysOwner(guardBuf)) {
                         // v4.1: पहले "सिर्फ़ मेरी आवाज़" - DK बोला पर आवाज़ मालिक की नहीं = अनसुनी
