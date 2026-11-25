@@ -16,7 +16,7 @@ object SocialPlanner {
         val t = plan1(id, r, media, phoneDigits, contactName, many.takeIf { it.size > 1 && canOnePost(r) }.orEmpty())
         val (i, n) = seq
         if (n <= 1) return t
-        val head = "${r.platform.label} ${where(r)} में ये $n ${kindMany(many)}"
+        val head = "${r.platform.label} ${where(r)} में ये " + (if (many.size == n) kindMany(many) else "$n फोटो/वीडियो")
         val tail = " एक-एक करके डाल दूँ? (एक \"हाँ\" = सब)"
         val first = if (r.confirmExtra.isBlank()) head + captionPart(r.caption) + tail else "${r.confirmExtra}। $head$tail"
         return t.copy(confirmText = if (i <= 1) first else "($i/$n) " + t.confirmText)
@@ -37,7 +37,7 @@ object SocialPlanner {
         else -> "अलग-अलग पोस्ट"
     }
 
-    private fun kindMany(m: List<SharedItem>): String = if (m.isEmpty()) "फोटो/वीडियो" else MediaPolicy.countLabel(m)
+    private fun kindMany(m: List<SharedItem>): String = MediaPolicy.countLabel(m)
 
     private fun mimeOf(m: List<SharedItem>): String {
         val types = m.map { it.mime.substringBefore('/') }.distinct()

@@ -128,7 +128,7 @@ object SocialAgent {
         val ready = if (smartOn && req.smart && media != null) smart(svc, req, media, fromGallery) else req
         // 25 नवंबर 2026: कई फोटो/वीडियो - Instagram/Facebook पोस्ट = एक ही पोस्ट में (carousel); स्टोरी/स्टेटस/रील = एक-एक करके, एक "हाँ" से सब
         val plan = SocialBatch.split(ready, batch)
-        val task = SocialPlanner.plan(id, ready, media, phone, who, many = plan.onePost, seq = 1 to plan.queue.size.coerceAtLeast(1))
+        val task = SocialPlanner.plan(id, ready, media, phone, who, many = plan.onePost.ifEmpty { plan.queue }, seq = 1 to plan.queue.size.coerceAtLeast(1))
         val driver = AccessibilityScreenDriver(svc)
         val r = SocialTaskRunner(driver, { open(svc, it) }, { rep -> onUpdate(svc, rep) })
         runner = r
