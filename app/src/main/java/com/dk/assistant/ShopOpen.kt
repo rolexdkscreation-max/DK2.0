@@ -2,6 +2,9 @@ package com.dk.assistant
 
 import android.content.Context
 import com.dk.assistant.agent.core.ShopAsk
+import com.dk.assistant.agent.master.ActionLog
+import com.dk.assistant.agent.master.DkMaster
+import com.dk.assistant.agent.master.ShopRules
 import org.json.JSONObject
 
 /**
@@ -9,6 +12,8 @@ import org.json.JSONObject
  * ऐप नहीं बताया + फ़ोन में कई shopping ऐप = पहले पूछो "किस ऐप पर दिखाऊँ?"; एक ही हो = सीधे उसी में.
  * ऐप बताया = उसी ऐप में वही चीज़ खोजो (सीधा search link; न चले तो ऐप खोलकर search box में लिखो).
  * ऑर्डर / भुगतान DK कभी नहीं करता.
+ * 25 नवंबर 2026 (शॉपिंग एजेंट): DK मास्टर चालू = बजट / साइज़ खोज में, नतीजे वाली स्क्रीन से सच में दिखे दाम पढ़कर AI को ([ShopRules]),
+ * हर कदम मास्टर लॉग में. मास्टर बंद = बिल्कुल पहले जैसा.
  */
 object ShopOpen {
     fun installed(c: Context): List<ShopAsk.Shop> =
@@ -20,12 +25,14 @@ object ShopOpen {
             .ifBlank { ShopAsk.item(said).orEmpty() }
         if (item.isBlank()) return "ASK_USER: The user did not say what to show. Ask in one short Hindi line: \"क्या दिखाऊँ - शर्ट, जींस, जूते या कुछ और?\""
         val have = installed(svc)
+        val master = DkMaster.on(svc)
+        val want = if (master) ShopRules.want("$said $item") else ShopRules.Want()
         val wanted = args.optString("app").trim().takeIf { it.isNotBlank() && it.lowercase() != "auto" }
         val shop = wanted?.let { w -> ShopAsk.pick(w, have) ?: ShopAsk.shopIn(w) }
         if (shop == null) {
             when (have.size) {
                 0 -> return "NO_SHOP_APP: No shopping app (Flipkart, Meesho, Amazon, Myntra, Ajio) is installed. Tell the user in one short Hindi line and offer to open it in the browser/Play Store."
-                1 -> return open(svc, have[0], item)
+                1 -> return open(svc, have[0], item, want, master)
                 else -> {
                     val hi = args.optString("item_hindi").ifBlank { item }
                     return "ASK_USER: Several shopping apps are installed: ${have.joinToString { it.label }}. Do NOT open anything yet. " +
@@ -35,11 +42,14 @@ object ShopOpen {
         }
         if (have.none { it.key == shop.key }) return "NOT_INSTALLED: ${shop.label} is not installed on the phone. " +
             (if (have.isNotEmpty()) "Installed: ${have.joinToString { it.label }} - ask the user which one to use." else "Tell the user briefly.")
-        return open(svc, shop, item)
+        return open(svc, shop, item, want, master)
     }
 
-    private suspend fun open(svc: DKAccessibilityService, shop: ShopAsk.Shop, item: String): String {
+    private suspend fun open(svc: DKAccessibilityService, shop: ShopAsk.Shop, item0: String, want: ShopRules.Want, master: Boolean): String {
         DKState.set(Mode.WORKING)
+        val item = if (master) ShopRules.query(item0, want) else item0
+        if (master) ActionLog.add(svc, "शॉपिंग", "${shop.label} में खोज: $item")
+        val prev = if (master) svc.currentPackage() else ""
         val r = try { AppLauncher.shopSearch(svc, shop.key, item) } catch (e: Exception) { "ERROR: ${e.message}" }
         DKLog.d("Shop: ${shop.label} \"$item\" -> ${r.take(120)}")
         if (r.startsWith("ERROR")) return "ERROR: ${shop.label} नहीं खुला. Tell the user in one short Hindi line."
@@ -48,7 +58,20 @@ object ShopOpen {
             return "OPENED_APP_ONLY: ${shop.label} is open but its search did not open by link. Now call phone_task with request = " +
                 "\"${shop.label} में search box पर टैप करके '$item' लिखो और search करो\". Do not place any order."
         }
-        return "SHOWING: ${shop.label} is now showing search results for \"$item\". Tell the user in one short Hindi line " +
+        val base = "SHOWING: ${shop.label} is now showing search results for \"$item\". Tell the user in one short Hindi line " +
             "(e.g. \"${shop.label} पर दिखा दिया\") and ask if he wants a colour/size/price filter or to open one. Never buy or pay."
+        if (!master) return base
+        return base + prices(svc, want, prev, prev !in shop.pkgs) + "\n" + ShopRules.AGENT_NOTE
+    }
+
+    /** मास्टर: नतीजे वाली स्क्रीन से सच में दिखे दाम (न दिखे = कुछ नहीं जोड़ते, AI अंदाज़ा न लगाए) */
+    private suspend fun prices(svc: DKAccessibilityService, want: ShopRules.Want, prev: String, newApp: Boolean): String = try {
+        svc.waitSettle(prev, newApp = newApp, maxMs = 5000L)
+        val list = ShopRules.offers(svc.readScreen().text)
+        ActionLog.add(svc, "दाम", ShopRules.priceHi(list, want))
+        ShopRules.priceNote(list, want)
+    } catch (e: Exception) {
+        Quiet.note(e)
+        ""
     }
 }
