@@ -38,7 +38,10 @@ object UiMt {
     fun init(c: Context) { app = c.applicationContext }
 
     /** ML Kit यह भाषा फ़ोन पर ही बदल सकता है? (नहीं = DK का AI) */
-    fun offline(lang: String): Boolean = try { TranslateLanguage.fromLanguageTag(lang) != null } catch (_: Throwable) { false }
+    fun offline(lang: String): Boolean = ARM64 && try { TranslateLanguage.fromLanguageTag(lang) != null } catch (_: Throwable) { false }
+
+    /** ML Kit की .so सिर्फ़ arm64 वाले APK में (build.gradle.kts - MB बचाने को); बाकी फ़ोनों पर DK का AI */
+    private val ARM64: Boolean by lazy { try { android.os.Build.SUPPORTED_64_BIT_ABIS.contains("arm64-v8a") } catch (_: Throwable) { false } }
 
     /** तैयार अनुवाद (नहीं = null) */
     fun get(lang: String, key: String): String? = table(lang)[key]
