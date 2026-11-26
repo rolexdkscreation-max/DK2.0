@@ -43,7 +43,7 @@ open class SpiritCharacterView(c: Context, val identity: SpiritIdentity) : View(
     private var visibleNow = false
     private var last = 0L
     private var fadeDone: (() -> Unit)? = null
-    /** हल्की थीम में पीछे अँधेरा मंच (SCREEN के लिए) */
+    /** हल्की थीम: काला पीछा पारदर्शी वाली तस्वीर सीधे (26 नवंबर 2026 - अब काला मंच / डिब्बा नहीं) */
     var stage = false
 
     init {
@@ -97,7 +97,11 @@ open class SpiritCharacterView(c: Context, val identity: SpiritIdentity) : View(
         val st = bridge.tick(System.currentTimeMillis())
         engine.step(dt, st, bridge.amplitude, reduced)
         if (still) engine.snap()
-        engine.draw(canvas, bmp, reduced || still, stage)
+        val lit = if (stage) {
+            val k = com.dk.assistant.ui.ClayTheme.t
+            SpiritArt.lit(context, identity.res, com.dk.assistant.ui.NeonTheme.mix(k.accent, k.text, 0.45f))
+        } else null
+        engine.draw(canvas, bmp, reduced || still, stage, lit)
         if (fadeDone != null && engine.presence <= 0f) { post { finishFade() }; return }
         if (!visibleNow || still || !isAttachedToWindow) return
         if (reduced) postInvalidateDelayed(REDUCED_FRAME_MS) else postInvalidateOnAnimation()

@@ -1169,7 +1169,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
 
     /** ORB = 260dp का गोला (पहले जैसा); अवतार = अभिवादन और READY कार्ड के बीच की पूरी जगह */
     private fun avatarArea(avatar: Boolean, k: Float = 1f): LinearLayout.LayoutParams {
-        if (avatar) return LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = d(4f) }
+        // 26 नवंबर 2026 (Full-Bleed): कैरेक्टर की जगह ऊपर की पट्टी से संदेश कार्ड के ठीक ऊपर तक - कार्ड के ऊपर का खाली
+        // हिस्सा भी माहौल में ([HomeAvatarView] / [SpiritEngine] वहाँ थीम के पीछे में घुलते हैं). कार्ड पर नहीं चढ़ता (उसका topMargin उतना ही)
+        if (avatar) return LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = 0; bottomMargin = -d(14f + cardDrop) }
         val px = minOf(d(260f * k), c.resources.displayMetrics.widthPixels)
         return LinearLayout.LayoutParams(px, px).apply { topMargin = d(4f) }
     }
@@ -1202,9 +1204,10 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         centerAvatar.badge = av?.badge
         centerAvatar.badgeY = av?.badgeY ?: HomeAvatars.BADGE_Y
         centerAvatar.subject = av?.subject ?: HomeAvatars.FULL_SUBJECT
+        centerAvatar.rig = av?.rig   // 26 नवंबर 2026: पलक (rig हो तो) - साँस / रोशनी हर कैरेक्टर पर अपने आप
         centerAvatar.tablet = com.dk.assistant.UiFitRules.isTablet(c.resources.configuration.smallestScreenWidthDp)
         // आर्टवर्क READY पट्टी से नीचे की बार के ठीक ऊपर तक (नीचे की खाली पट्टी सिर्फ़ ORB के लिए)
-        heroBox.setPadding(0, 0, 0, if (centerAvatar.art) 0 else d(maxOf(0f, GREET_LIFT_DP - cardDrop)))
+        heroBox.setPadding(0, 0, 0, if (centerAvatar.art || bmp != null || spirit != null) 0 else d(maxOf(0f, GREET_LIFT_DP - cardDrop)))
         // 23 नवंबर 2026 (मालिक: "अवतार पूरी स्क्रीन नहीं"): अवतार सिर्फ़ अभिवादन के नीचे से READY कार्ड के ऊपर तक (बीच वाली जगह),
         // अनुपात वही (Fit), किनारे ऐप के पीछे में घुलते हुए ([HomeAvatarView.fade]). कार्ड / टॉप बार / नीचे की पट्टी पर नहीं चढ़ता.
         bgAvatar.bitmap = null

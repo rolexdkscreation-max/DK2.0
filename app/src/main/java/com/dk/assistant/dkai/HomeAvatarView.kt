@@ -156,13 +156,14 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
 
     private val waveP = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val wavePath = android.graphics.Path()
-    private val stageP = Paint(Paint.ANTI_ALIAS_FLAG)
     private val badgeP = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; isFakeBoldText = true }
 
     override fun onDraw(cv: Canvas) {
         super.onDraw(cv)
         step()
-        if (art) { drawArt(cv); return }
+        // 26 नवंबर 2026: होम के बीच वाला हर कैरेक्टर (ऐप के अंदर वाला, इंटरनेट वाला, अपना) एक ही माहौल में;
+        // पूरी स्क्रीन वाला [cover] पीछा पहले जैसा
+        if (art || (fade && !cover)) { drawArt(cv); return }
         val calm = NeonTheme.reducedMotion()
         val t = if (calm) 0f else secs()
         val w = width.toFloat(); val h = height.toFloat()
@@ -210,9 +211,22 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
         if (!calm) again()
     }
 
+    /** 26 नवंबर 2026: Dynamic Full-Bleed Character Environment ([CharacterArt] / [CharacterEnvironment]) */
+    private val env = CharacterEnvironment()
+    /** 26 नवंबर 2026: Universal Character Animation - साँस / पलक / रोशनी एक ही नियम से ([CharacterMotion]) */
+    private val motion = CharacterAnimator(System.identityHashCode(this))
+    /** वैकल्पिक rig (आँखें) - [HomeAvatars.Avatar.rig]. न हो / तस्वीर पर न लगे = पलक नहीं, बाकी हलचल वही */
+    var rig: CharacterRig? = null
+    private val placed = RectF()
+    private var preparedFor: Bitmap? = null
+
     /**
-     * आर्टवर्क: (1) पीछे थीम के accent से रंगी गहरी नीली रोशनी, (2) तस्वीर बीच में (साँस जैसा ऊपर-नीचे, ऑर्ब = आवाज़ के साथ
-     * धड़कना), (3) ऊपर से बहती वेव - सब एक layer में, फिर चारों किनारे फीके. "कम एनिमेशन" = सब स्थिर.
+     * 26 नवंबर 2026 (मालिक: "कैरेक्टर ऐप के माहौल का जीवित हिस्सा लगे, चिपकाई तस्वीर / कार्ड / vignette नहीं"):
+     * पूरी जगह (ऊपर की पट्टी से संदेश कार्ड तक, पूरी चौड़ाई) एक लगातार माहौल -
+     *  (1) थीम का gradient (2) उसी तस्वीर का धुंधला, थीम-रंगा रूप (3) आवाज़ के साथ गोल रोशनी (4) असली कैरेक्टर -
+     *  अनुपात वही, सादा पीछा पारदर्शी, किनारे नरम ([CharacterArt.prepare], पीछे के thread पर एक बार) (5) बहती वेव + धीमे कण
+     *  (6) ऊपर-नीचे थीम के पीछे में घुलना. कोई saveLayer / blur नहीं. "कम एनिमेशन" = सब स्थिर.
+     * तैयारी पूरी न हो तब तक असली तस्वीर (नरम किनारे वाली परत के बिना भी) - जगह कभी खाली नहीं.
      */
     private fun drawArt(cv: Canvas) {
         val calm = NeonTheme.reducedMotion()
@@ -227,72 +241,61 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
         val st = try { call() } catch (_: Exception) { -1 }
         val mode = waveMode(st)
         val speaking = mode == 2
-        // (1) गहरा नीला मंच: थीम का accent काले की ओर (हर थीम में अपना टिंट), किनारों पर थीम का पीछा
-        val deep = FluidOrbView.mix(k.accent, 0xFF000000.toInt(), if (k.light) 0.72f else 0.80f)
-        val pulse = if (calm) 0.5f else 0.5f + 0.5f * sin(t * 1.6f)
-        val glowA = (0x70 + 0x30 * pulse + 0x60 * lv).toInt().coerceAtMost(0xE0)
-        val r = maxOf(w, h) * 0.62f
-        stageP.shader = RadialGradient(w / 2, h / 2, r,
-            intArrayOf(NeonTheme.alpha(FluidOrbView.mix(deep, glowNow, 0.18f), 0xFF), NeonTheme.alpha(deep, 0xFF), NeonTheme.alpha(FluidOrbView.mix(deep, 0xFF000000.toInt(), 0.35f), 0xFF)),
-            floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
-        val layer = cv.saveLayer(0f, 0f, w, h, null)
-        cv.drawRect(0f, 0f, w, h, stageP)
-        // छोटे साइज़ पर चमक भी छोटी - वरना तस्वीर के चारों ओर चौकोर डिब्बा दिखता है
-        val small = sizeK.coerceIn(OrbLook.MIN_SIZE / 100f, 1f)
-        glowP.shader = RadialGradient(w / 2, h / 2, minOf(w, h) * (0.48f + 0.06f * lv) * small,
-            intArrayOf(NeonTheme.alpha(glowNow, glowA), NeonTheme.alpha(glowNow, glowA / 3), NeonTheme.alpha(glowNow, 0)),
-            floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
-        cv.drawRect(0f, 0f, w, h, glowP)
-        // (2) तस्वीर
+        val pal = CharacterArt.palette(k.bg, k.accent, k.light)
         val b = bitmap
+        val prep = b?.let { CharacterArt.peek(it, subject) }
+        if (b != null && prep == null && preparedFor !== b) {
+            preparedFor = b
+            CharacterArt.prepareAsync(b, subject) { invalidate() }
+        }
+        val profile = prep?.profile ?: CharacterArt.Profile(CharacterArt.Kind.FULL_ART, CharacterArt.shapeOf(b?.width ?: 1, b?.height ?: 1), false)
+        // (1) माहौल
+        env.drawBase(cv, w, h, k.bg, pal[0])
+        // जगह: अनुपात वही, subject पूरा
         if (b != null) {
-            var s = artScale(w, h, b.width.toFloat(), b.height.toFloat(), subject)
-            if (tablet) s = tabletScale(w, h, b.width.toFloat(), b.height.toFloat(), s)
-            s *= sizeK.coerceIn(OrbLook.MIN_SIZE / 100f, OrbLook.MAX_SIZE / 100f)
-            val bw = b.width * s; val bh = b.height * s
-            // कैरेक्टर का हिस्सा बीच में
-            val cx = (subject.getOrElse(0) { 0f } + subject.getOrElse(2) { 1f }) / 2f
-            val cy = (subject.getOrElse(1) { 0f } + subject.getOrElse(3) { 1f }) / 2f
-            var left = w / 2 - bw * cx; var top = h / 2 - bh * cy
-            // तस्वीर view से बड़ी हो तो भी खाली पट्टी नहीं (जहाँ तक कैरेक्टर न कटे)
-            if (bw >= w) left = left.coerceIn(w - bw, 0f) else left = (w - bw) / 2
-            if (bh >= h) top = top.coerceIn(h - bh, 0f) else top = (h - bh) / 2
-            val dy = if (calm) 0f else breath(t, 5f * dp)
-            dst.set(left, top + dy, left + bw, top + bh + dy)
-            val sc = (if (calm) 1f else 1f + 0.012f * sin(2 * PI.toFloat() * t / BREATH_S)) * if (orb) orbPulse(speaking, lv) else 1f
-            val px = dst.left + bw * cx; val py = dst.top + bh * cy
-            // तस्वीर अपनी layer में - उसके अपने चारों किनारे फीके (मंच में घुल जाए, कोई सीधी किनार न दिखे)
-            val imgLayer = cv.saveLayer(0f, 0f, w, h, null)
+            CharacterArt.place(w, h, b.width.toFloat(), b.height.toFloat(), subject, profile, sizeK, tablet, placed)
+            // साँस: ऊपर की ओर हल्का (अनुपात पर कोई असर नहीं)
+            placed.offset(0f, if (calm) 0f else CharacterMotion.breathLift(t, 3f * dp))
+        } else placed.set(w * 0.2f, h * 0.2f, w * 0.8f, h * 0.8f)
+        // (2) धुंधला थीम-रंगा माहौल (उसी तस्वीर से) - glow का रंग थीम / आवाज़ की हालत से
+        val glowCol = if (colors.isNotEmpty()) glowNow
+            else FluidOrbView.mix(FluidOrbView.mix(pal[1], CharacterMotion.pulseColor(k.bg, k.accent, k.light), 0.45f), glowNow, 0.35f)
+        env.drawBackdrop(cv, w, h, prep?.backdrop(k.bg, glowCol, k.light), if (profile.kind == CharacterArt.Kind.FULL_ART) 1f else 0.9f, placed)
+        // (3) आवाज़ के साथ रोशनी (छोटे साइज़ पर छोटी)
+        val small = sizeK.coerceIn(OrbLook.MIN_SIZE / 100f, 1f)
+        val pulse = if (calm) 0.5f else CharacterMotion.pulse(t, speaking, lv)
+        val sx = subject.getOrElse(0) { 0f }; val sy = subject.getOrElse(1) { 0f }
+        val sr = subject.getOrElse(2) { 1f }; val sb = subject.getOrElse(3) { 1f }
+        val gx = placed.left + placed.width() * (sx + sr) / 2f
+        val gy = placed.top + placed.height() * (sy + (sb - sy) * (if (orb) 0.5f else 0.42f))
+        val gr = minOf(w, h) * (0.50f + 0.06f * lv) * small
+        env.drawGlow(cv, gx, gy, gr, glowCol, (if (k.light) 0.55f else 0.42f) + 0.18f * pulse + 0.3f * lv)
+        // (4) असली कैरेक्टर
+        if (b != null) {
+            // एक ही पैमाना (width / height साथ) - कभी खिंचाव नहीं; ऑर्ब आवाज़ के साथ धड़के
+            val sc = (if (calm) 1f else CharacterMotion.breathScale(t, if (orb) 0.5f else 1f)) * if (orb) orbPulse(speaking, lv) else 1f
+            val cx = (sx + sr) / 2f; val cy = (sy + sb) / 2f
+            val px = placed.left + placed.width() * cx; val py = placed.top + placed.height() * cy
             cv.save()
             cv.scale(sc, sc, px, py)
-            if (speaking && !calm && !orb) cv.rotate(sway(t, lv) * 0.5f, px, dst.bottom)
-            cv.drawBitmap(b, null, dst, img)
+            if (speaking && !calm && !orb) cv.rotate(sway(t, lv) * 0.5f, px, placed.bottom)
+            if (prep != null) env.drawArt(cv, prep.art, placed) else cv.drawBitmap(b, null, placed, img)
+            // पलक - rig वाली तस्वीर पर ही (उसी transform में, साँस के साथ)
+            if (!calm) motion.drawBlink(cv, b, rig, placed, CharacterMotion.blink(t, motion.seed))
             badge?.let { txt ->
-                badgeP.textSize = minOf(bw, bh) * 0.16f
+                badgeP.textSize = minOf(placed.width(), placed.height()) * 0.16f
                 badgeP.color = NeonTheme.alpha(0xFFFFFFFF.toInt(), 0xF0)
                 badgeP.setShadowLayer(badgeP.textSize * 0.45f, 0f, 0f, NeonTheme.alpha(glowNow, 0xFF))
-                cv.drawText(txt, px, dst.top + bh * badgeY + badgeP.textSize * 0.35f, badgeP)   // ऑर्ब के ठीक बीच
+                cv.drawText(txt, px, placed.top + placed.height() * badgeY + badgeP.textSize * 0.35f, badgeP)   // ऑर्ब के ठीक बीच
             }
             cv.restore()
-            val ist = fadeStops(0.2f + 0.5f * (1f - small)); val ion = ClayTheme.scrim(1f); val icols = intArrayOf(0, ion, ion, 0)
-            val il = dst.left - bw * (sc - 1f) / 2f; val ir = dst.right + bw * (sc - 1f) / 2f
-            val it0 = dst.top - bh * (sc - 1f) / 2f; val ib = dst.bottom + bh * (sc - 1f) / 2f
-            maskP.shader = LinearGradient(0f, it0, 0f, ib, icols, ist, Shader.TileMode.CLAMP)
-            cv.drawRect(0f, 0f, w, h, maskP)
-            maskP.shader = LinearGradient(il, 0f, ir, 0f, icols, ist, Shader.TileMode.CLAMP)
-            cv.drawRect(0f, 0f, w, h, maskP)
-            cv.restoreToCount(imgLayer)
         }
-        // (3) बहती वेव - हर थीम के accent से, बीच (कैरेक्टर / ऑर्ब) पर कम
+        dst.set(placed)
+        // (5) बहती वेव + धीमे कण - थीम के रंग, बीच (कैरेक्टर / ऑर्ब) पर कम
         drawWaves(cv, w, h, dp, t, mode, k.light)
-        // पूरे मंच (READY पट्टी से नीचे की बार तक) के चारों किनारे फीके - थीम के पीछे में घुल जाए
-        val stops = fadeStops(0.1f); val on = ClayTheme.scrim(1f)
-        val cols = intArrayOf(0, on, on, 0)
-        maskP.shader = LinearGradient(0f, 0f, 0f, h, cols, stops, Shader.TileMode.CLAMP)
-        cv.drawRect(0f, 0f, w, h, maskP)
-        maskP.shader = LinearGradient(0f, 0f, w, 0f, cols, floatArrayOf(0f, 0.06f, 0.94f, 1f), Shader.TileMode.CLAMP)
-        cv.drawRect(0f, 0f, w, h, maskP)
-        cv.restoreToCount(layer)
+        env.drawDots(cv, w, h, t, pal[2], if (k.light) 0.75f else 0.9f, dp, calm)
+        // (6) ऊपर पट्टी और नीचे संदेश कार्ड की ओर थीम के पीछे में घुलना (कोई आयत / किनार नहीं)
+        env.drawEdges(cv, w, h, k.bg, h * 0.10f, h * 0.12f)
         if (!calm) again()
     }
 

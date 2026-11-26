@@ -11,6 +11,7 @@ import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import com.dk.assistant.R
+import com.dk.assistant.ui.NeonTheme
 import kotlin.math.exp
 import kotlin.math.sin
 
@@ -51,6 +52,32 @@ object SpiritArt {
         return b
     }
 
+    private val litCache = HashMap<String, Bitmap>()
+
+    /**
+     * 26 नवंबर 2026: हल्की थीम के लिए वही तस्वीर, काला पीछा पारदर्शी ([CharacterArt.Kind.EMISSIVE] - चमक ही alpha) और
+     * रोशनी थीम के गहरे accent की ओर थोड़ी झुकी, ताकि सफ़ेद पीछे पर भी साफ़ दिखे. पहले काला "मंच" (डिब्बा) बनता था - अब नहीं.
+     * आकार / पिक्सल की जगह वही, एक बार बनता है (थीम का रंग बदले तभी नया).
+     */
+    @Synchronized fun lit(c: Context, res: Int, ink: Int): Bitmap? {
+        val key = "$res|$ink"
+        litCache[key]?.let { if (!it.isRecycled) return it }
+        val b = get(c, res) ?: return null
+        return try {
+            val w = b.width; val h = b.height
+            val px = IntArray(w * h); b.getPixels(px, 0, w, 0, 0, w, h)
+            val p = CharacterArt.Profile(CharacterArt.Kind.EMISSIVE, CharacterArt.shapeOf(w, h), false, 0xFF000000.toInt())
+            for (i in px.indices) {
+                val q = CharacterArt.pixel(px[i], p, 0.5f, 0.5f, null, feather = false)
+                px[i] = (q and 0xFF000000.toInt()) or (com.dk.assistant.ui.NeonTheme.mix(q, ink, 0.38f) and 0x00FFFFFF)
+            }
+            val out = Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888)
+            litCache.entries.removeAll { it.key.startsWith("$res|") }
+            litCache[key] = out
+            out
+        } catch (e: Throwable) { com.dk.assistant.Quiet.note(e); null }
+    }
+
     /** Settings की टाइल के लिए छोटा प्रीव्यू (उसी असली तस्वीर से, फ़िल्टर चालू) */
     fun thumb(c: Context, id: SpiritIdentity, h: Int): Bitmap? {
         val b = get(c, id.res) ?: return null
@@ -81,11 +108,17 @@ class SpiritEngine(val id: SpiritIdentity) {
     private val glow = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN) }
     private val auraP = Paint(Paint.ANTI_ALIAS_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN) }
     private val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN) }
-    private val stageP = Paint(Paint.ANTI_ALIAS_FLAG)
+    // हल्की थीम: SCREEN नहीं (सफ़ेद पर SCREEN = कुछ नहीं दिखता) - पारदर्शी तस्वीर सीधी, रोशनी / कण भी सीधे
+    private val meshN = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val auraN = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val dotN = Paint(Paint.ANTI_ALIAS_FLAG)
+    /** 26 नवंबर 2026: पूरी जगह का थीम वाला माहौल (कैरेक्टर के आसपास खाली अँधेरी / सफ़ेद जगह नहीं) */
+    private val env = CharacterEnvironment()
+    private var vw = 0f; private var vh = 0f
 
     val dst = RectF()
     private var gradFor = 0f
-    private var stageFor = 0f
+    private var auraCol = 0
 
     // कण (ऊपर बहते) और तारे (एक जगह टिमटिमाते) - तस्वीर के हिस्से के हिसाब से 0..1
     private val rnd = java.util.Random(if (id.key == SpiritIdentity.FEMALE) 7L else 11L)
@@ -165,47 +198,59 @@ class SpiritEngine(val id: SpiritIdentity) {
     fun snap() { presence = presenceTarget }
 
     fun layout(vw: Int, vh: Int, bw: Int, bh: Int) {
+        this.vw = vw.toFloat(); this.vh = vh.toFloat()
         if (vw <= 0 || vh <= 0 || bw <= 0 || bh <= 0) { dst.setEmpty(); return }
         val s = minOf(vw.toFloat() / bw, vh.toFloat() / bh)          // fit: पूरा सिर-बाल-शरीर, अनुपात वही, कभी न कटे
         val w = bw * s; val h = bh * s
-        val l = (vw - w) / 2f; val tp = (vh - h) / 2f
+        // 26 नवंबर 2026: bust (नीचे से कटा शरीर) नीचे टिका - संदेश कार्ड की ओर घुलता, ऊपर सिर के लिए माहौल
+        val l = (vw - w) / 2f; val tp = vh - h
         dst.set(l, tp, l + w, tp + h)
     }
 
-    fun draw(cv: Canvas, bmp: Bitmap?, reduced: Boolean, stage: Boolean) {
+    /**
+     * [stage] = हल्की थीम: [lit] (काला पीछा पारदर्शी वाली तस्वीर) सीधे, बिना SCREEN और बिना काले मंच.
+     * डार्क थीम: पहले जैसा SCREEN (काला पीछा ऐप के अँधेरे में घुलता). रोशनी / कण के रंग अभी की थीम के accent से.
+     */
+    fun draw(cv: Canvas, bmp: Bitmap?, reduced: Boolean, stage: Boolean, lit: Bitmap? = null) {
         if (bmp == null || dst.isEmpty || presence <= 0.001f) return
         val w = dst.width(); val h = dst.height()
-        if (stage) drawStage(cv, w)
-        // पीछे की aura (तस्वीर के ऊपरी सीने / चेहरे के पीछे)
+        val k = com.dk.assistant.ui.ClayTheme.t
+        val light = stage && lit != null
+        val pal = CharacterArt.palette(k.bg, k.accent, k.light)
+        // पूरी जगह का माहौल (थीम का हल्का रंग, ऊपर-नीचे थीम के पीछे में घुलता)
+        val ew = if (vw > 0f) vw else dst.right; val eh = if (vh > 0f) vh else dst.bottom
+        env.drawBase(cv, ew, eh, k.bg, NeonTheme.alpha(pal[0], (presence * 255).toInt()))
+        // पीछे की aura (तस्वीर के ऊपरी सीने / चेहरे के पीछे) - रंग थीम के accent से, cyan की ओर
         val ax = dst.left + id.faceX * w; val ay = dst.top + (id.faceY + 0.12f) * h; val ar = w * 0.62f
-        val gk = ax * 31f + ay * 7f + w
-        if (gradFor != gk) {
-            gradFor = gk
-            auraP.shader = RadialGradient(ax, ay, ar,
-                intArrayOf(0xFF8CE8F5.toInt(), 0x5538BDF8, 0x00000000), floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
+        // 26 नवंबर 2026: थीम की रोशनी की धड़कन - वही [CharacterMotion] जो होम के हर कैरेक्टर पर
+        val lp = if (reduced) 0.5f else CharacterMotion.pulse(t.toFloat(), voice > 0.05f, voice)
+        val pc = CharacterMotion.pulseColor(k.bg, k.accent, k.light)
+        val inner = if (light) NeonTheme.mix(pal[1], pc, 0.35f) else NeonTheme.mix(0xFF8CE8F5.toInt(), pc, 0.30f)
+        val gk = ax * 31f + ay * 7f + w + inner * 0.001f
+        if (gradFor != gk || auraCol != inner) {
+            gradFor = gk; auraCol = inner
+            val g = RadialGradient(ax, ay, ar,
+                intArrayOf(inner, NeonTheme.alpha(NeonTheme.mix(0xFF38BDF8.toInt(), k.accent, 0.4f), 0x55), 0x00000000), floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
+            auraP.shader = g; auraN.shader = g
         }
         val breath = sin(t * 1.21).toFloat()          // ~5.2 सेकंड की साँस
-        auraP.alpha = (presence * (0.10f + 0.34f * aura) * 255).toInt().coerceIn(0, 255)
-        cv.drawCircle(ax, ay, ar, auraP)          // गोल - किनारे पर कोई सीधी रेखा नहीं
+        val aP = if (light) auraN else auraP
+        aP.alpha = (presence * (if (light) 0.30f + 0.40f * aura else 0.10f + 0.34f * aura) * (0.8f + 0.4f * lp) * 255).toInt().coerceIn(0, 255)
+        cv.drawCircle(ax, ay, ar, aP)          // गोल - किनारे पर कोई सीधी रेखा नहीं
         buildMesh(w, h, breath, reduced)
-        mesh.alpha = 255
-        cv.drawBitmapMesh(bmp, COLS, ROWS, verts, 0, colors, 0, mesh)
+        val src = if (light) lit!! else bmp
+        val mP = if (light) meshN else mesh
+        mP.alpha = 255
+        cv.drawBitmapMesh(src, COLS, ROWS, verts, 0, colors, 0, mP)
         // चमक बढ़ाने वाला दूसरा हल्का pass - उसी तस्वीर से (blur / नया रंग नहीं)
         val extra = ((aura - 0.32f) * 0.9f + voice * 0.22f).coerceIn(0f, 0.42f)
-        if (extra > 0.01f) { glow.alpha = (extra * 255).toInt(); cv.drawBitmapMesh(bmp, COLS, ROWS, verts, 0, colors, 0, glow) }
-        drawDots(w, h, cv, reduced)
-    }
-
-    /** हल्की थीम में SCREEN का काला सफ़ेद पर नहीं घुलता - पीछे एक नरम अँधेरा मंच */
-    private fun drawStage(cv: Canvas, w: Float) {
-        val sk = dst.centerX() * 31f + dst.centerY() * 7f + w
-        if (stageFor != sk) {
-            stageFor = sk
-            stageP.shader = RadialGradient(dst.centerX(), dst.centerY(), maxOf(dst.width(), dst.height()) * 0.62f,
-                intArrayOf(0xFF05070D.toInt(), 0xF005070D.toInt(), 0x0005070D), floatArrayOf(0f, 0.7f, 1f), Shader.TileMode.CLAMP)
+        if (extra > 0.01f) {
+            val gP = if (light) meshN else glow
+            gP.alpha = ((if (light) extra * 0.5f else extra) * 255).toInt()
+            cv.drawBitmapMesh(src, COLS, ROWS, verts, 0, colors, 0, gP)
+            meshN.alpha = 255
         }
-        stageP.alpha = (presence * 255).toInt().coerceIn(0, 255)
-        cv.drawRect(dst.left - w * 0.1f, dst.top - w * 0.1f, dst.right + w * 0.1f, dst.bottom + w * 0.1f, stageP)
+        drawDots(w, h, cv, reduced, if (light) dotN else dot, if (light) pal[2] else NeonTheme.mix(0xFFE0FAFF.toInt(), pal[2], 0.35f))
     }
 
     private fun buildMesh(w: Float, h: Float, breath: Float, reduced: Boolean) {
@@ -244,12 +289,13 @@ class SpiritEngine(val id: SpiritIdentity) {
             lastColorsFor = presence
             for (i in 0 until vCount) {
                 val g = (feather[i] * presence * 255f).toInt().coerceIn(0, 255)
-                colors[i] = (0xFF shl 24) or (g shl 16) or (g shl 8) or g
+                // alpha से घुलना: SCREEN (डार्क) और सीधी परत (हल्की थीम) दोनों में किनारा गायब
+                colors[i] = (g shl 24) or 0xFFFFFF
             }
         }
     }
 
-    private fun drawDots(w: Float, h: Float, cv: Canvas, reduced: Boolean) {
+    private fun drawDots(w: Float, h: Float, cv: Canvas, reduced: Boolean, dot: Paint, tint: Int) {
         val d = w / 360f
         val n = if (reduced) REDUCED_PARTICLES else MAX_PARTICLES
         val br = presence * (0.75f + 0.35f * energy + 0.2f * voice)
@@ -257,13 +303,13 @@ class SpiritEngine(val id: SpiritIdentity) {
             val y = pY[i]
             val edge = smooth(-0.03f, 0.12f, y) * smooth(-0.02f, 0.18f, 1.02f - y)
             val x = pX[i] + 0.012f * sin(t * 0.31 + pPh[i]).toFloat()
-            dot.color = 0xE0FAFF or ((br * edge * 120f).toInt().coerceIn(0, 255) shl 24)
+            dot.color = (tint and 0xFFFFFF) or ((br * edge * 120f).toInt().coerceIn(0, 255) shl 24)
             cv.drawCircle(dst.left + x * w, dst.top + y * h, pR[i] * d * 1.4f, dot)
         }
         val ns = if (reduced) REDUCED_STARS else MAX_STARS
         for (i in 0 until ns) {
             val k = 0.5f + 0.5f * sin(t * sW[i] + sPh[i]).toFloat()
-            dot.color = 0xFFFFFF or ((presence * k * k * 170f).toInt().coerceIn(0, 255) shl 24)
+            dot.color = (NeonTheme.mix(tint, 0xFFFFFFFF.toInt(), 0.5f) and 0xFFFFFF) or ((presence * k * k * 170f).toInt().coerceIn(0, 255) shl 24)
             cv.drawCircle(dst.left + sX[i] * w, dst.top + sY[i] * h, sR[i] * d, dot)
         }
     }
