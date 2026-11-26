@@ -234,18 +234,23 @@ object SettingsThemeMode {
  */
 internal fun SettingsActivity.homeCharacterGrid(box: LinearLayout) {
     val H = com.dk.assistant.dkai.HomeAvatars
-    val items = listOf<com.dk.assistant.dkai.HomeAvatars.Avatar?>(null) + H.list(this).map { H.withHq(this, it) }
+    val O = com.dk.assistant.dkai.DkaiOrbs
+    // 26 नवंबर 2026 (मालिक): ORB के ठीक बाद होलोग्राफ़िक महिला / पुरुष (3D) - चुनते ही होम पर ORB की जगह यही
+    val items = listOf<Any?>(null, O.HOLO_FEMALE, O.HOLO_MALE) + H.list(this).map { H.withHq(this, it) }
+    fun current(): String { val ch = H.choice(this); val o = O.get(this); return if (ch == H.ORB && (o == O.HOLO_FEMALE || o == O.HOLO_MALE)) o else ch }
     val cols = if (com.dk.assistant.UiFitRules.isTablet(resources.configuration.smallestScreenWidthDp)) 4 else 3
     val tiles = ArrayList<Pair<String, LinearLayout>>()
     fun paint(cur: String) { for ((k, v) in tiles) v.isSelected = k == cur }
     var row: LinearLayout? = null
-    items.forEachIndexed { i, a ->
+    items.forEachIndexed { i, item ->
+        val a = item as? com.dk.assistant.dkai.HomeAvatars.Avatar
+        val holo = item as? String
         if (i % cols == 0) {
             row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             box.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = (8 * dp).toInt() })
         }
-        val key = if (a == null) H.ORB else H.prefFor(a.id)
-        val name = a?.name ?: "ORB"
+        val key = holo ?: if (a == null) H.ORB else H.prefFor(a.id)
+        val name = a?.name ?: if (holo != null) O.label(holo).substringBefore(" (") + " (3D)" else "ORB"
         val tile = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
             background = com.dk.assistant.ui.Clay.card(this@homeCharacterGrid, selectable = true)
@@ -256,7 +261,8 @@ internal fun SettingsActivity.homeCharacterGrid(box: LinearLayout) {
         val pic = android.widget.ImageView(this).apply {
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            val bmp = a?.let { H.thumb(this@homeCharacterGrid, it) }?.let { raw -> a.badge?.let { badgeThumb(raw, it, a.subject, a.badgeY) } ?: raw }
+            val bmp = if (holo != null) com.dk.assistant.dkai.CharacterOrbView.thumb((64 * dp).toInt(), holo == O.HOLO_FEMALE)
+                else a?.let { H.thumb(this@homeCharacterGrid, it) }?.let { raw -> a.badge?.let { badgeThumb(raw, it, a.subject, a.badgeY) } ?: raw }
             if (bmp != null) setImageDrawable(android.graphics.drawable.BitmapDrawable(resources, bmp).apply { isFilterBitmap = true })
             else setImageResource(R.drawable.ic_dk)
             if (bmp == null) { val ip = (14 * dp).toInt(); setPadding(ip, ip, ip, ip) }
@@ -271,7 +277,9 @@ internal fun SettingsActivity.homeCharacterGrid(box: LinearLayout) {
             setTextColor(com.dk.assistant.ui.ClayTheme.t.text); setPadding(0, (4 * dp).toInt(), 0, 0)
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         tile.setOnClickListener {
-            if (a == null) H.chooseOrb(this) else H.chooseAvatar(this, a.id)
+            if (holo != null) { H.chooseOrb(this); O.set(this, holo) }
+            else if (a == null) { H.chooseOrb(this); if (O.holo(O.get(this), null) != null) O.set(this, O.FLUID) }
+            else H.chooseAvatar(this, a.id)
             paint(key)
             if (a != null && a.res == null && !H.downloaded(this, a)) {
                 toast("अवतार डाउनलोड हो रहा है…")
@@ -290,7 +298,7 @@ internal fun SettingsActivity.homeCharacterGrid(box: LinearLayout) {
     // आख़िरी पंक्ति अधूरी हो तो खाली जगह (टाइलें बराबर चौड़ी रहें)
     val left = (cols - items.size % cols) % cols
     repeat(left) { row?.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f).apply { val m = (4 * dp).toInt(); leftMargin = m; rightMargin = m }) }
-    paint(H.choice(this))
+    paint(current())
 }
 
 /** प्रीव्यू पर भी ऑर्ब के बीच वही "DK" (होम जैसा) - छोटी तस्वीर को फ़िल्टर के साथ 4x करके उस पर लिखा */
