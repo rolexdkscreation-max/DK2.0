@@ -24,7 +24,9 @@ object HomeAvatars {
     data class Avatar(val id: String, val name: String, val gender: String, val file: String,
                       val res: String? = null, val orb: Boolean = false, val badge: String? = null,
                       val subject: List<Float> = FULL_SUBJECT,
-                      val badgeY: Float = BADGE_Y, val hqSubject: List<Float>? = null, val hqBadgeY: Float? = null)
+                      val badgeY: Float = BADGE_Y, val hqSubject: List<Float>? = null, val hqBadgeY: Float? = null,
+                      /** 26 नवंबर 2026: वैकल्पिक rig (आँखें) - [CharacterRig.fits] वाली तस्वीर पर ही पलक; न हो = साँस + रोशनी ही */
+                      val rig: CharacterRig? = null)
 
     const val PREF = "home_center"
     const val ORB = "orb"
@@ -54,14 +56,19 @@ object HomeAvatars {
      * पहले 8 कैरेक्टर, फिर 3 ऑर्ब. डाउनलोड की ज़रूरत नहीं, इंटरनेट के बिना भी.
      */
     val BUNDLED = listOf(
-        Avatar("dk_art_hearts", "दिल वाली", "girl", "dk_art_hearts.png", "dk_art_hearts", subject = listOf(0.22f, 0f, 0.82f, 1f), hqSubject = HQ_CHAR),
+        Avatar("dk_art_hearts", "दिल वाली", "girl", "dk_art_hearts.png", "dk_art_hearts", subject = listOf(0.22f, 0f, 0.82f, 1f), hqSubject = HQ_CHAR,
+            rig = CharacterRig.square(0.373f, 0.353f, 0.066f, 0.044f, 0.514f, 0.371f, 0.066f, 0.044f)),
         Avatar("dk_art_headphone_orb", "हेडफ़ोन", "girl", "dk_art_headphone_orb.png", "dk_art_headphone_orb", subject = listOf(0.14f, 0f, 0.86f, 1f), hqSubject = HQ_CHAR),
-        Avatar("dk_art_glasses_bun", "चश्मा", "girl", "dk_art_glasses_bun.png", "dk_art_glasses_bun", subject = listOf(0.2f, 0.05f, 0.85f, 1f), hqSubject = HQ_CHAR),
-        Avatar("dk_art_cat_ears", "बिल्ली-कान", "girl", "dk_art_cat_ears.png", "dk_art_cat_ears", subject = listOf(0.15f, 0f, 0.85f, 1f), hqSubject = HQ_CHAR),
-        Avatar("dk_art_glasses_dark", "चश्मा (काली)", "girl", "dk_art_glasses_dark.png", "dk_art_glasses_dark", subject = listOf(0.12f, 0f, 0.92f, 1f), hqSubject = HQ_CHAR),
+        Avatar("dk_art_glasses_bun", "चश्मा", "girl", "dk_art_glasses_bun.png", "dk_art_glasses_bun", subject = listOf(0.2f, 0.05f, 0.85f, 1f), hqSubject = HQ_CHAR,
+            rig = CharacterRig.square(0.409f, 0.481f, 0.085f, 0.053f, 0.563f, 0.503f, 0.085f, 0.053f)),
+        Avatar("dk_art_cat_ears", "बिल्ली-कान", "girl", "dk_art_cat_ears.png", "dk_art_cat_ears", subject = listOf(0.15f, 0f, 0.85f, 1f), hqSubject = HQ_CHAR,
+            rig = CharacterRig.square(0.533f, 0.355f, 0.075f, 0.040f)),
+        Avatar("dk_art_glasses_dark", "चश्मा (काली)", "girl", "dk_art_glasses_dark.png", "dk_art_glasses_dark", subject = listOf(0.12f, 0f, 0.92f, 1f), hqSubject = HQ_CHAR,
+            rig = CharacterRig.square(0.323f, 0.382f, 0.066f, 0.040f, 0.442f, 0.422f, 0.066f, 0.040f)),
         Avatar("dk_art_butterfly_headphones", "तितली + हेडफ़ोन", "girl", "dk_art_butterfly_headphones.png", "dk_art_butterfly_headphones", subject = listOf(0.2f, 0f, 0.86f, 1f), hqSubject = HQ_CHAR),
         Avatar("dk_art_sleepy", "नींद वाली", "girl", "dk_art_sleepy.png", "dk_art_sleepy", subject = listOf(0.2f, 0f, 0.92f, 1f), hqSubject = HQ_CHAR),
-        Avatar("dk_art_butterfly_girl", "तितली वाली", "girl", "dk_art_butterfly_girl.png", "dk_art_butterfly_girl", subject = listOf(0.15f, 0f, 0.85f, 1f), hqSubject = HQ_CHAR),
+        Avatar("dk_art_butterfly_girl", "तितली वाली", "girl", "dk_art_butterfly_girl.png", "dk_art_butterfly_girl", subject = listOf(0.15f, 0f, 0.85f, 1f), hqSubject = HQ_CHAR,
+            rig = CharacterRig.square(0.427f, 0.317f, 0.067f, 0.040f, 0.564f, 0.301f, 0.067f, 0.040f)),
         Avatar("orb_art_butterfly", "तितली ऑर्ब (DK)", "orb", "orb_art_butterfly.png", "orb_art_butterfly", orb = true, badge = "DK",
             subject = listOf(0.02f, 0f, 0.7f, 1f), hqSubject = listOf(0.15f, 0.1f, 0.85f, 0.9f), hqBadgeY = 0.56f),
         Avatar("orb_art_wave_rings", "वेव ऑर्ब (छल्ले)", "orb", "orb_art_wave_rings.png", "orb_art_wave_rings", orb = true,
@@ -95,7 +102,8 @@ object HomeAvatars {
                 val o = arr.optJSONObject(i) ?: continue
                 val id = o.optString("id"); val f = o.optString("file")
                 if (!safeId(id) || !safeFile(f) || out.containsKey(id)) continue
-                out[id] = Avatar(id, o.optString("name").ifBlank { id }, o.optString("gender").ifBlank { "girl" }, f)
+                out[id] = Avatar(id, o.optString("name").ifBlank { id }, o.optString("gender").ifBlank { "girl" }, f,
+                    rig = CharacterRig.parse(o.optJSONObject("rig")))
             }
             out.values.toList()
         } catch (_: Exception) { emptyList() }
