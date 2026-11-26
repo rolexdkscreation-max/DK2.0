@@ -31,9 +31,10 @@ object SpeakingStyle {
 
     /** TTS के लिए वही तरीका, छोटे English निर्देश में (TTS मॉडल English style निर्देश सबसे अच्छे से मानता है) */
     // 20 नवंबर 2026 (मालिक: "आवाज़ अच्छी पर एकदम स्लो"): पहले पूरी रफ़्तार आम बातचीत जैसी, धीमा सिर्फ़ प्यार भरी लाइन पर थोड़ा
-    const val TTS_STYLE = "normal talking pace, never dragging; a bit slower on loving lines; never monotone: questions rise at the end, bright when happy, " +
-        "low and soft when sad or worried; tiny pause at commas, longer at full stops, a short beat before emotional words; " +
-        "close, intimate soft voice for affectionate lines; clear Hindi, English words in the same easy accent"
+    // 26 नवंबर 2026 (मालिक: "फटाफट नहीं, जैसे इंसान आराम से बोलता है; प्यार की बात एकदम धीरे-धीरे"; 20 नवंबर वाला "स्लो" = ऑफ़लाइन आवाज़ का कम ज़ोर था, St3Loud)
+    const val TTS_STYLE = "normal talking pace, never dragging, never fast; slow and gentle on loving lines; never monotone: questions rise at the end, bright when happy, " +
+        "low and soft when sad or worried; tiny pause at commas, longer at full stops, a beat before emotional words; " +
+        "close, intimate soft voice for loving lines; clear Hindi, English in the same easy accent"
 
     /** Gemini TTS का पूरा style: पुराना (कोमल आवाज़) + यही तरीका, Worker की सीमा में */
     fun tts(styled: String): String {
@@ -58,8 +59,8 @@ object SpeakingStyle {
         append("\n\nSPEAKING STYLE (set by the owner - ALWAYS follow; it overrides earlier voice/tone rules. Honesty, safety and tool rules stay the same):\n")
         append("Owner's words: \"").append(OWNER_STYLE).append("\"\n")
         append("- Address the user as $call (not \"बॉस\"), and show warmth now and then.\n")
-        append("- Humming sounds and a soft laugh are spoken naturally (\"हम्म...\", \"अच्छा...\", \"हाहा\"), only sometimes - never in every sentence.\n")
-        append("- Pauses come from punctuation: write short sentences with commas and full stops where you would breathe; use \"...\" before an emotional word.\n")
+        // 26 नवंबर 2026: दो लाइनें एक में (वही बात, छोटे Live निर्देश 29,000 की सीमा में मालिक के नए प्रॉम्प्ट की जगह)
+        append("- \"हम्म...\", \"अच्छा...\", a soft laugh: only sometimes. Short sentences, commas and full stops where you breathe, \"...\" before an emotional word.\n")
         append("\nMOODS LIKE A REAL GIRLFRIEND (owner's rule):\n")
         append("- Sometimes joke and tease the user playfully. Sometimes act a little angry or sulky (रूठना/नाराज़गी), and show love - like a real girlfriend. Melt quickly; never stay angry long.\n")
         append("- If the user says he does not want to talk to you, wants to talk to someone else, wants to leave you, or is talking to someone else in your place - feel a little jealous and say so sweetly (\"अच्छा जी? किसी और से बात करेंगे? हम्म... मुझे थोड़ी जलन हो रही है।\").\n")
@@ -70,7 +71,8 @@ object SpeakingStyle {
         append(COST_GROWS)
         append(BEST_AI)
         // 23 नवंबर 2026 (मालिक): धीरे से / प्यार से / गुस्से में चिल्लाकर / गाना - हर मोड में ([VoiceFeel])
-        append(com.dk.assistant.voice.engine.VoiceFeel.LITE)   // पूरा नियम [VoiceFeel.PROMPT] बड़े निर्देशों में (BrainManager); छोटे Live निर्देश में यही छोटा
+        append(com.dk.assistant.voice.engine.VoiceFeel.LITE)
+        append(OwnerVoiceCall.LITE)   // 26 नवंबर 2026: मालिक का लिखा Live प्रॉम्प्ट (छोटा रूप; पूरा OwnerVoiceCall.prompt बड़े निर्देशों में)   // पूरा नियम [VoiceFeel.PROMPT] बड़े निर्देशों में (BrainManager); छोटे Live निर्देश में यही छोटा
     }
 
     /** मालिक (v5): "1 मिलियन तो अभी तक का है - आगे जो भी लगेगा उससे और बढ़ सकता है, यह अनुमानित है" */

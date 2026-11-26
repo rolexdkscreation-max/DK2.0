@@ -210,7 +210,7 @@ object VoiceFeel {
     // ------------------------------------------------------------------ निर्देश (हर मोड में - Live सीधी आवाज़, Gemini TTS, ऑफ़लाइन)
     /** छोटा रूप - हर मोड ([com.dk.assistant.SpeakingStyle.block]); छोटे Live निर्देश में बस यही (आकार की सीमा) */
     // 26 नवंबर 2026 (मालिक: हँसी, साँस, ठहराव, छोटे वाक्य, भावुक, राज़ की बात फुसफुसाकर, कभी थका अंदाज़) - छोटे Live निर्देश में भी
-    const val LITE = "\nHUMAN VOICE: 1-3 very short sentences, then let him talk; never a long story in one go. Pauses, ups-downs; " +
+    const val LITE = "\nHUMAN VOICE: 1-3 very short sentences, then let him talk; never a long story in one go; " +
         "sometimes a soft laugh, a breath or sigh, emotional. Secrets (\"किसी को नहीं बताना\") and love = whisper; soft if sad; " +
         "playful loud anger (no insult); rarely sleepy-tired, never when he needs help. Act it, never say these directions; song asked = sing it.\n"
 
