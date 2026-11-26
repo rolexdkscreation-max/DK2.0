@@ -467,6 +467,8 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
             // v3.68: बँटवारा - Live सिर्फ़ जवाब लिखे (TEXT), बोलना अलग आवाज़ इंजन (voice/engine). मॉडल TEXT न ले तो
             // AUDIO + transcript (Live की आवाज़ बजती नहीं, उसका लिखा text इंजन बोलता है)
             .put("responseModalities", JSONArray().put(if (txt) "TEXT" else "AUDIO"))
+            // 26 नवंबर 2026 (मालिक): बातचीत का temperature (डिफ़ॉल्ट 0.75, Settings → आवाज़ में गति/पिच के नीचे). पहले नहीं भेजा = 1.0
+            .put("temperature", com.dk.assistant.voice.engine.VoiceTune.let { it.load(svc); it.temperature() })
             .apply {
                 // v3.9: 2.5 native-audio pehle "sochta" hai (der). Baatcheet me band - mushkil sawaal deep_think tool se.
                 // (3.1 ka default "minimal" hai; 3.8-live me thinking setting dena mana hai)

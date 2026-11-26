@@ -21,6 +21,9 @@ class AllFailedException(val errors: List<Pair<Provider, Exception>>) : java.io.
  * fail ho (limit khatam / internet / galat key) to baaki keys wali companies try karta hai.
  */
 class BrainManager(private val ctx: Context) {
+    // 26 नवंबर 2026: Settings वाला बातचीत का temperature ([VoiceTune]) चैट के पहले जवाब से ही (Live/आवाज़ खुले बिना भी)
+    init { try { com.dk.assistant.voice.engine.VoiceTune.load(ctx) } catch (e: Exception) { Quiet.note(e) } }
+
 
     /** Pichhli baatcheet - phone me save rehti hai (app band hone par bhi DK ko yaad) */
     private val history: MutableList<Turn> = try { Memory.loadHistory(ctx) } catch (_: Exception) { mutableListOf() }
@@ -844,7 +847,7 @@ class BrainManager(private val ctx: Context) {
             // v3.45: सच्चा दोस्त - लहजा + पिछली बातचीत की याद (आखिरी मुलाकात, सारांश, अधूरी बातें)
             if (Prefs.friendMode(ctx)) append("\n" + FriendStyle.persona(dkFemale(), user)).append(FriendTalk.block(ctx))
             append(CareTime.block()).append(LiveSearch.memoryBlock())   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
-            if (JarvisMode.on(ctx)) append(JarvisMode.block(Prefs.userName(ctx))) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(Prefs.userName(ctx)))).append(SpeakingStyle.block(Prefs.userName(ctx))).append(com.dk.assistant.voice.engine.VoiceFeel.PROMPT).append(DkPersona.finalBlock(ctx, Prefs.userName(ctx))).append(PersonaRules.block(DkPersona.effective(ctx)))   // v3.76: मालिक का तय स्वभाव - हमेशा
+            if (JarvisMode.on(ctx)) append(JarvisMode.block(Prefs.userName(ctx))) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(Prefs.userName(ctx)))).append(SpeakingStyle.block(Prefs.userName(ctx))).append(com.dk.assistant.voice.engine.VoiceFeel.PROMPT).append(DkPersona.finalBlock(ctx, Prefs.userName(ctx))).append(DkAiStyle.block(ctx)).append(PersonaRules.block(DkPersona.effective(ctx)))   // v3.76: मालिक का तय स्वभाव - हमेशा
             append(AssistantPersona.block(ctx))   // 15 नवंबर 2026: FRIDAY / VENOM (चालू न हो = कुछ नहीं)
             append(WorkChatMode.block(live = false)).append(TeacherBoard.block()).append(LocalMemory.promptBlock(ctx)).append(NetProbe.refresh(ctx).let { NetSpeed.promptNote() })   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + टीचर बोर्ड (स्वभाव वही)
             append(NameRule.placement(Prefs.userName(ctx)))   // 22 नवंबर 2026 (मालिक): नाम सिर्फ़ वाक्य की शुरुआत में - आख़िर में ताकि यही चले
@@ -874,7 +877,7 @@ class BrainManager(private val ctx: Context) {
             append(TalkStyle.CHAT)   // v3.51: इंसान जैसी बात, झूठा "कर दिया" नहीं, notification/रुकने के नियम
             append(Memory.factsBlock(ctx))
             append(CareTime.block()).append(LiveSearch.memoryBlock())   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
-            if (JarvisMode.on(ctx)) append(JarvisMode.block(Prefs.userName(ctx))) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(Prefs.userName(ctx)))).append(SpeakingStyle.block(Prefs.userName(ctx))).append(com.dk.assistant.voice.engine.VoiceFeel.PROMPT).append(DkPersona.finalBlock(ctx, Prefs.userName(ctx))).append(PersonaRules.block(DkPersona.effective(ctx)))   // v3.76: मालिक का तय स्वभाव - classic आवाज़ में भी
+            if (JarvisMode.on(ctx)) append(JarvisMode.block(Prefs.userName(ctx))) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(Prefs.userName(ctx)))).append(SpeakingStyle.block(Prefs.userName(ctx))).append(com.dk.assistant.voice.engine.VoiceFeel.PROMPT).append(DkPersona.finalBlock(ctx, Prefs.userName(ctx))).append(DkAiStyle.block(ctx)).append(PersonaRules.block(DkPersona.effective(ctx)))   // v3.76: मालिक का तय स्वभाव - classic आवाज़ में भी
             append(AssistantPersona.block(ctx))   // 15 नवंबर 2026: FRIDAY / VENOM (चालू न हो = कुछ नहीं)
             append(WorkChatMode.block(live = false)).append(TeacherBoard.block()).append(LocalMemory.promptBlock(ctx)).append(NetProbe.refresh(ctx).let { NetSpeed.promptNote() })   // v3.88: लोकल याददाश्त का छोटा सार | v3.87: काम/बातचीत मोड + टीचर बोर्ड (स्वभाव वही)
             append(NameRule.placement(Prefs.userName(ctx)))   // 22 नवंबर 2026 (मालिक): नाम सिर्फ़ वाक्य की शुरुआत में - आख़िर में ताकि यही चले
@@ -1060,7 +1063,7 @@ class BrainManager(private val ctx: Context) {
             // v3.46: "सच्चा दोस्त" स्वभाव + बातचीत की याद अब आवाज़ (Live) में भी (पहले सिर्फ़ chat में जुड़ा था)
             if (Prefs.friendMode(ctx)) append("\n").append(FriendStyle.persona(f, user)).append(if (withMemory) FriendTalk.block(ctx) else "")
             append(CareTime.block()).append(if (withMemory) LiveSearch.memoryBlock() else "")   // v3.80: समय देखकर फ़िक्र + पिछली खोज के स्रोत
-            if (JarvisMode.on(ctx)) append(JarvisMode.block(Prefs.userName(ctx))) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(Prefs.userName(ctx)))).append(SpeakingStyle.block(Prefs.userName(ctx))).append(com.dk.assistant.voice.engine.VoiceFeel.PROMPT).append(DkPersona.finalBlock(ctx, Prefs.userName(ctx))).append(PersonaRules.block(DkPersona.effective(ctx)))   // v3.76: मालिक का तय स्वभाव - Live (सीधी आवाज़ / Gemini TTS / Edge) सब में
+            if (JarvisMode.on(ctx)) append(JarvisMode.block(Prefs.userName(ctx))) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(Prefs.userName(ctx)))).append(SpeakingStyle.block(Prefs.userName(ctx))).append(com.dk.assistant.voice.engine.VoiceFeel.PROMPT).append(DkPersona.finalBlock(ctx, Prefs.userName(ctx))).append(DkAiStyle.block(ctx)).append(PersonaRules.block(DkPersona.effective(ctx)))   // v3.76: मालिक का तय स्वभाव - Live (सीधी आवाज़ / Gemini TTS / Edge) सब में
             append(AssistantPersona.block(ctx))   // 15 नवंबर 2026: FRIDAY / VENOM (चालू न हो = कुछ नहीं)
             append(WorkChatMode.block(live = true)).append(TeacherBoard.block()).append(if (withMemory) LocalMemory.liveBlock(ctx) + (if (!Prefs.localMemoryOn(ctx)) MsgDraft.recentBlock(MsgDraft.turnsFromState(), System.currentTimeMillis()) else "") else "")
             if (Prefs.dkOnly(ctx)) append(DkOnly.PROMPT)   // v4.1: सिर्फ़ "DK ..." वाली बात का जवाब
@@ -1092,7 +1095,7 @@ class BrainManager(private val ctx: Context) {
             // 25 नवंबर 2026: दोस्ताना (डिफ़ॉल्ट) में दोस्त वाली बातें DkPersona.DOST_RULES में = यह दोबारा नहीं (छोटे निर्देश 29,000 से कम)
             if (Prefs.friendMode(ctx) && (JarvisMode.on(ctx) || DkPersona.effective(ctx).let { it != DkPersona.P.GIRLFRIEND && it != DkPersona.P.FRIENDLY })) append("\n").append(FriendStyle.persona(f, user))
             append(CareTime.block())
-            if (JarvisMode.on(ctx)) append(JarvisMode.block(user)) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(user, lite = true))).append(SpeakingStyle.block(user)).append(DkPersona.finalBlock(ctx, Prefs.userName(ctx)))
+            if (JarvisMode.on(ctx)) append(JarvisMode.block(user)) else append(CalmPersona.block()).append(DkPersona.pick(ctx, GirlfriendPersona.block(user, lite = true))).append(SpeakingStyle.block(user)).append(DkPersona.finalBlock(ctx, Prefs.userName(ctx))).append(DkAiStyle.block(ctx))
             append(AssistantPersona.block(ctx))
             if (Prefs.dkOnly(ctx)) append(DkOnly.PROMPT)
             if (SideTalk.on(ctx)) append(SideTalk.PROMPT)
@@ -1151,7 +1154,7 @@ class BrainManager(private val ctx: Context) {
             append(TaskSense.PROMPT).append("\n").append(ActFirstRule.TEXT).append("\n")   // नवंबर 2026: काम / सवाल / जवाब / बातचीत - पहले पहचानो
             if (Prefs.friendMode(ctx)) append(FriendStyle.persona(dkFemale(), user)).append(FriendTalk.block(ctx)).append("\n")
             append(AssistantBrand.IDENTITY_RULE).append("\n").append(NameRule.block(Prefs.userName(ctx), Prefs.assistantName(ctx))).append(OwnerProfile.block(ctx))
-            append(DkPersona.sayRule(ctx))   // 25 नवंबर 2026: फ़ोन वाले काम में बोली जाने वाली लाइन भी दोस्ताना अंदाज़ में (offline आवाज़)
+            append(DkPersona.sayRule(ctx)).append(DkAiStyle.sayRule(ctx))   // 25 नवंबर 2026: फ़ोन वाले काम में बोली जाने वाली लाइन भी दोस्ताना अंदाज़ में (offline आवाज़)
         }
         return intro + BASE_PROMPT
     }

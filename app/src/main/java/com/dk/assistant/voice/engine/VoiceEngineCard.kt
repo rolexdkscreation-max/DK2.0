@@ -162,6 +162,10 @@ class VoiceEngineCard private constructor(private val a: Activity, private val d
         slider(box, "गति", VoiceTune.MIN_SPEED, VoiceTune.MAX_SPEED, VoiceTune.speedPct, { v -> VoiceTune.fmt(v) }) { v -> VoiceTune.setSpeed(a, v); refreshNow() }
         slider(box, "पिच (आवाज़ का ऊँचा-नीचापन)", VoiceTune.MIN_PITCH, VoiceTune.MAX_PITCH, VoiceTune.pitchPct, { v -> VoiceTune.fmt(v) }) { v -> VoiceTune.setPitch(a, v); refreshNow() }
         hint(box, "100% = सामान्य। कोमल आवाज़ के लिए गति 90-95% और पिच 100-104% अच्छी लगती है। DK लाइव और Gemini TTS - दोनों पर एक ही। गति 0.5x-2.0x, पिच 0.5x-1.5x।")
+        // 26 नवंबर 2026 (मालिक): गति/पिच वाली जगह पर ही temperature - डिफ़ॉल्ट 0.75, कम-ज़्यादा करके देख सकें
+        slider(box, "Temperature (बातचीत का अंदाज़)", VoiceTune.MIN_TEMP, VoiceTune.MAX_TEMP, VoiceTune.tempPct, { v -> VoiceTune.fmtTemp(v) }) { v -> VoiceTune.setTemp(a, v); refreshNow() }
+        hint(box, "0.75 = डिफ़ॉल्ट (0.70-0.80 सबसे सही)। बहुत कम (0.2) पर जवाब रटे-रटाए और मशीनी, बहुत ज़्यादा (1.2+) पर बात भटक सकती है। " +
+            "DK लाइव, Gemini TTS और ऑफ़लाइन आवाज़ - सबकी बातचीत पर। लाइव में अगली बार जुड़ने पर लगता है।")
     }
 
     private fun radioList(box: LinearLayout, items: List<Pair<String, String>>, cur: String, onPick: (String) -> Unit) {
