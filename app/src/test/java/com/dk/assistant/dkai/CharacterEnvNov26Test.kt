@@ -137,9 +137,9 @@ class CharacterEnvNov26Test {
         val q = CharacterArt.prepare(big, HomeAvatars.FULL_SUBJECT)!!
         assertTrue(maxOf(q.art.width, q.art.height) <= CharacterArt.MAX_SIDE)
         assertEquals(q.art.width, q.art.height)
-        val bd = q.backdrop(ClayTheme.CLAY_DAY.bg, ClayTheme.CLAY_DAY.accent, true)
-        assertNotNull(bd)
-        assertTrue(bd === q.backdrop(ClayTheme.CLAY_DAY.bg, ClayTheme.CLAY_DAY.accent, true))
+        // 27 नवंबर 2026 (मालिक: "पीछे धुंधला चौकोर"): तैयारी में तस्वीर की कोई धुंधली / छोटी कॉपी नहीं
+        assertFalse(CharacterArt.Prepared::class.java.declaredMethods.any { it.name.contains("backdrop", true) })
+        assertFalse(CharacterArt.Prepared::class.java.declaredFields.any { it.name == "tiny" })
     }
 
     @Test fun prepareAsync_notifiesEveryWaitingView() {
@@ -276,11 +276,14 @@ class CharacterEnvNov26Test {
         for (s in listOf(env, mot)) { assertFalse(s.contains("BlurMaskFilter")); assertFalse(s.contains("RenderEffect")); assertFalse(s.contains("saveLayer")) }
         assertTrue(av.contains("CharacterArt.prepareAsync"))
         assertTrue(av.contains("motion.drawBlink"))
-        assertTrue(av.contains("CharacterMotion.breathScale"))
+        // 27 नवंबर 2026 (मालिक): कैरेक्टर ख़ुद कभी scale / खिसकता / झूमता नहीं - सिर्फ़ रोशनी धड़कती
+        val art = av.substringAfter("private fun drawArt(cv: Canvas)").substringBefore("private fun drawWaves(")
+        for (bad in listOf("CharacterMotion.breathScale", "breathLift", "cv.scale(", "cv.rotate(", "orbPulse(", "drawBackdrop")) assertFalse(bad, art.contains(bad))
         assertTrue(sp.contains("CharacterMotion.pulse"))
         assertTrue(src("dkai/SpiritCharacterView.kt").contains("SpiritArt.lit"))
         assertFalse(sp.contains("drawStage"))
         assertTrue(src("dkai/DkaiScreen.kt").contains("centerAvatar.rig = av?.rig"))
-        assertTrue(src("dkai/DkaiScreen.kt").contains("bottomMargin = -d(14f + cardDrop)"))
+        // 27 नवंबर 2026: कैरेक्टर की जगह तय (CharacterStage), संदेश बॉक्स ऊपर तैरता - layout में नहीं
+        assertTrue(src("dkai/DkaiScreen.kt").contains("stage.setOverlay(liveBox"))
     }
 }

@@ -200,13 +200,20 @@ class SpiritEngine(val id: SpiritIdentity) {
     /** animation बंद वाले फ़ोन पर: सीधे पूरा दिखो / छिपो */
     fun snap() { presence = presenceTarget }
 
+    /** 27 नवंबर 2026 ([CharacterStage]): नीचे तैरते संदेश बॉक्स की सबसे बड़ी जगह (px) - चेहरा इसके ऊपर ही */
+    var reserve = 0
+
     fun layout(vw: Int, vh: Int, bw: Int, bh: Int) {
         this.vw = vw.toFloat(); this.vh = vh.toFloat()
         if (vw <= 0 || vh <= 0 || bw <= 0 || bh <= 0) { dst.setEmpty(); return }
-        val s = minOf(vw.toFloat() / bw, vh.toFloat() / bh)          // fit: पूरा सिर-बाल-शरीर, अनुपात वही, कभी न कटे
+        var s = minOf(vw.toFloat() / bw, vh.toFloat() / bh)          // fit: पूरा सिर-बाल-शरीर, अनुपात वही, कभी न कटे
+        // 27 नवंबर 2026: ऊपर से टिका (सिर के ऊपर थोड़ी जगह), चेहरा नीचे वाले बॉक्स के ऊपर - बॉक्स सिर्फ़ धड़ / धुआँ ढके
+        val head = vh * CharacterArt.HEADROOM
+        val floor = CharacterStage.faceFloor(vh, reserve)
+        val faceBottom = (id.faceY + 0.10f).coerceIn(0.1f, 1f)
+        s = minOf(s, (floor - head) / (bh * faceBottom), (vh - head) / bh)
         val w = bw * s; val h = bh * s
-        // 26 नवंबर 2026: bust (नीचे से कटा शरीर) नीचे टिका - संदेश कार्ड की ओर घुलता, ऊपर सिर के लिए माहौल
-        val l = (vw - w) / 2f; val tp = vh - h
+        val l = (vw - w) / 2f; val tp = head
         dst.set(l, tp, l + w, tp + h)
     }
 
@@ -220,9 +227,9 @@ class SpiritEngine(val id: SpiritIdentity) {
         val k = com.dk.assistant.ui.ClayTheme.t
         val light = stage && lit != null
         val pal = CharacterArt.palette(k.bg, k.accent, k.light)
-        // पूरी जगह का माहौल (थीम का हल्का रंग, ऊपर-नीचे थीम के पीछे में घुलता)
-        val ew = if (vw > 0f) vw else dst.right; val eh = if (vh > 0f) vh else dst.bottom
-        env.drawBase(cv, ew, eh, k.bg, NeonTheme.alpha(pal[0], (presence * 255).toInt()))
+        // 27 नवंबर 2026: पीछे सिर्फ़ ऐप का अपना थीम-रंग (कोई अलग पट्टी / seam नहीं); थीम का हल्का color-grade
+        val gf = env.filterOf(CharacterGrade.of(k.theme.id, k.bg, k.accent, k.light))
+        mesh.colorFilter = gf; meshN.colorFilter = gf; glow.colorFilter = gf
         // पीछे की aura (तस्वीर के ऊपरी सीने / चेहरे के पीछे) - रंग थीम के accent से, cyan की ओर
         val ax = dst.left + id.faceX * w; val ay = dst.top + (id.faceY + 0.12f) * h; val ar = w * 0.62f
         // 26 नवंबर 2026: थीम की रोशनी की धड़कन - वही [CharacterMotion] जो होम के हर कैरेक्टर पर
@@ -254,12 +261,15 @@ class SpiritEngine(val id: SpiritIdentity) {
             meshN.alpha = 255
         }
         drawDots(w, h, cv, reduced, if (light) dotN else dot, if (light) pal[2] else NeonTheme.mix(0xFFE0FAFF.toInt(), pal[2], 0.35f))
+        // 27 नवंबर 2026: चारों ओर (नीचे सबसे ज़्यादा) थीम के पीछे में घुलना - वही CharacterStage नियम
+        if (vw > 0f && vh > 0f) env.drawEdges(cv, vw, vh, k.bg, vh * 0.08f, vh * 0.16f, vw * 0.08f)
     }
 
     private fun buildMesh(w: Float, h: Float, breath: Float, reduced: Boolean) {
-        val s = 1f + 0.0045f * breath
+        // 27 नवंबर 2026 (मालिक): कैरेक्टर का साइज़ / जगह कभी नहीं बदलती - साँस का scale / उठना हटा (सिर्फ़ बाल / धुएँ की हल्की लहर)
+        val s = 1f
         val px = dst.centerX(); val py = dst.bottom
-        val lift = 0.0022f * h * breath
+        val lift = 0f
         val aW = if (reduced) 0f else w * 0.0065f          // लहर: तस्वीर की चौड़ाई का ~0.65%
         val aS = if (reduced) 0f else w * 0.0095f          // धुआँ थोड़ा ज़्यादा
         val tt = t.toFloat()

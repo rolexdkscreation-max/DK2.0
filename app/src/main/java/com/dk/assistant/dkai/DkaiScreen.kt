@@ -113,6 +113,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     private lateinit var attachRow: LinearLayout
     private lateinit var attachScroll: HorizontalScrollView
     private lateinit var heroBox: LinearLayout
+    /** 27 नवंबर 2026: तय साइज़ वाला character stage - कैरेक्टर परत + ऊपर तैरता लाइव संदेश बॉक्स ([CharacterStage]) */
+    private lateinit var stage: CharacterStage
+    private var liveScrollMax = 0
     private var cardDrop = DkaiHomeCore.CARD_DROP_MIN
     /** होम के बीच: ORB (चुना हुआ) या 3D अवतार - Settings › दिखावट › "DKAI का orb" */
     private lateinit var centerOrb: FluidOrbView
@@ -502,7 +505,6 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         // पहले वाला DK लोगो (3D) ORB के बीच में ही रहता है - अवतार चुनने पर छिपता है
         centerLogo = Logo3D(c, R.drawable.ic_dk).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO; isClickable = false }
         glow.addView(centerLogo, FrameLayout.LayoutParams(d(92f), d(92f), Gravity.CENTER))
-        heroBox.addView(glow, avatarArea(false))
         centerGlow = glow
         // लाइव टेक्स्ट बॉक्स (वही उभरा Clay कार्ड): हालत + पहले यूज़र की पूरी लाइव बात, फिर उसी डिब्बे में DK की
         liveBox = LinearLayout(c).apply {
@@ -520,13 +522,25 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         lhead.addView(liveWho)
         liveBox.addView(lhead, LinearLayout.LayoutParams(-1, -2))
         liveTxt = DkaiTheme.text(c, "", 16f, DkaiTheme.WHITE).apply { setLineSpacing(0f, 1.2f); setPadding(0, d(8f), 0, 0) }
+        // 27 नवंबर 2026 (मालिक: "बात बढ़े तो कैरेक्टर ऊपर खिसककर कटता"): बॉक्स की सबसे बड़ी ऊँचाई तय (~4 लाइन, स्क्रीन का
+        // 22% तक) - ज़्यादा बात = अंदर स्क्रॉल, सबसे नई लाइन दिखे, ऊपर-नीचे नरम फेड (कटी लाइन साफ़)
+        stage = CharacterStage(c)
+        val chrome = d(58f)          // बॉक्स की ऊपर-नीचे की जगह + हालत वाली पंक्ति
+        stage.boxMaxPx = CharacterStage.boxMax(c.resources.displayMetrics.heightPixels, liveTxt.lineHeight, chrome)
+        stage.gapPx = d(8f)
+        liveScrollMax = (stage.boxMaxPx - chrome).coerceAtLeast(liveTxt.lineHeight)
         liveScroll = object : ScrollView(c) {
-            // बॉक्स बहुत लंबा न हो: ज़्यादा बात = अंदर स्क्रॉल, सबसे नई लाइन दिखे
-            override fun onMeasure(w: Int, h: Int) = super.onMeasure(w, View.MeasureSpec.makeMeasureSpec(d(170f), View.MeasureSpec.AT_MOST))
-        }.apply { isVerticalScrollBarEnabled = false; addView(liveTxt) }
+            override fun onMeasure(w: Int, h: Int) = super.onMeasure(w, View.MeasureSpec.makeMeasureSpec(liveScrollMax, View.MeasureSpec.AT_MOST))
+        }.apply {
+            isVerticalScrollBarEnabled = false; addView(liveTxt)
+            isVerticalFadingEdgeEnabled = true; setFadingEdgeLength(d(14f))
+        }
         liveBox.addView(liveScroll, LinearLayout.LayoutParams(-1, -2))
-        // चौड़ाई = उपलब्ध जगह (दोनों तरफ़ 14dp) - फ़ोन पर पहले जितनी ही; टैबलेट पर स्क्रीन के अनुपात में ([com.dk.assistant.UiFit.tablet])
-        heroBox.addView(liveBox, LinearLayout.LayoutParams(-1, -2).apply { topMargin = d(14f + cardDrop); leftMargin = d(14f); rightMargin = d(14f) })
+        // कैरेक्टर परत हमेशा पूरी stage; बॉक्स layout में नहीं - नीचे टिकी ऊपर की परत (कैरेक्टर कभी नहीं खिसकता / छोटा होता).
+        // चौड़ाई = उपलब्ध जगह (दोनों तरफ़ 14dp); topMargin = बॉक्स कभी stage के ऊपर तक न पहुँचे
+        stage.setCharacter(glow, avatarArea(false))
+        stage.setOverlay(liveBox, FrameLayout.LayoutParams(-1, -2).apply { topMargin = d(14f + cardDrop); leftMargin = d(14f); rightMargin = d(14f) })
+        heroBox.addView(stage, LinearLayout.LayoutParams(-1, 0, 1f))
         if (!chatPage) homeCol.addView(heroBox, LinearLayout.LayoutParams(-1, 0, 1f))
         chatList = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(d(14f), d(14f), d(14f), 0) }
         UiLang.keep(chatList)
@@ -1161,19 +1175,21 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     private fun glassCard(): android.graphics.drawable.Drawable {
         val k = com.dk.assistant.ui.ClayTheme.t
         return android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            intArrayOf(com.dk.assistant.ui.NeonTheme.alpha(com.dk.assistant.ui.NeonTheme.mix(k.surface, k.rim, 0.12f), 0xC4), com.dk.assistant.ui.NeonTheme.alpha(k.surface, 0xA8))).apply {
+            intArrayOf(com.dk.assistant.ui.NeonTheme.alpha(com.dk.assistant.ui.NeonTheme.mix(k.surface, k.rim, 0.12f), 0xC4), com.dk.assistant.ui.NeonTheme.alpha(k.surface, 0xBA))).apply {
             cornerRadius = d(com.dk.assistant.ui.ClayCard.RADIUS_DP).toFloat()   // गोलाई साझा कार्ड वाली ([com.dk.assistant.ui.ClayCard])
             setStroke(maxOf(1, d(1f)), com.dk.assistant.ui.NeonTheme.alpha(k.rim, 0x88))
         }
     }
 
-    /** ORB = 260dp का गोला (पहले जैसा); अवतार = अभिवादन और READY कार्ड के बीच की पूरी जगह */
-    private fun avatarArea(avatar: Boolean, k: Float = 1f): LinearLayout.LayoutParams {
-        // 26 नवंबर 2026 (Full-Bleed): कैरेक्टर की जगह ऊपर की पट्टी से संदेश कार्ड के ठीक ऊपर तक - कार्ड के ऊपर का खाली
-        // हिस्सा भी माहौल में ([HomeAvatarView] / [SpiritEngine] वहाँ थीम के पीछे में घुलते हैं). कार्ड पर नहीं चढ़ता (उसका topMargin उतना ही)
-        if (avatar) return LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = 0; bottomMargin = -d(14f + cardDrop) }
+    /**
+     * ORB = 260dp का गोला (पहले जैसा), stage में बॉक्स के ऊपर वाली जगह के बीच; अवतार / कैरेक्टर = पूरी stage
+     * (ऊपर की पट्टी से नीचे की बार तक). 27 नवंबर 2026: stage का साइज़ कभी नहीं बदलता - बॉक्स ऊपर तैरता ([CharacterStage]).
+     */
+    private fun avatarArea(avatar: Boolean, k: Float = 1f): FrameLayout.LayoutParams {
+        if (avatar) return FrameLayout.LayoutParams(-1, -1)
         val px = minOf(d(260f * k), c.resources.displayMetrics.widthPixels)
-        return LinearLayout.LayoutParams(px, px).apply { topMargin = d(4f) }
+        val r = if (::stage.isInitialized) stage.reservePx else 0
+        return FrameLayout.LayoutParams(px, px, Gravity.CENTER).apply { bottomMargin = r / 2 }
     }
 
     /** Settings में ORB चुना = ORB; 3D अवतार चुना और तस्वीर फ़ोन में = अवतार; तस्वीर नहीं = ORB (और पीछे से डाउनलोड) */
@@ -1206,6 +1222,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         centerAvatar.subject = av?.subject ?: HomeAvatars.FULL_SUBJECT
         centerAvatar.rig = av?.rig   // 26 नवंबर 2026: पलक (rig हो तो) - साँस / रोशनी हर कैरेक्टर पर अपने आप
         centerAvatar.tablet = com.dk.assistant.UiFitRules.isTablet(c.resources.configuration.smallestScreenWidthDp)
+        centerAvatar.reserveBottom = stage.reservePx   // चेहरा संदेश बॉक्स की सबसे बड़ी ऊँचाई के ऊपर (तय मान)
         // आर्टवर्क READY पट्टी से नीचे की बार के ठीक ऊपर तक (नीचे की खाली पट्टी सिर्फ़ ORB के लिए)
         heroBox.setPadding(0, 0, 0, if (centerAvatar.art || bmp != null || spirit != null) 0 else d(maxOf(0f, GREET_LIFT_DP - cardDrop)))
         // 23 नवंबर 2026 (मालिक: "अवतार पूरी स्क्रीन नहीं"): अवतार सिर्फ़ अभिवादन के नीचे से READY कार्ड के ऊपर तक (बीच वाली जगह),
@@ -1254,6 +1271,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             (centerGlow as? FrameLayout)?.addView(centerSpirit, 1, FrameLayout.LayoutParams(-1, -1))
         }
         centerSpirit?.let { h ->
+            h.reserve = stage.reservePx
             if (showSpirit && spirit != null) {
                 h.visibility = View.VISIBLE
                 h.show(spirit)
