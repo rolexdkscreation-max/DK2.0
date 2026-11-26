@@ -155,6 +155,29 @@ class CharacterEnvNov26Test {
         assertNotNull(CharacterArt.peek(b, HomeAvatars.FULL_SUBJECT))
     }
 
+    @Test fun view_keepsPreparedArt_afterCacheEviction() {
+        val c = RuntimeEnvironment.getApplication()
+        ClayTheme.set(ClayTheme.NAVY); ClayTheme.set(ClayTheme.CLAY_DAY)
+        val bmp = solid(600, 600, 0xFF0B1A3A.toInt(), 0xFFF0C8B0.toInt())
+        CharacterArt.prepare(bmp, HomeAvatars.FULL_SUBJECT)
+        val v = HomeAvatarView(c).apply { bitmap = bmp; fade = true }
+        v.measure(android.view.View.MeasureSpec.makeMeasureSpec(400, android.view.View.MeasureSpec.EXACTLY),
+            android.view.View.MeasureSpec.makeMeasureSpec(600, android.view.View.MeasureSpec.EXACTLY))
+        v.layout(0, 0, 400, 600)
+        val out = Bitmap.createBitmap(400, 600, Bitmap.Config.ARGB_8888)
+        Canvas(out).apply { drawColor(ClayTheme.t.bg); v.draw(this) }      // view तैयार तस्वीर पकड़ लेता है
+        // दूसरी तस्वीरें छोटे cache से इसे बाहर कर दें
+        for (i in 0 until 4) CharacterArt.prepare(solid(300 + i * 10, 300, 0xFF102040.toInt(), 0xFF8866AA.toInt()), HomeAvatars.FULL_SUBJECT)
+        assertNull(CharacterArt.peek(bmp, HomeAvatars.FULL_SUBJECT))
+        Canvas(out).apply { drawColor(ClayTheme.t.bg); v.draw(this) }
+        // फिर भी नरम किनारे - ऊपर से नीचे कहीं भी अचानक (सख़्त) उजाला -> अँधेरा कूद नहीं
+        for (x in listOf(60, 200, 340)) {
+            var jump = 0.0
+            for (y in 1 until 600) jump = maxOf(jump, NeonTheme.luminance(out.getPixel(x, y - 1)) - NeonTheme.luminance(out.getPixel(x, y)))
+            assertTrue("x=$x jump=$jump", jump < 0.12)
+        }
+    }
+
     @Test fun motion_breathUniform_blinkTimed_pulseBounded() {
         // साँस: 1..1.012 (एक ही पैमाना)
         for (i in 0..200) {

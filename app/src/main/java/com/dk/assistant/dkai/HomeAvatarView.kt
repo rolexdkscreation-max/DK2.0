@@ -219,6 +219,10 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
     var rig: CharacterRig? = null
     private val placed = RectF()
     private var preparedFor: Bitmap? = null
+    /** तैयार तस्वीर view ख़ुद पकड़े रखता है - छोटे cache से निकल भी जाए तो किनारे फिर कभी सख़्त न हों */
+    private var held: CharacterArt.Prepared? = null
+    private var heldFor: Bitmap? = null
+    private var heldSub: List<Float>? = null
 
     /**
      * 26 नवंबर 2026 (मालिक: "कैरेक्टर ऐप के माहौल का जीवित हिस्सा लगे, चिपकाई तस्वीर / कार्ड / vignette नहीं"):
@@ -243,10 +247,14 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
         val speaking = mode == 2
         val pal = CharacterArt.palette(k.bg, k.accent, k.light)
         val b = bitmap
-        val prep = b?.let { CharacterArt.peek(it, subject) }
+        val prep = if (b != null && heldFor === b && heldSub == subject && held != null) held
+            else b?.let { CharacterArt.peek(it, subject) }?.also { held = it; heldFor = b; heldSub = subject }
         if (b != null && prep == null && preparedFor !== b) {
             preparedFor = b
-            CharacterArt.prepareAsync(b, subject) { invalidate() }
+            CharacterArt.prepareAsync(b, subject) {
+                if (bitmap === b) CharacterArt.peek(b, subject)?.let { held = it; heldFor = b; heldSub = subject }
+                invalidate()
+            }
         }
         val profile = prep?.profile ?: CharacterArt.Profile(CharacterArt.Kind.FULL_ART, CharacterArt.shapeOf(b?.width ?: 1, b?.height ?: 1), false)
         // (1) माहौल
