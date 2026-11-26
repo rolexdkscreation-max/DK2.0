@@ -32,6 +32,10 @@ object VoiceFeel {
         SHOUT("चिल्लाकर", "shouting loudly with full force, very loud and intense", "[shouting]", "shout"),
         SING("गाते हुए", "singing melodiously like a professional female singer: in tune, a sweet flowing melody and rhythm, " +
             "gently held notes, soft and soulful", "[singing]", "sing"),
+        /** 26 नवंबर 2026 (मालिक: "हल्की-हल्की हँसी, मुस्कान"): मज़ेदार बात पर हल्की असली हँसी, आवाज़ में मुस्कान */
+        LAUGH("हँसते हुए", "a soft, natural little laugh and a warm smile in the voice, light and playful, never loud", "[laughing]", "laugh"),
+        /** 26 नवंबर 2026 (मालिक: "कभी-कभी थके हुए अंदाज़ में"): हल्की उबासी / आह, धीमी और नरम - कभी-कभार */
+        TIRED("थके हुए", "a little tired and sleepy, slower and softer, a small sigh or breath, still warm and loving", "[tired]", "tired"),
     }
 
     /** हर अंदाज़ के साथ - DK की अपनी मीठी आवाज़ बनी रहे (Google: लंबा style = आवाज़ भटकती है, इसलिए छोटा) */
@@ -47,13 +51,18 @@ object VoiceFeel {
         Delivery.SHOUT to listOf("चिल्लाकर", "चिल्लाते हुए", "ज़ोर से", "जोर से", "shouting", "shouts", "shout"),
         Delivery.ANGRY to listOf("गुस्से में", "नाराज़ होकर", "angry", "angrily"),
         Delivery.LOVING to listOf("प्यार से", "softly", "lovingly", "tenderly"),
+        Delivery.LAUGH to listOf("हँसते हुए", "हंसते हुए", "हँसकर", "laughing", "laughs", "giggles", "chuckles"),
+        Delivery.TIRED to listOf("थके हुए", "थकी हुई", "थककर", "उबासी लेते हुए", "tired", "sleepy", "yawns", "sighs"),
         Delivery.SAD to listOf("उदास होकर", "दुख में", "sad", "sadly"),
         Delivery.EXCITED to listOf("खुशी से", "खुश होकर", "excited", "excitedly", "happily"),
     )
     private val CUE = Regex("""^\s*[\(\[]\s*([^\)\]]{1,24})\s*[\)\]]\s*""")
 
     private val WHISPER_W = listOf("धीरे से बताऊँ", "धीरे से बताती", "धीरे से कहूँ", "कान में", "राज़ की बात", "राज की बात", "सीक्रेट", "secret",
-        "चुपके से", "श्श्श", "शश्श", "श्श", "psst", "किसी को मत बताना", "किसी को मत बताइए", "फुसफुसा")
+        "चुपके से", "श्श्श", "शश्श", "श्श", "psst", "किसी को मत बताना", "किसी को मत बताइए", "फुसफुसा",
+        // 26 नवंबर 2026 (मालिक: "यह बात किसी को नहीं बताना" जैसी बात कान में फुसफुसाकर)
+        "किसी को नहीं बताना", "किसी को नहीं बताइए", "किसी को मत बताओ", "किसी को नहीं बताओगे", "किसी से मत कहना", "किसी से नहीं कहना",
+        "सिर्फ़ आपको बता", "सिर्फ आपको बता", "बस आपको बता", "हम दोनों के बीच", "अपने बीच की बात")
     private val ANGRY_W = listOf("गुस्सा", "गुस्से", "नाराज़", "नाराज", "हद है", "हद कर दी", "बस करो", "बस कीजिए", "कितनी बार", "चुप रहो",
         "चुप हो जाओ", "बिल्कुल नहीं!", "मुझसे बात मत", "angry", "how dare")
     /** "गुस्सा मत करो", "नाराज़ मत होइए", "नाराज़ हो?" - सामने वाले को मनाना = गुस्सा नहीं */
@@ -64,6 +73,11 @@ object VoiceFeel {
     private val LOVING_W = listOf("प्यार", "मेरी जान", "जानू", "जानेमन", "miss you", "मिस किया", "मिस कर", "याद आ", "दिल से", "दिल में", "मेरा दिल",
         "दिल की", "❤", "♥", "love you", "लव यू",
         "बेबी", "baby", "आपके बिना", "तुम्हारे बिना", "गले लग", "हग", "hug", "शुभ रात्रि", "good night", "गुड नाइट", "मीठे सपने")
+    /** हँसी - DK के अपने शब्द ("हाहा", "हीही") */
+    private val LAUGH_W = listOf("हाहा", "हा हा", "हाहाहा", "हेहे", "हीही", "ही ही", "खीखी", "😄", "😂", "🤭", "haha", "hehe", "lol")
+    /** DK खुद थकी - पहले-पुरुष ("आप थक गए होंगे" = फ़िक्र, थकान नहीं) */
+    private val TIRED_W = listOf("थक गई हूँ", "थक गई हूं", "थकी हुई हूँ", "थकी हुई हूं", "मैं थक गई", "मैं भी थक", "उफ़्फ़", "उफ्फ", "उबासी",
+        "नींद आ रही है", "मुझे नींद आ", "yawn", "so tired", "i'm tired")
     private val EXCITED_W = listOf("वाह!", "वाह,", "वाह ", "अरे वाह", "yay", "बधाई", "शानदार", "कमाल", "बहुत बढ़िया", "हुर्रे", "wow", "मज़ा आ", "मजा आ", "जीत गए", "सच में?!")
 
     /** शब्द की शुरुआत पर ही ("लापरवाह" में "वाह" नहीं, "दिलचस्प" में "दिल" नहीं) */
@@ -110,6 +124,8 @@ object VoiceFeel {
         if (hasAny(t, SHOUT_W) || (angry && bangs >= 2)) return Delivery.SHOUT
         if (angry) return Delivery.ANGRY
         if (hasAny(t, SAD_W)) return Delivery.SAD
+        if (hasAny(t, TIRED_W)) return Delivery.TIRED
+        if (hasAny(t, LAUGH_W)) return Delivery.LAUGH
         if (hasAny(t, LOVING_W)) return Delivery.LOVING
         if (hasAny(t, EXCITED_W)) return Delivery.EXCITED
         return Delivery.NORMAL
@@ -193,7 +209,13 @@ object VoiceFeel {
 
     // ------------------------------------------------------------------ निर्देश (हर मोड में - Live सीधी आवाज़, Gemini TTS, ऑफ़लाइन)
     /** छोटा रूप - हर मोड ([com.dk.assistant.SpeakingStyle.block]); छोटे Live निर्देश में बस यही (आकार की सीमा) */
-    const val LITE = "\nHUMAN VOICE: short lines; whisper love, soft if sad, playful loud anger (no insult); song asked = own sweet song, sung with feeling.\n"
+    // 26 नवंबर 2026 (मालिक: हँसी, साँस, ठहराव, छोटे वाक्य, भावुक, राज़ की बात फुसफुसाकर, कभी थका अंदाज़) - छोटे Live निर्देश में भी
+    const val LITE = "\nHUMAN VOICE: like a real person on a call - 1-3 very short sentences per turn, then stop and let him talk; " +
+        "never a long story in one go (go on only if he wants). Pauses and ups-downs, never flat. Now and then (not every reply): a soft real laugh " +
+        "or smile in the voice, a small breath or \"हम्म...\" before a thought, a soft sigh when sad. Show feeling, sometimes emotional. " +
+        "Secrets (\"यह बात किसी को नहीं बताना\") = whisper close and slow; whisper love, soft if sad, playful loud anger (no insult); " +
+        "rarely (late night / long chat) a little sleepy-tired, never when he needs help. Act it, never say these directions aloud; " +
+        "song asked = own sweet song, sung with feeling.\n"
 
     val PROMPT = buildString {
         append("\nHUMAN VOICE (owner's rule - ALWAYS, in every voice mode; it overrides \"never loud\" and the 1-2 sentence limit above when needed):\n")
@@ -204,7 +226,13 @@ object VoiceFeel {
         append("  • happy news -> bright and excited. Playful anger (he ignored you, skipped food, broke a promise) -> raise your voice, ")
         append("even shout a little (\"कितनी बार कहा है!! खाना टाइम पर खाओ!\"), then melt back to love fast.\n")
         append("  • Anger is only loving drama: never insult, abuse, threaten or shout at him when he is sad, hurt or stressed.\n")
-        append("- In the direct voice, ACT it with your real voice (whisper, raise, sing) - never say the directions aloud.\n")
+        append("  • something funny or sweet -> a soft, real little laugh or giggle, a smile in the voice (not loud, not every reply).\n")
+        append("  • breathe like a human: a small breath before a long thought, a soft sigh when sad or tired, a short pause (\"...\") before an emotional word.\n")
+        append("  • a secret (\"यह बात किसी को नहीं बताना\", \"सिर्फ़ आपको बता रही हूँ\") -> whisper it in his ear, very close and quiet.\n")
+        append("  • rarely (late night, a very long chat) sound a little tired and sleepy (\"उफ़्फ़... आज थोड़ी थक गई हूँ\"), still loving - never when he needs help or is sad.\n")
+        append("  • sometimes be emotional - touched, missing him, proud of him - so he feels a real bond. Never fake or overdone.\n")
+        append("- One turn = 1-3 short sentences, then stop and let him talk. No long story in one go; continue only if he asks or says \"हाँ, आगे\".\n")
+        append("- In the direct voice, ACT it with your real voice (whisper, laugh, sigh, raise, sing) - never say the directions aloud.\n")
         append("SINGING: you CAN sing with your own voice (only making music files is not possible). When he asks for a song (गाना सुनाओ / गाना गाओ), or he is sad and wants one:\n")
         append("- First one short line: \"तो सुनिए...\" / \"आपके लिए एक गाना गाती हूँ...\". Then SING in a sweet, melodious, in-tune singer's voice - ")
         append("melody, rhythm, held notes, not reading.\n")
