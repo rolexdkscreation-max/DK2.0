@@ -161,7 +161,8 @@ object TurnEnd {
      *  - बाक़ी = [base], आपकी आदत के ठहराव (typicalPauseMs) से थोड़ा ज़्यादा, [MAX_NEUTRAL_END_MS] तक
      */
     const val CONT_END_MS = 800
-    const val CAPTION_WAIT_MS = 700
+    /** 26 नवंबर 2026 (मालिक: "बोलना बंद होते ही ~1 सेकंड में जवाब"): 700 -> 550. caption धीमा हो तब भी 0.15 s कम इंतज़ार; "और / to" वाला [CONT_END_MS] वैसा ही */
+    const val CAPTION_WAIT_MS = 550
     /** caption आपकी आख़िरी आवाज़ के बाद बदला और इतनी देर से वैसा ही = आख़िरी शब्द लिखे जा चुके */
     const val CAPTION_SETTLE_MS = 250
     const val MAX_NEUTRAL_END_MS = 800

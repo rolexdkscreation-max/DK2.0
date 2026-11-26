@@ -274,7 +274,7 @@ internal suspend fun GeminiLive.micLoop() = coroutineScope {
                                     log("सुधार#3 टोकना: ${heardMs} ms लगातार आवाज़ (गूँज=${echoNow.toInt()} घटाकर) + " +
                                         (if (vgOn) "मालिक का मिलान" else "आवाज़ पहचान बंद") + " - अब DK रुका (${softBarge.why})")
                                     if (softBarge.why == "कॉल-mode") { duplex.onConfirm(now); duplexStops++ } else if (softBarge.why == "speaker") { speakerBarge.onConfirm(now); speakerStops++ }
-                                    synchronized(sendLock) { bargeGate.confirm(); confirmBarge("इंसानी आवाज़ - VAD ${"%.2f".format(prob)}, 1s+ (${softBarge.why})") }
+                                    synchronized(sendLock) { bargeGate.confirm(); confirmBarge("इंसानी आवाज़ - VAD ${"%.2f".format(prob)}, ${SoftBarge.STOP_MS}ms+ (${softBarge.why})") }
                                 }
                                 SoftBarge.Act.UNDUCK -> {
                                     falseAlarms++
