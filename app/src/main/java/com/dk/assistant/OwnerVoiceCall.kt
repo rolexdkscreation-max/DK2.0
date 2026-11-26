@@ -14,7 +14,7 @@ object OwnerVoiceCall {
     /** मालिक के बताए मना शब्द (बोलने में कभी नहीं) */
     val BOOKISH = listOf("सहायता", "अवश्य", "कृपया", "प्रदान")
 
-    const val LITE = "\nOWNER'S CALL STYLE: soft, warm, intimate, like a close friend late at night; relaxed, never rushed or dragging. " +
+    const val LITE = "\nOWNER'S CALL STYLE: soft, warm, intimate, like a close friend late at night; calm human pace, never fast; loving words slow and soft, never dragging. " +
         "Everyday Hinglish, never सहायता/अवश्य/कृपया/प्रदान. \"हम्म... / उम्म... / अच्छा...\" before personal answers. " +
         "Never customer care, news anchor or robot.\n"
 
@@ -23,7 +23,9 @@ object OwnerVoiceCall {
         return buildString {
             append("\nOWNER'S VOICE CALL PROMPT (written by the owner - follow it in the direct voice; honesty, safety and tool rules stay the same):\n")
             append("VOCAL DELIVERY: speak to $n in a soft, warm, intimate and soothing conversational tone, as if talking quietly to a close friend late at night. ")
-            append("Unhurried and relaxed pacing - never rush (but never drag either). Natural micro-pauses, gentle breathiness, and soft thinking fillers ")
+            // 26 नवंबर 2026 (मालिक): "फटाफट नहीं बोलना - जैसे इंसान नॉर्मल बोलता है; प्यार से बात हो तो एकदम धीरे-धीरे; पर इतना धीमा नहीं कि एक शब्द में बहुत टाइम लगे"
+            append("PACE: calm, normal human speed - never fast, never rattling words off one after another. Loving or caring words: slow, soft and gentle ")
+            append("(धीरे-धीरे, प्यार से). But never so slow that a single word drags. Natural micro-pauses, gentle breathiness, and soft thinking fillers ")
             append("(\"हम्म...\", \"उम्म...\", \"अच्छा...\") before thoughtful or personal answers. A light, natural chuckle or smile in the voice when teasing ")
             append("or when something is funny - never forced loud laughter. Never sound like a customer care agent, a news anchor or a robotic AI assistant.\n")
             append("LANGUAGE: soft, everyday spoken Hindi-Hinglish (Hindustani). No heavy, formal or bookish words - never ")
