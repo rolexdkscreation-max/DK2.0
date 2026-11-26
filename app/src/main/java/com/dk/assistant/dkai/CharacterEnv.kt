@@ -21,11 +21,13 @@ import kotlin.math.sqrt
  *     पीछे वाली (keyed), या पूरी पृष्ठभूमि वाली आर्टवर्क (full art). साथ में आकार (चौकोर / लंबी / चौड़ी) और गोल आर्टवर्क.
  *     किसी एक कैरेक्टर के रूप पर कोई नियम नहीं - सिर्फ़ तस्वीर के किनारों के पिक्सल से.
  *  2. [prepare] - एक बार (पीछे के thread पर, cache में): सादा पीछा पारदर्शी (keyed / emissive) + चारों किनारे नरम alpha
- *     (कभी सीधी किनार नहीं) + 16px का छोटा धुंधला रूप (पीछे के माहौल के लिए). हर frame कुछ नया नहीं बनता.
+ *     + अंडाकार (radial) फीकापन + नीचे की ओर फीका (कभी सीधी किनार नहीं). हर frame कुछ नया नहीं बनता.
+ *     27 नवंबर 2026 (मालिक: "पीछे धुंधला चौकोर / बादल"): तस्वीर की धुंधली कॉपी अब कहीं नहीं बनती / बनती.
  *  3. [place] - अनुपात कभी नहीं बदलता (width / height एक ही पैमाना). न-कटने वाला हिस्सा (subject) पूरा अंदर;
  *     नीचे से कटा bust नीचे टिके (संदेश कार्ड में घुलता), गोल आर्टवर्क पूरा गोल बीच में.
- *  4. [CharacterEnvironment] - परतें: थीम का माहौल (gradient) → तस्वीर का धुंधला, थीम-रंगा रूप → आवाज़ के साथ रोशनी →
- *     असली कैरेक्टर (कभी धुंधला / खिंचा नहीं) → धीमे कण → ऊपर-नीचे थीम के पीछे में घुलना.
+ *  4. [CharacterEnvironment] - परतें: (पीछे ऐप का अपना थीम-रंग) → accent की नरम गोल रोशनी (20-30%) →
+ *     असली कैरेक्टर (तेज़, कभी धुंधला / खिंचा / हिलता नहीं; थीम का हल्का color-grade [CharacterGrade]) → धीमे कण →
+ *     चारों ओर थीम के पीछे में घुलना (नीचे सबसे ज़्यादा).
  * रंग हमेशा अभी की थीम ([com.dk.assistant.ui.ClayTheme.t]: bg / accent / light) से - Light / Dark / Black / Blue / Purple /
  * कोई भी नई थीम, बिना अलग कोड के.
  */
@@ -42,8 +44,17 @@ object CharacterArt {
     const val MAX_SIDE = 1152
     /** किनारे का नरम alpha (तस्वीर के हर तरफ़ का हिस्सा) */
     const val FEATHER = 0.12f
-    /** पीछे के धुंधले माहौल की छोटी तस्वीर (लंबी भुजा) - इतनी छोटी कि GPU blur की ज़रूरत ही नहीं */
-    const val TINY = 16
+    /** अंडाकार फीकापन: बीच से इतने (0..1, कोने = 1) तक पूरा, फिर कोनों की ओर धीरे-धीरे पारदर्शी (CSS: black 55%, transparent 100%) */
+    const val RADIAL_IN = 0.55f
+    /** नीचे का फीकापन (तस्वीर की ऊँचाई का हिस्सा) - नीचे की पट्टी की ओर घुलना */
+    const val BOTTOM_FADE = 0.22f
+    /** सिर के ऊपर की जगह (stage की ऊँचाई का हिस्सा) - object-position: center top */
+    const val HEADROOM = 0.035f
+    /** subject का ऊपरी हिस्सा जिसमें चेहरा (0..1) - यह हिस्सा नीचे वाले संदेश बॉक्स के नीचे कभी नहीं जाता */
+    const val FACE_K = 0.55f
+    /** हल्की थीम वाली भराव परत ([Prepared.plain]) का अंडाकार */
+    const val PLAIN_IN = 0.30f
+    const val PLAIN_OUT = 0.78f
     /**
      * pure: किनारे का नरम हिस्सा हर दिशा में बराबर px जैसा दिखे - चौड़ी तस्वीर में ऊपर-नीचे (छोटी भुजा) का हिस्सा बड़ा.
      * [0] = बाएँ-दाएँ, [1] = ऊपर-नीचे (उस भुजा का हिस्सा), सबसे ज़्यादा 0.24
@@ -128,7 +139,8 @@ object CharacterArt {
      * pure: एक पिक्सल का नया रूप (ARGB, non-premultiplied). [u] / [v] = तस्वीर में जगह (0..1), [core] = चेहरे / शरीर का
      * वह अंडाकार जो keyed में कभी पारदर्शी नहीं होता (बाल / कपड़े पीछे जैसे रंग के हों तब भी) - cx, cy, rx, ry.
      */
-    fun pixel(c: Int, p: Profile, u: Float, v: Float, core: FloatArray?, feather: Boolean = true, fu: Float = FEATHER, fv: Float = FEATHER): Int {
+    fun pixel(c: Int, p: Profile, u: Float, v: Float, core: FloatArray?, feather: Boolean = true, fu: Float = FEATHER, fv: Float = FEATHER,
+              radial: Boolean = p.kind != Kind.TRANSPARENT): Int {
         var a = alphaOf(c)
         var r = ch(c, 16); var g = ch(c, 8); var b = ch(c, 0)
         when (p.kind) {
@@ -157,9 +169,21 @@ object CharacterArt {
             else -> {}
         }
         // चारों किनारे नरम (कोई सीधी किनार / आयत कभी नहीं)
-        if (feather) a *= smooth(0f, fu, u) * smooth(0f, fu, 1f - u) * smooth(0f, fv, v) * smooth(0f, fv, 1f - v)
+        if (feather) {
+            a *= smooth(0f, fu, u) * smooth(0f, fu, 1f - u) * smooth(0f, fv, v) * smooth(0f, fv, 1f - v)
+            // अंडाकार (radial) - पकी हुई पृष्ठभूमि वाली तस्वीर का कोई आयत कभी न दिखे; असली पारदर्शी तस्वीर को ज़रूरत नहीं
+            if (radial) a *= 1f - smooth(RADIAL_IN, 1f, radius(u, v))
+            // नीचे की ओर फीका (नीचे की पट्टी में घुले)
+            a *= smooth(0f, BOTTOM_FADE, 1f - v)
+        }
         fun i(f: Float) = (f * 255f + 0.5f).toInt().coerceIn(0, 255)
         return (i(a) shl 24) or (i(r) shl 16) or (i(g) shl 8) or i(b)
+    }
+
+    /** pure: अंडाकार दूरी - बीच = 0, किनारे का बीच ≈ 0.71, कोना = 1 (CSS radial-gradient ellipse farthest-corner) */
+    fun radius(u: Float, v: Float): Float {
+        val dx = (u - 0.5f) * 2f; val dy = (v - 0.5f) * 2f
+        return sqrt(dx * dx + dy * dy) / 1.4142135f
     }
 
     /** pure: subject (बायाँ, ऊपर, दायाँ, नीचे) से चेहरे / शरीर का न-मिटने वाला अंडाकार */
@@ -170,39 +194,44 @@ object CharacterArt {
     }
 
     /**
-     * pure: तस्वीर कहाँ और कितनी बड़ी - **एक ही पैमाना** (कभी खिंचाव / दबाव नहीं).
-     *  - FULL_ART: जितनी बड़ी हो सके (view भरे) पर subject पूरा अंदर ([HomeAvatarView.artScale]); बाकी जगह धुंधला माहौल
-     *  - बाकी (पीछा पारदर्शी): subject view में पूरा, जितना बड़ा हो सके - माहौल पीछे से
-     *  - गोल: पूरा गोला, बीच में. नीचे से कटा कैरेक्टर (subject नीचे तक) = नीचे टिका, ऊपर सिर के लिए जगह
+     * pure: तस्वीर कहाँ और कितनी बड़ी - **एक ही पैमाना** (कभी खिंचाव / दबाव नहीं), object-fit: contain + object-position: center top.
+     *  - FULL_ART: जितनी बड़ी हो सके (view भरे) पर subject पूरा अंदर ([HomeAvatarView.artScale])
+     *  - बाकी (पीछा पारदर्शी): subject view में पूरा, जितना बड़ा हो सके. गोला = पूरा गोला (90%)
+     *  - ऊपर से टिका: सिर के ऊपर [HEADROOM] जगह; [floor] (px, ऊपर से) = संदेश बॉक्स की सबसे ऊँची जगह - चेहरा ([FACE_K])
+     *    उसके ऊपर ही रहता है, ज़रूरत हो तो तस्वीर (अनुपात वही) छोटी होती है. बॉक्स सिर्फ़ कंधे / कपड़े ढक सकता है.
+     * [floor] तय (बॉक्स की सबसे बड़ी ऊँचाई से) - बॉक्स में लिखावट कितनी भी हो, कैरेक्टर की जगह / साइज़ वही.
      * [out] में dst; लौटाता है पैमाना.
      */
-    fun place(w: Float, h: Float, bw: Float, bh: Float, subject: List<Float>, p: Profile, sizeK: Float, tablet: Boolean, out: RectF): Float {
+    fun place(w: Float, h: Float, bw: Float, bh: Float, subject: List<Float>, p: Profile, sizeK: Float, tablet: Boolean, out: RectF,
+              floor: Float = h): Float {
         if (w <= 0f || h <= 0f || bw <= 0f || bh <= 0f) { out.setEmpty(); return 1f }
         val sl = subject.getOrElse(0) { 0f }; val st = subject.getOrElse(1) { 0f }
         val sr = subject.getOrElse(2) { 1f }; val sb = subject.getOrElse(3) { 1f }
         val sw = (sr - sl).coerceIn(0.05f, 1f); val sh = (sb - st).coerceIn(0.05f, 1f)
+        val head = h * HEADROOM
+        val fl = floor.coerceIn(h * 0.35f, h)
         var s = if (p.kind == Kind.FULL_ART) {
             HomeAvatarView.artScale(w, h, bw, bh, subject)
         } else {
-            // पारदर्शी किनारे: subject पूरा, थोड़ी साँस की जगह; गोला = पूरा गोला (90%)
             val room = if (p.circular) 0.90f else 0.98f
-            minOf(w * room / (bw * sw), h * room / (bh * sh))
+            minOf(w * room / (bw * sw), (h - head) * room / (bh * sh))
         }
-        // चौड़ी (landscape) आर्टवर्क (पूरी या सादे पीछे वाली), जिसका कोई अलग subject नहीं: बीच का 70% हिस्सा पूरा (चेहरा आम तौर पर बीच में),
-        // दोनों किनारों से थोड़ा नियंत्रित कटाव - ऊपर-नीचे कम खाली जगह. अनुपात फिर भी वही
+        // चौड़ी आर्टवर्क (कोई अलग subject नहीं): बीच का 70% पूरा, दोनों किनारों से थोड़ा नियंत्रित कटाव - अनुपात वही
         val wideFull = p.kind != Kind.TRANSPARENT && p.shape == Shape.LANDSCAPE && sw >= 0.98f && sh >= 0.98f && !p.circular
-        if (wideFull) s = maxOf(s, minOf(h * 0.98f / bh, w / (bw * WIDE_KEEP)))
+        if (wideFull) s = maxOf(s, minOf(fl * 0.98f / bh, w / (bw * WIDE_KEEP)))
         if (tablet) s = HomeAvatarView.tabletScale(w, h, bw, bh, s)
         s *= sizeK.coerceIn(OrbLook.MIN_SIZE / 100f, OrbLook.MAX_SIZE / 100f)
+        // गोला पूरा बॉक्स के ऊपर; बाकी: चेहरे वाला ऊपरी हिस्सा बॉक्स के ऊपर
+        val faceK = if (p.circular) 1f else FACE_K
+        val faceMax = (fl - head) / (bh * sh * faceK)
+        if (s > faceMax) s = faceMax
         val dw = bw * s; val dh = bh * s
         val cx = (sl + sr) / 2f
         var left = w / 2f - dw * cx
-        val bottomCut = sb >= 0.97f && !p.circular && !wideFull
-        var top = if (bottomCut) h - dh * sb else if (wideFull) (h - dh) * 0.58f else h / 2f - dh * (st + sb) / 2f
+        var top = if (p.circular) head + ((fl - head) - dh * sh) / 2f - dh * st else head - dh * st
         if (p.kind == Kind.FULL_ART) {
-            // पूरी आर्टवर्क: जहाँ तक subject न कटे, खाली पट्टी नहीं
             left = if (dw >= w) left.coerceIn(w - dw, 0f) else (w - dw) / 2f
-            top = if (dh >= h) top.coerceIn(h - dh, 0f) else if (bottomCut) h - dh else (h - dh) * if (wideFull) 0.58f else 0.5f
+            if (dh >= h) top = top.coerceIn(h - dh, 0f)
         }
         out.set(left, top, left + dw, top + dh)
         return s
@@ -226,43 +255,13 @@ object CharacterArt {
         )
     }
 
-    /** pure: धुंधले माहौल का एक पिक्सल थीम में - तस्वीर की रोशनी थीम के रंग में फैले, अँधेरा = थीम का पीछा */
-    fun tone(c: Int, p: Profile, bg: Int, glow: Int, light: Boolean): Int {
-        val m = NeonTheme::mix
-        if (p.kind == Kind.FULL_ART) {
-            // पूरी आर्टवर्क: उसी के रंग (असली किनारे से बिना जोड़ के मिले), थीम की ओर झुके
-            return m(c, bg, if (light) 0.50f else 0.38f)
-        }
-        val keyL = if (p.kind == Kind.TRANSPARENT) 0f else luma(p.key)
-        val lift = ((luma(c) - keyL) * 2.2f).coerceIn(0f, 1f) * alphaOf(c).let { if (p.kind == Kind.TRANSPARENT) it else 1f }
-        val src = m(c or (0xFF shl 24), glow, 0.5f).let { if (light) m(it, 0xFFFFFFFF.toInt(), 0.45f) else it }
-        return m(bg, src, lift * (if (light) 0.55f else 0.62f))
-    }
-
     // ------------------------------------------------------------------ फ़ोन
     /** एक तस्वीर की तैयारी - एक बार, फिर cache */
-    class Prepared(val profile: Profile, val art: Bitmap, val tiny: Bitmap, val srcW: Int, val srcH: Int) {
-        private var toneKey = 0L
-        private var toned: Bitmap? = null
-
-        /** थीम के रंग वाला धुंधला माहौल (16px से फ़िल्टर के साथ 64px - असली blur की ज़रूरत नहीं); थीम बदले तभी नया */
-        fun backdrop(bg: Int, glow: Int, light: Boolean): Bitmap? {
-            val k = (bg.toLong() shl 32) xor (glow.toLong() and 0xFFFFFFFFL) xor (if (light) 1L else 0L)
-            toned?.let { if (k == toneKey && !it.isRecycled) return it }
-            return try {
-                val w = tiny.width; val h = tiny.height
-                val px = IntArray(w * h); tiny.getPixels(px, 0, w, 0, 0, w, h)
-                for (i in px.indices) px[i] = tone(px[i], profile, bg, glow, light)
-                val t = Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888)
-                val up1 = Bitmap.createScaledBitmap(t, w * 2, h * 2, true)
-                val up2 = Bitmap.createScaledBitmap(up1, w * 4, h * 4, true)
-                if (up1 !== t) t.recycle()
-                if (up2 !== up1) up1.recycle()
-                toned = up2; toneKey = k
-                up2
-            } catch (e: Throwable) { com.dk.assistant.Quiet.note(e); null }
-        }
-    }
+    /**
+     * [plain] = वही तस्वीर बिना रंग-चाबी (key) के, कसे अंडाकार में - हल्की थीम (Clay Day) में keyed तस्वीर के **नीचे** (normal blend).
+     * वहाँ पीछे का रंग हटाने से गहरे कपड़े (पीछे जैसे रंग के) में छेद दिखते; यह परत उन्हें भरती है (सिर्फ़ KEYED में बनता).
+     */
+    class Prepared(val profile: Profile, val art: Bitmap, val srcW: Int, val srcH: Int, val plain: Bitmap? = null)
 
     private val cache = object : LruCache<String, Prepared>(3) {}
     private val waiting = HashMap<String, MutableList<() -> Unit>>()
@@ -296,6 +295,17 @@ object CharacterArt {
             } else b
             val w = src.width; val h = src.height
             val px = IntArray(w * h); src.getPixels(px, 0, w, 0, 0, w, h)
+            val plain = if (p.kind == Kind.KEYED) {
+                val fp = p.copy(kind = Kind.FULL_ART); val fe = featherOf(w, h)
+                val q = IntArray(w * h)
+                for (y in 0 until h) { val v = (y + 0.5f) / h; val row = y * w
+                    for (x in 0 until w) { val u = (x + 0.5f) / w
+                        val c = pixel(px[row + x], fp, u, v, null, true, fe[0], fe[1])
+                        // कसा हुआ अंडाकार: सिर्फ़ शरीर के बीच के गहरे हिस्से भरे, बाहर हल्की थीम में पूरी तरह घुले (कोई पट्टी / आयत नहीं)
+                        val k = 1f - smooth(PLAIN_IN, PLAIN_OUT, radius(u, v))
+                        q[row + x] = (((c ushr 24) * k).toInt() shl 24) or (c and 0xFFFFFF) } }
+                Bitmap.createBitmap(q, w, h, Bitmap.Config.ARGB_8888)
+            } else null
             val core = if (p.kind == Kind.KEYED) coreOf(subject) else null
             val fe = featherOf(w, h); val fu = fe[0]; val fv = fe[1]
             for (y in 0 until h) {
@@ -305,9 +315,7 @@ object CharacterArt {
             }
             val art = Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888)
             if (src !== b) src.recycle()
-            val tl = TINY.toFloat() / maxOf(b.width, b.height)
-            val tiny = Bitmap.createScaledBitmap(b, maxOf(2, (b.width * tl).toInt()), maxOf(2, (b.height * tl).toInt()), true)
-            Prepared(p, art, tiny, b.width, b.height).also { cache.put(key, it) }
+            Prepared(p, art, b.width, b.height, plain).also { cache.put(key, it) }
         } catch (e: Throwable) { com.dk.assistant.Quiet.note(e); null }
     }
 
@@ -346,19 +354,21 @@ object CharacterArt {
 
 /**
  * माहौल की परतें बनाने वाला (हर view का अपना; Paint / shader पहले से, हर frame कोई बड़ी चीज़ नया नहीं).
- * कोई अलग परत (layer) या GPU blur नहीं - ऊपर-नीचे का घुलना थीम के पीछे वाले रंग की परत से (पीछा वही रंग है).
+ * 27 नवंबर 2026: कोई blur, कोई धुंधली कॉपी, कोई अलग परत (layer) नहीं. पीछे सिर्फ़ ऐप का अपना थीम-रंग (कोई जोड़ / seam नहीं) +
+ * accent की नरम गोल रोशनी. कैरेक्टर हमेशा तेज़ (FILTER_BITMAP), अपनी जगह स्थिर.
  */
 class CharacterEnvironment {
-    private val baseP = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val backP = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val glowP = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val artP = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val artP = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
+    private val screenX = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SCREEN)
     private val dotP = Paint(Paint.ANTI_ALIAS_FLAG)
     private val edgeP = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val tmp = RectF()
-    private var baseKey = 0L
+    private val sideP = Paint(Paint.ANTI_ALIAS_FLAG)
     private var edgeKey = 0L
+    private var sideKey = 0L
     private var glowKey = 0L
+    private var gradeKey = ""
+    private var gradeF: android.graphics.ColorFilter? = null
 
     // धीमे कण (0..1 जगह) - पहले से बने, हर frame सिर्फ़ खिसकते
     private val rnd = java.util.Random(23L)
@@ -373,47 +383,48 @@ class CharacterEnvironment {
         pS[i] = 0.008f + rnd.nextFloat() * 0.018f; pR[i] = 0.6f + rnd.nextFloat() * 1.3f; pPh[i] = rnd.nextFloat() * 6.28f
     }
 
-    /** (1) थीम का माहौल: ऊपर-नीचे थीम का पीछा, बीच में हल्का रंग (पूरी चौड़ाई - कोई डिब्बा नहीं) */
-    fun drawBase(cv: Canvas, w: Float, h: Float, bg: Int, mid: Int) {
-        val k = (w.toLong() shl 40) xor (h.toLong() shl 20) xor (mid.toLong() * 31 + bg)
-        if (k != baseKey) {
-            baseKey = k
-            baseP.shader = LinearGradient(0f, 0f, 0f, h, intArrayOf(NeonTheme.alpha(mid, 0), mid, mid, NeonTheme.alpha(mid, 0)),
-                floatArrayOf(0f, 0.22f, 0.78f, 1f), Shader.TileMode.CLAMP)
-        }
-        cv.drawRect(0f, 0f, w, h, baseP)
-    }
-
-    /** (2) तस्वीर का धुंधला थीम-रंगा रूप - पूरी जगह ढके (अनुपात वही, बीच से), ताकि खाली जगह कभी न दिखे */
-    fun drawBackdrop(cv: Canvas, w: Float, h: Float, back: Bitmap?, alpha: Float, anchor: RectF) {
-        if (back == null || alpha <= 0.01f) return
-        val bw = back.width.toFloat(); val bh = back.height.toFloat()
-        // कैरेक्टर जितना बड़ा उतना ही माहौल, पर view से छोटा कभी नहीं
-        val s = maxOf(anchor.width() / bw, anchor.height() / bh, w / bw, h / bh) * 1.08f
-        val dw = bw * s; val dh = bh * s
-        val cx = anchor.centerX().coerceIn(w - dw / 2f, dw / 2f); val cy = anchor.centerY().coerceIn(h - dh / 2f, dh / 2f)
-        tmp.set(cx - dw / 2f, cy - dh / 2f, cx + dw / 2f, cy + dh / 2f)
-        backP.alpha = (alpha * 255).toInt().coerceIn(0, 255)
-        cv.drawBitmap(back, null, tmp, backP)
-    }
-
-    /** (3) आवाज़ के साथ रोशनी - कैरेक्टर के पीछे गोल, कभी चौकोर नहीं */
-    fun drawGlow(cv: Canvas, x: Float, y: Float, r: Float, color: Int, strength: Float) {
+    /**
+     * (1) कैरेक्टर के पीछे accent की नरम गोल रोशनी - सिर्फ़ radial gradient (तस्वीर की कोई कॉपी नहीं).
+     * [pulse] 0..1: तीव्रता [CharacterGrade.GLOW_MIN]..[CharacterGrade.GLOW_MAX] (20-30%), साइज़ ज़्यादा से ज़्यादा [CharacterGrade.GLOW_SCALE] (2%).
+     * shader एक बार (जगह / रंग बदले तभी); धड़कन सिर्फ़ alpha + canvas scale (GPU पर सस्ता).
+     */
+    fun drawGlow(cv: Canvas, x: Float, y: Float, r: Float, color: Int, pulse: Float) {
         if (r <= 1f) return
         val k = (x.toInt().toLong() shl 42) xor (y.toInt().toLong() shl 21) xor r.toInt().toLong() xor (color.toLong() shl 8)
         if (k != glowKey) {
             glowKey = k
-            glowP.shader = RadialGradient(x, y, r, intArrayOf(color, NeonTheme.alpha(color, 0x55), NeonTheme.alpha(color, 0)),
+            val o = NeonTheme.alpha(color, 0xFF)
+            glowP.shader = RadialGradient(x, y, r, intArrayOf(o, NeonTheme.alpha(color, 0x70), NeonTheme.alpha(color, 0)),
                 floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
         }
-        glowP.alpha = (strength.coerceIn(0f, 1f) * 255).toInt()
+        val p = pulse.coerceIn(0f, 1f)
+        glowP.alpha = (CharacterGrade.glowAlpha(p) * 255f).toInt().coerceIn(0, 255)
+        val sc = CharacterGrade.glowScale(p)
+        cv.save()
+        cv.scale(sc, sc, x, y)
         cv.drawCircle(x, y, r, glowP)
+        cv.restore()
     }
 
-    /** (4) असली कैरेक्टर - सिर्फ़ एक drawBitmap (किनारे पहले से नरम); कभी धुंधला / खिंचा नहीं */
-    fun drawArt(cv: Canvas, art: Bitmap, dst: RectF) { cv.drawBitmap(art, null, dst, artP) }
+    /**
+     * (2) असली कैरेक्टर - सिर्फ़ एक drawBitmap, 100% तेज़ (high-quality filtering), कोई blur / scale animation नहीं.
+     * [grade] = थीम का हल्का color-grade; [screen] = गहरी पकी पृष्ठभूमि + डार्क थीम: SCREEN blend (गहरा हिस्सा ऐप के पीछे में घुले).
+     */
+    fun drawArt(cv: Canvas, art: Bitmap, dst: RectF, grade: CharacterGrade.Grade? = null, screen: Boolean = false) {
+        artP.colorFilter = grade?.let { filterOf(it) }
+        artP.xfermode = if (screen) screenX else null
+        cv.drawBitmap(art, null, dst, artP)
+        artP.xfermode = null
+    }
 
-    /** (5) धीमे कण - माहौल के ऊपर, कुछ ही */
+    /** grade का ColorFilter - एक बार प्रति थीम (हर frame नया नहीं) */
+    fun filterOf(g: CharacterGrade.Grade): android.graphics.ColorFilter {
+        val key = g.toString()
+        gradeF?.let { if (key == gradeKey) return it }
+        return android.graphics.ColorMatrixColorFilter(CharacterGrade.matrix(g)).also { gradeF = it; gradeKey = key }
+    }
+
+    /** (3) धीमे कण - माहौल के ऊपर, कुछ ही */
     fun drawDots(cv: Canvas, w: Float, h: Float, t: Float, color: Int, strength: Float, dp: Float, calm: Boolean) {
         val dt = if (lastT < 0f || calm) 0f else (t - lastT).coerceIn(0f, 0.05f)
         lastT = t
@@ -428,17 +439,29 @@ class CharacterEnvironment {
         }
     }
 
-    /** (6) ऊपर (हेडर) और नीचे (संदेश कार्ड) की ओर थीम के पीछे में घुलना - वही रंग, इसलिए कोई किनार नहीं दिखती */
-    fun drawEdges(cv: Canvas, w: Float, h: Float, bg: Int, top: Float, bottom: Float) {
+    /**
+     * (4) कैरेक्टर के ऊपर थीम के पीछे वाले रंग का gradient: बीच पारदर्शी, ऊपर / बाएँ / दाएँ / (सबसे ज़्यादा) नीचे पूरा थीम-रंग.
+     * वही रंग जो ऐप के पीछे - इसलिए कोई किनार / seam नहीं; नीचे नीचे की पट्टी में घुलता.
+     */
+    fun drawEdges(cv: Canvas, w: Float, h: Float, bg: Int, top: Float, bottom: Float, side: Float = 0f) {
         val k = (w.toLong() shl 40) xor (h.toLong() shl 20) xor bg.toLong() xor (top.toLong() shl 50) xor (bottom.toLong() shl 30)
+        val o = NeonTheme.alpha(bg, 0xFF); val z = NeonTheme.alpha(bg, 0)
         if (k != edgeKey) {
             edgeKey = k
             val tf = (top / h).coerceIn(0.01f, 0.45f); val bf = (bottom / h).coerceIn(0.01f, 0.45f)
-            val o = NeonTheme.alpha(bg, 0xFF); val z = NeonTheme.alpha(bg, 0)
             edgeP.shader = LinearGradient(0f, 0f, 0f, h, intArrayOf(o, o, z, z, o, o),
                 floatArrayOf(0f, 0.004f, tf, 1f - bf, 0.996f, 1f), Shader.TileMode.CLAMP)
         }
         cv.drawRect(0f, 0f, w, h, edgeP)
+        if (side > 0.5f) {
+            val sk = (w.toLong() shl 32) xor bg.toLong() xor (side.toLong() shl 12)
+            if (sk != sideKey) {
+                sideKey = sk
+                val sf = (side / w).coerceIn(0.01f, 0.3f)
+                sideP.shader = LinearGradient(0f, 0f, w, 0f, intArrayOf(o, o, z, z, o, o), floatArrayOf(0f, sf * 0.3f, sf, 1f - sf, 1f - sf * 0.3f, 1f), Shader.TileMode.CLAMP)
+            }
+            cv.drawRect(0f, 0f, w, h, sideP)
+        }
     }
 
     companion object { const val MAX_DOTS = 14 }

@@ -66,10 +66,14 @@ PY
 xa_home() { revive; timeout 90 adb shell am start -S -W -n $PKG/.MainActivity >/dev/null; shot "$1" "${2:-9}"; }
 
 xa_push
-# HQ वाला कैरेक्टर (चौकोर 2048x2048) - हर थीम
-for th in clay_day midnight ember gehra_navy nocturne; do
-  xa_prefs clay_theme=$th home_center=avatar:dk_art_hearts dkai_orb=fluid
-  xa_home ${tag}_x_square_$th 10
+# 27 नवंबर 2026: 8 थीम x 3 कैरेक्टर (नींद वाली bear-hood, तितली वाली, रोशनी वाला spirit) - कोई धुंधला चौकोर / आयत नहीं
+for th in gehra_navy clay_day midnight nocturne ember abyss obsidian rosewood; do
+  for a in dk_art_sleepy dk_art_butterfly_girl; do
+    xa_prefs clay_theme=$th home_center=avatar:$a dkai_orb=fluid
+    xa_home ${tag}_x_${a#dk_art_}_$th 9
+  done
+  xa_prefs clay_theme=$th home_center=orb dkai_orb=spirit_female
+  xa_home ${tag}_x_spirit8_$th 9
 done
 # अलग आकार - हल्की और गहरी थीम
 for th in clay_day midnight; do

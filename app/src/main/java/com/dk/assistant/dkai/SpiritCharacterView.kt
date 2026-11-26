@@ -68,6 +68,16 @@ open class SpiritCharacterView(c: Context, val identity: SpiritIdentity) : View(
 
     fun refreshFx() { reduced = SpiritFx.reduced(context); still = SpiritFx.still() }
 
+    /** 27 नवंबर 2026 ([CharacterStage]): नीचे तैरते संदेश बॉक्स की तय जगह (px) - चेहरा इसके ऊपर */
+    var reserve = 0
+        set(v) { if (field != v) { field = v; engine.reserve = v; relayout() } }
+
+    private fun relayout() {
+        engine.layout(width - paddingLeft - paddingRight, height - paddingTop - paddingBottom, bmp?.width ?: 0, bmp?.height ?: 0)
+        engine.dst.offset(paddingLeft.toFloat(), paddingTop.toFloat())
+        invalidate()
+    }
+
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
         super.onSizeChanged(w, h, ow, oh)
         engine.layout(w - paddingLeft - paddingRight, h - paddingTop - paddingBottom, bmp?.width ?: 0, bmp?.height ?: 0)
@@ -123,15 +133,18 @@ class SpiritCharacterHost(c: Context) : FrameLayout(c) {
     private var female: FemaleCharacterScreen? = null
     private var male: MaleCharacterScreen? = null
     var current: String? = null; private set
+    /** 27 नवंबर 2026 ([CharacterStage]): संदेश बॉक्स की तय जगह (px) - दोनों कैरेक्टर पर */
+    var reserve = 0
+        set(v) { field = v; female?.reserve = v; male?.reserve = v }
 
     init { clipChildren = false; importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
 
     override fun hasOverlappingRendering(): Boolean = false
 
     fun view(key: String): SpiritCharacterView = if (key == SpiritIdentity.MALE) {
-        male ?: MaleCharacterScreen(context).also { male = it; it.visibility = GONE; addView(it, LayoutParams(-1, -1)) }
+        male ?: MaleCharacterScreen(context).also { male = it; it.reserve = reserve; it.visibility = GONE; addView(it, LayoutParams(-1, -1)) }
     } else {
-        female ?: FemaleCharacterScreen(context).also { female = it; it.visibility = GONE; addView(it, LayoutParams(-1, -1)) }
+        female ?: FemaleCharacterScreen(context).also { female = it; it.reserve = reserve; it.visibility = GONE; addView(it, LayoutParams(-1, -1)) }
     }
 
     /** [SpiritIdentity.FEMALE] / [SpiritIdentity.MALE] */
