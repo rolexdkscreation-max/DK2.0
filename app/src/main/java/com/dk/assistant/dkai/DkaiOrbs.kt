@@ -16,6 +16,9 @@ object DkaiOrbs {
     const val CRYSTAL = "crystal"
     const val SWARM = "swarm"
     const val CLASSIC = "classic"
+    /** 26 नवंबर 2026 (मालिक की तस्वीर): ethereal महिला / पुरुष कैरेक्टर ([SpiritCharacterHost]) - ORB की जगह */
+    const val SPIRIT_FEMALE = "spirit_female"
+    const val SPIRIT_MALE = "spirit_male"
 
     /** key to नाम (मेनू में यही दिखता) */
     val ORBS: List<Pair<String, String>> = listOf(
@@ -27,7 +30,22 @@ object DkaiOrbs {
         CRYSTAL to "Crystal (घूमता क्रिस्टल)",
         SWARM to "Particle Swarm (डॉट का गोला)",
         CLASSIC to "पुराना DK orb (Settings वाला)",
+        SPIRIT_FEMALE to "AI महिला (रोशनी वाला कैरेक्टर)",
+        SPIRIT_MALE to "AI पुरुष (रोशनी वाला कैरेक्टर)",
     )
+
+    /**
+     * ORB की जगह ethereal कैरेक्टर दिखे तो [SpiritIdentity.FEMALE] / [SpiritIdentity.MALE], नहीं तो null.
+     * नया चुना हो, या "पुराना DK orb" में पुराना "पुरुष / महिला चेहरा" - दोनों की जगह अब यही कैरेक्टर.
+     */
+    fun spirit(orb: String?, orbStyle: String?): String? = when (orb) {
+        SPIRIT_FEMALE -> SpiritIdentity.FEMALE
+        SPIRIT_MALE -> SpiritIdentity.MALE
+        CLASSIC -> when (orbStyle) { "face_female" -> SpiritIdentity.FEMALE; "face_male" -> SpiritIdentity.MALE; else -> null }
+        else -> null
+    }
+
+    fun spirit(c: Context): String? = spirit(get(c), try { com.dk.assistant.Prefs.orbStyle(c) } catch (e: Exception) { com.dk.assistant.Quiet.note(e); null })
 
     fun valid(k: String?): String = if (ORBS.any { it.first == k }) k!! else FLUID
 
@@ -41,6 +59,7 @@ object DkaiOrbs {
         SOLAR -> intArrayOf(0xFFFACC15.toInt(), 0xFFF97316.toInt(), 0xFFFDE68A.toInt())
         CRYSTAL -> intArrayOf(0xFFA78BFA.toInt(), 0xFF6366F1.toInt(), 0xFF67E8F9.toInt())
         SWARM -> intArrayOf(0xFF22D3EE.toInt(), 0xFF8B5CF6.toInt(), 0xFFF472B6.toInt())
+        SPIRIT_FEMALE, SPIRIT_MALE -> intArrayOf(0xFF8CE8F5.toInt(), 0xFF38BDF8.toInt(), 0xFFE0FAFF.toInt())   // छोटी पट्टी का orb उन्हीं रंगों में
         else -> intArrayOf(0xFF00E5FF.toInt(), 0xFF3B82F6.toInt(), 0xFFA855F7.toInt())
     }
 

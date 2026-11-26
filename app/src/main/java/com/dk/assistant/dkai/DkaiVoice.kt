@@ -35,6 +35,8 @@ class DkaiVoice(private val s: DkaiScreen) {
     private lateinit var badgeTxt: TextView
     private lateinit var orb: FluidOrbView
     private lateinit var classicOrb: OrbView
+    /** 26 नवंबर 2026: ethereal महिला / पुरुष कैरेक्टर (ORB की जगह) - सिर्फ़ चुनने पर बनता */
+    private var spiritBox: SpiritCharacterHost? = null
     private lateinit var orbBox: FrameLayout
     private lateinit var transcript: TextView
     private lateinit var box: LinearLayout
@@ -404,8 +406,23 @@ class DkaiVoice(private val s: DkaiScreen) {
     fun orbStyle() {
         if (!::orb.isInitialized) return
         val classic = DkaiOrbs.get(c) == DkaiOrbs.CLASSIC
-        classicOrb.visibility = if (classic) View.VISIBLE else View.GONE
-        orb.visibility = if (classic) View.INVISIBLE else View.VISIBLE
+        val spirit = DkaiOrbs.spirit(c)
+        classicOrb.visibility = if (classic && spirit == null) View.VISIBLE else View.GONE
+        orb.visibility = if (classic || spirit != null) View.INVISIBLE else View.VISIBLE
+        // 26 नवंबर 2026 (मालिक): ethereal महिला / पुरुष = ORB की जगह, उसी डिब्बे में
+        if (spirit != null && spiritBox == null) {
+            spiritBox = SpiritCharacterHost(c)
+            orbBox.addView(spiritBox, FrameLayout.LayoutParams(-1, -1))
+        }
+        spiritBox?.let { h ->
+            if (spirit != null) {
+                h.visibility = View.VISIBLE
+                h.show(spirit)
+            } else {
+                h.hideAll()
+                h.visibility = View.GONE
+            }
+        }
         if (::miniOrb.isInitialized) {
             miniClassic.visibility = if (classic) View.VISIBLE else View.GONE
             miniOrb.visibility = if (classic) View.INVISIBLE else View.VISIBLE
