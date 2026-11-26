@@ -115,7 +115,7 @@ class CharacterOrbView @JvmOverloads constructor(
             // WebView का अलग process गिरा = ऐप नहीं गिरे; अगली बार दिखते ही नया बनेगा
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 if (web === view) { removeView(view); web = null; ready = false }
-                try { view.destroy() } catch (_: Throwable) {}
+                try { view.destroy() } catch (e: Throwable) { com.dk.assistant.Quiet.note(e) }
                 post { if (isAttachedToWindow && isShown) ensureWeb() }
                 return true
             }
@@ -156,7 +156,10 @@ class CharacterOrbView @JvmOverloads constructor(
 
     private fun setRunning(on: Boolean) {
         val p = !on
-        if (p == paused && web != null) { if (on) schedule(); return }
+        if (p == paused && web != null) {
+            if (on) schedule()
+            return
+        }
         paused = p
         if (on) {
             ensureWeb()

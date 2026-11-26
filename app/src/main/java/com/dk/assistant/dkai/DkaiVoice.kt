@@ -414,7 +414,10 @@ class DkaiVoice(private val s: DkaiScreen) {
             holoOrb = CharacterOrbView(c).apply { level = this@DkaiVoice.level }
             orbBox.addView(holoOrb, FrameLayout.LayoutParams(-1, -1))
         }
-        holoOrb?.let { h -> if (holo != null) h.switchTo(holo); h.visibility = if (holo != null) View.VISIBLE else View.GONE }
+        holoOrb?.let { h ->
+            if (holo != null) h.switchTo(holo)
+            h.visibility = if (holo != null) View.VISIBLE else View.GONE
+        }
         if (::miniOrb.isInitialized) {
             miniClassic.visibility = if (classic) View.VISIBLE else View.GONE
             miniOrb.visibility = if (classic) View.INVISIBLE else View.VISIBLE
