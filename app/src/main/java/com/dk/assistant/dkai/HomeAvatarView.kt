@@ -233,6 +233,9 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
     private var held: CharacterArt.Prepared? = null
     private var heldFor: Bitmap? = null
     private var heldSub: List<Float>? = null
+    /** तैयारी से पहले ही (छोटे नमूने से) तस्वीर का प्रकार - पहले frame से जगह / साइज़ वही रहे, बाद में कूदे नहीं */
+    private var quickFor: Bitmap? = null
+    private var quick: CharacterArt.Profile? = null
 
     /**
      * 26 नवंबर 2026 (Full-Bleed) + 27 नवंबर 2026 (मालिक: "पीछे धुंधला चौकोर / बादल, कैरेक्टर हिलता / कटता"):
@@ -267,7 +270,12 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
                 invalidate()
             }
         }
-        val profile = prep?.profile ?: CharacterArt.Profile(CharacterArt.Kind.FULL_ART, CharacterArt.shapeOf(b?.width ?: 1, b?.height ?: 1), false)
+        if (b != null && prep == null && quickFor !== b) {
+            quickFor = b
+            quick = try { CharacterArt.analyze(b) } catch (_: Throwable) { null }
+        }
+        val profile = prep?.profile ?: quick?.takeIf { quickFor === b }
+            ?: CharacterArt.Profile(CharacterArt.Kind.FULL_ART, CharacterArt.shapeOf(b?.width ?: 1, b?.height ?: 1), false)
         // जगह: अनुपात वही, subject पूरा, ऊपर से टिका; चेहरा नीचे वाले बॉक्स के ऊपर. समय / हालत से कभी नहीं बदलती
         if (b != null) {
             // ऑर्ब (सिर नहीं): पूरा गोला बॉक्स के ऊपर वाली जगह के बीच में
@@ -291,8 +299,11 @@ class HomeAvatarView(c: Context) : DkaiAnimView(c) {
             val grade = CharacterGrade.of(k.theme.id, k.bg, k.accent, k.light)
             // असली पारदर्शी तस्वीर / काटी हुई पृष्ठभूमि = सीधी; पकी गहरी पृष्ठभूमि वाली (full art) + डार्क थीम = SCREEN
             val screen = !k.light && profile.kind == CharacterArt.Kind.FULL_ART
-            if (k.light) prep?.plain?.let { env.drawArt(cv, it, placed, grade, false) }   // हल्की थीम: गहरे कपड़े में छेद न दिखे
-            env.drawArt(cv, prep?.art ?: b, placed, grade, screen)
+            // 27 नवंबर 2026: तैयारी से पहले कच्ची तस्वीर का सख़्त आयत कभी नहीं - वही तस्वीर नरम अंडाकार mask (shader) के साथ, उसी जगह
+            if (prep != null) {
+                if (k.light) prep.plain?.let { env.drawArt(cv, it, placed, grade, false) }   // हल्की थीम: गहरे कपड़े में छेद न दिखे
+                env.drawArt(cv, prep.art, placed, grade, screen)
+            } else env.drawArtMasked(cv, b, placed, grade, screen && profile.kind == CharacterArt.Kind.FULL_ART)
             // पलक - rig वाली तस्वीर पर ही (कैरेक्टर अपनी जगह स्थिर, सिर्फ़ पलक)
             if (!calm) motion.drawBlink(cv, b, rig, placed, CharacterMotion.blink(t, motion.seed))
             badge?.let { txt ->

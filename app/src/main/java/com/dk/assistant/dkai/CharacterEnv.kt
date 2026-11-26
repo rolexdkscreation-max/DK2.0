@@ -320,8 +320,8 @@ object CharacterArt {
     }
 
     /**
-     * पीछे के thread पर तैयारी (UI कभी नहीं अटकता). तब तक [CharacterEnvironment] असली तस्वीर नरम किनारों के साथ दिखाता है -
-     * खाली / टूटी जगह कभी नहीं. तैयार होते ही [done] (UI thread पर).
+     * पीछे के thread पर तैयारी (UI कभी नहीं अटकता). तब तक [CharacterEnvironment.drawArtMasked] (नरम अंडाकार, कोई आयत नहीं);
+     * तैयार होते ही [done] (UI thread पर) - जगह / साइज़ पहले से वही.
      */
     /**
      * पीछे के thread पर तैयारी, फिर [done] (main thread). एक ही तस्वीर कई view (जैसे activity दोबारा बनी) एक साथ माँगें
@@ -360,6 +360,7 @@ object CharacterArt {
 class CharacterEnvironment {
     private val glowP = Paint(Paint.ANTI_ALIAS_FLAG)
     private val artP = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
+    private val maskP = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
     private val screenX = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SCREEN)
     private val dotP = Paint(Paint.ANTI_ALIAS_FLAG)
     private val edgeP = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -415,6 +416,24 @@ class CharacterEnvironment {
         artP.xfermode = if (screen) screenX else null
         cv.drawBitmap(art, null, dst, artP)
         artP.xfermode = null
+    }
+
+    /**
+     * तैयारी पूरी होने तक (या नाकाम हो तो): असली तस्वीर, पर नरम अंडाकार mask के साथ (shader से, कोई blur / कॉपी नहीं) -
+     * कोई सख़्त आयत कभी नहीं.
+     */
+    fun drawArtMasked(cv: Canvas, art: Bitmap, dst: RectF, grade: CharacterGrade.Grade? = null, screen: Boolean = false) {
+        if (dst.isEmpty) return
+        val bs = android.graphics.BitmapShader(art, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        bs.setLocalMatrix(android.graphics.Matrix().apply { setRectToRect(RectF(0f, 0f, art.width.toFloat(), art.height.toFloat()), dst, android.graphics.Matrix.ScaleToFit.FILL) })
+        val r = dst.width() / 2f * 1.4142135f
+        val rg = RadialGradient(dst.centerX(), dst.centerY(), r, intArrayOf(0xFF000000.toInt(), 0xFF000000.toInt(), 0), floatArrayOf(0f, CharacterArt.RADIAL_IN, 1f), Shader.TileMode.CLAMP)
+        rg.setLocalMatrix(android.graphics.Matrix().apply { setScale(1f, dst.height() / dst.width(), dst.centerX(), dst.centerY()) })
+        maskP.shader = android.graphics.ComposeShader(rg, bs, android.graphics.PorterDuff.Mode.SRC_IN)
+        maskP.colorFilter = grade?.let { filterOf(it) }
+        maskP.xfermode = if (screen) screenX else null
+        cv.drawRect(dst, maskP)
+        maskP.shader = null; maskP.xfermode = null
     }
 
     /** grade का ColorFilter - एक बार प्रति थीम (हर frame नया नहीं) */

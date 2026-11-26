@@ -88,6 +88,26 @@ class CharacterStageNov27Test {
         assertEquals(seen.toString(), 1, seen.size)
     }
 
+    /** तैयारी पूरी होने से पहले का पहला frame: कच्ची तस्वीर का सख़्त आयत नहीं (नरम mask), और तैयार होने पर जगह / साइज़ वही */
+    @Test fun firstFrame_beforePrepare_noHardRect_sameRect() {
+        for (id in listOf("dk_art_sleepy", "dk_art_butterfly_girl", "dk_art_hearts")) {
+            val b = hq(id + HomeAvatars.HQ_SUFFIX)
+            // पहले frame का प्रकार (छोटे नमूने से) = तैयार तस्वीर का प्रकार -> place() वही -> कोई कूद नहीं
+            assertEquals(id, CharacterArt.prepare(b, HomeAvatars.FULL_SUBJECT)!!.profile, CharacterArt.analyze(b))
+            for (th in listOf(ClayTheme.NAVY, ClayTheme.CLAY_DAY)) {
+                val out = Bitmap.createBitmap(600, 800, Bitmap.Config.ARGB_8888)
+                val cv = Canvas(out); cv.drawColor(th.bg)
+                val r = RectF(20f, 40f, 580f, 40f + 560f * b.height / b.width)
+                CharacterEnvironment().drawArtMasked(cv, b, r, null, !th.light)
+                for ((x, y) in listOf(r.left + 4 to r.top + 4, r.right - 4 to r.top + 4, r.left + 4 to r.bottom - 4, r.right - 4 to r.bottom - 4)) {
+                    val d = CharacterArt.dist(out.getPixel(x.toInt(), y.toInt()), th.bg)
+                    assertTrue("${th.id}/$id corner $d", d < 0.08f)
+                }
+                assertTrue(CharacterArt.dist(out.getPixel(300, (r.top + r.height() * 0.4f).toInt()), th.bg) > 0.1f)   // बीच में कैरेक्टर
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ layout
     /** खाली / छोटी / बहुत लंबी बात - stage में कैरेक्टर परत का साइज़ वही, बॉक्स कभी अपनी सीमा से बड़ा नहीं, अंदर स्क्रॉल */
     @Test fun stage_fixed_transcriptOverlayCapped() {
