@@ -97,6 +97,15 @@ class CharacterEnvNov26Test {
         assertTrue(out.top >= 0f && out.bottom <= 600f)
     }
 
+    @Test fun feather_widerOnShortSide() {
+        val sq = CharacterArt.featherOf(1000, 1000)
+        assertEquals(CharacterArt.FEATHER, sq[0], 1e-4f); assertEquals(CharacterArt.FEATHER, sq[1], 1e-4f)
+        val wide = CharacterArt.featherOf(1600, 900)
+        assertEquals(CharacterArt.FEATHER, wide[0], 1e-4f); assertTrue(wide[1] > 0.2f && wide[1] <= 0.24f)
+        val tall = CharacterArt.featherOf(600, 1000)
+        assertTrue(tall[0] > 0.19f && tall[0] <= 0.24f); assertEquals(CharacterArt.FEATHER, tall[1], 1e-4f)
+    }
+
     @Test fun palette_followsEveryTheme_andCustom() {
         val custom = ClayTheme.Theme("custom_x", "Custom", "", 0xFFFFF1E6.toInt(), 0xFFFFFFFF.toInt(), 0xFFE11D48.toInt())
         for (th in ClayTheme.ALL + custom) {
@@ -131,6 +140,19 @@ class CharacterEnvNov26Test {
         val bd = q.backdrop(ClayTheme.CLAY_DAY.bg, ClayTheme.CLAY_DAY.accent, true)
         assertNotNull(bd)
         assertTrue(bd === q.backdrop(ClayTheme.CLAY_DAY.bg, ClayTheme.CLAY_DAY.accent, true))
+    }
+
+    @Test fun prepareAsync_notifiesEveryWaitingView() {
+        val b = solid(320, 420, 0xFFFFFFFF.toInt(), 0xFF7755CC.toInt())
+        var a = 0; var c = 0
+        CharacterArt.prepareAsync(b, HomeAvatars.FULL_SUBJECT) { a++ }
+        CharacterArt.prepareAsync(b, HomeAvatars.FULL_SUBJECT) { c++ }       // दूसरा view, वही तस्वीर, साथ में
+        val end = System.currentTimeMillis() + 10000
+        while ((a == 0 || c == 0) && System.currentTimeMillis() < end) {
+            Thread.sleep(30); org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        }
+        assertEquals(1, a); assertEquals(1, c)
+        assertNotNull(CharacterArt.peek(b, HomeAvatars.FULL_SUBJECT))
     }
 
     @Test fun motion_breathUniform_blinkTimed_pulseBounded() {

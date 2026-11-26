@@ -69,7 +69,10 @@ object SpiritArt {
             val p = CharacterArt.Profile(CharacterArt.Kind.EMISSIVE, CharacterArt.shapeOf(w, h), false, 0xFF000000.toInt())
             for (i in px.indices) {
                 val q = CharacterArt.pixel(px[i], p, 0.5f, 0.5f, null, feather = false)
-                px[i] = (q and 0xFF000000.toInt()) or (com.dk.assistant.ui.NeonTheme.mix(q, ink, 0.38f) and 0x00FFFFFF)
+                // हल्के पीछे पर फीका न दिखे: धुँधले हिस्से भी थोड़े ठोस (1-(1-a)^2), रंग थीम की स्याही की ओर
+                val a0 = (q ushr 24) / 255f
+                val a1 = 1f - (1f - a0) * (1f - a0)
+                px[i] = ((a1 * 255f).toInt().coerceIn(0, 255) shl 24) or (com.dk.assistant.ui.NeonTheme.mix(q, ink, 0.48f) and 0x00FFFFFF)
             }
             val out = Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888)
             litCache.entries.removeAll { it.key.startsWith("$res|") }

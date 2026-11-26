@@ -44,6 +44,17 @@ object CharacterArt {
     const val FEATHER = 0.12f
     /** पीछे के धुंधले माहौल की छोटी तस्वीर (लंबी भुजा) - इतनी छोटी कि GPU blur की ज़रूरत ही नहीं */
     const val TINY = 16
+    /**
+     * pure: किनारे का नरम हिस्सा हर दिशा में बराबर px जैसा दिखे - चौड़ी तस्वीर में ऊपर-नीचे (छोटी भुजा) का हिस्सा बड़ा.
+     * [0] = बाएँ-दाएँ, [1] = ऊपर-नीचे (उस भुजा का हिस्सा), सबसे ज़्यादा 0.24
+     */
+    fun featherOf(w: Int, h: Int): FloatArray {
+        if (w <= 0 || h <= 0) return floatArrayOf(FEATHER, FEATHER)
+        val r = w.toFloat() / h
+        return floatArrayOf((FEATHER / r).coerceIn(FEATHER, 0.24f).let { if (r > 1f) FEATHER else it },
+            (FEATHER * r).coerceIn(FEATHER, 0.24f).let { if (r < 1f) FEATHER else it })
+    }
+
     /** चौड़ी आर्टवर्क में बीच का कितना हिस्सा हमेशा दिखे */
     const val WIDE_KEEP = 0.70f
 
@@ -117,7 +128,7 @@ object CharacterArt {
      * pure: एक पिक्सल का नया रूप (ARGB, non-premultiplied). [u] / [v] = तस्वीर में जगह (0..1), [core] = चेहरे / शरीर का
      * वह अंडाकार जो keyed में कभी पारदर्शी नहीं होता (बाल / कपड़े पीछे जैसे रंग के हों तब भी) - cx, cy, rx, ry.
      */
-    fun pixel(c: Int, p: Profile, u: Float, v: Float, core: FloatArray?, feather: Boolean = true): Int {
+    fun pixel(c: Int, p: Profile, u: Float, v: Float, core: FloatArray?, feather: Boolean = true, fu: Float = FEATHER, fv: Float = FEATHER): Int {
         var a = alphaOf(c)
         var r = ch(c, 16); var g = ch(c, 8); var b = ch(c, 0)
         when (p.kind) {
@@ -146,7 +157,7 @@ object CharacterArt {
             else -> {}
         }
         // चारों किनारे नरम (कोई सीधी किनार / आयत कभी नहीं)
-        if (feather) a *= smooth(0f, FEATHER, u) * smooth(0f, FEATHER, 1f - u) * smooth(0f, FEATHER, v) * smooth(0f, FEATHER, 1f - v)
+        if (feather) a *= smooth(0f, fu, u) * smooth(0f, fu, 1f - u) * smooth(0f, fv, v) * smooth(0f, fv, 1f - v)
         fun i(f: Float) = (f * 255f + 0.5f).toInt().coerceIn(0, 255)
         return (i(a) shl 24) or (i(r) shl 16) or (i(g) shl 8) or i(b)
     }
@@ -254,7 +265,7 @@ object CharacterArt {
     }
 
     private val cache = object : LruCache<String, Prepared>(3) {}
-    private val busy = java.util.Collections.synchronizedSet(HashSet<String>())
+    private val waiting = HashMap<String, MutableList<() -> Unit>>()
     private val worker by lazy { java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "dk-char-env").apply { isDaemon = true; priority = Thread.NORM_PRIORITY - 1 } } }
     private val main by lazy { Handler(Looper.getMainLooper()) }
 
@@ -286,10 +297,11 @@ object CharacterArt {
             val w = src.width; val h = src.height
             val px = IntArray(w * h); src.getPixels(px, 0, w, 0, 0, w, h)
             val core = if (p.kind == Kind.KEYED) coreOf(subject) else null
+            val fe = featherOf(w, h); val fu = fe[0]; val fv = fe[1]
             for (y in 0 until h) {
                 val v = (y + 0.5f) / h
                 val row = y * w
-                for (x in 0 until w) px[row + x] = pixel(px[row + x], p, (x + 0.5f) / w, v, core)
+                for (x in 0 until w) px[row + x] = pixel(px[row + x], p, (x + 0.5f) / w, v, core, true, fu, fv)
             }
             val art = Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888)
             if (src !== b) src.recycle()
@@ -303,15 +315,33 @@ object CharacterArt {
      * पीछे के thread पर तैयारी (UI कभी नहीं अटकता). तब तक [CharacterEnvironment] असली तस्वीर नरम किनारों के साथ दिखाता है -
      * खाली / टूटी जगह कभी नहीं. तैयार होते ही [done] (UI thread पर).
      */
+    /**
+     * पीछे के thread पर तैयारी, फिर [done] (main thread). एक ही तस्वीर कई view (जैसे activity दोबारा बनी) एक साथ माँगें
+     * तो तैयारी एक ही बार, पर ख़बर हर view को - कोई view अधूरी (fallback) तस्वीर पर अटका न रहे.
+     */
     fun prepareAsync(b: Bitmap, subject: List<Float>, done: () -> Unit) {
         val key = keyOf(b, subject)
-        if (cache.get(key) != null || !busy.add(key)) return
+        if (cache.get(key) != null) { main.post { safe(done) }; return }
+        synchronized(waiting) {
+            val list = waiting[key]
+            if (list != null) { list.add(done); return }
+            waiting[key] = mutableListOf(done)
+        }
         try {
             worker.execute {
-                try { prepare(b, subject) } finally { busy.remove(key); main.post { try { done() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } } }
+                try { prepare(b, subject) } finally {
+                    val all = synchronized(waiting) { waiting.remove(key) }.orEmpty()
+                    main.post { for (d in all) safe(d) }
+                }
             }
-        } catch (e: Throwable) { busy.remove(key); com.dk.assistant.Quiet.note(e) }
+        } catch (e: Throwable) {
+            val all = synchronized(waiting) { waiting.remove(key) }.orEmpty()
+            com.dk.assistant.Quiet.note(e)
+            main.post { for (d in all) safe(d) }
+        }
     }
+
+    private fun safe(d: () -> Unit) { try { d() } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
 }
 
 /**
