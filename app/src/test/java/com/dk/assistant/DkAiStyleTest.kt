@@ -69,6 +69,9 @@ class DkAiStyleTest {
         VoiceTune.setTemp(c, VoiceTune.DEFAULT_TEMP)
         assertTrue(src("GeminiLiveSetup.kt").contains(".put(\"temperature\", com.dk.assistant.voice.engine.VoiceTune"))
         assertTrue(src("AiClients.kt").contains(".put(\"temperature\", com.dk.assistant.voice.engine.VoiceTune.temperature())"))
-        assertTrue(src("voice/engine/VoiceEngineCard.kt").contains("VoiceTune.setTemp(a, v)"))
+        // 26 नवंबर 2026 (मालिक): slider Settings में नहीं दिखता
+        val card = src("voice/engine/VoiceEngineCard.kt")
+        assertFalse(card.contains("VoiceTune.setTemp(") || card.contains("Temperature (बातचीत का अंदाज़)"))
+        assertTrue(src("voice/engine/VoiceTune.kt").contains("tune_temp_hidden_v1"))
     }
 }
