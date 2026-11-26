@@ -283,7 +283,8 @@ object DkPersona {
         "never read out symbols, tags or stage directions (\"pause\", \"breath\").\n"
 
     /** Gemini TTS के अंदाज़ में स्वभाव का छोटा निर्देश (JARVIS में नहीं - वहाँ सीधे JARVIS की आवाज़) */
-    fun ttsStyle(c: Context, base: String): String = ttsFor(effective(c), base)
+    // 26 नवंबर 2026: + मालिक के DK AI प्रॉम्प्ट वाला अंदाज़ ([DkAiStyle.TTS] - "..." पर असली ठहराव, इंसान जैसी आवाज़)
+    fun ttsStyle(c: Context, base: String): String = DkAiStyle.tts(ttsFor(effective(c), base))
 
     fun ttsFor(p: P, base: String): String {
         val hint = when (p) {

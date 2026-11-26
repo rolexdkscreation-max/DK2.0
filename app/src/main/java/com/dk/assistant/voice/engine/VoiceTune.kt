@@ -18,9 +18,21 @@ object VoiceTune {
     const val MAX_PITCH = 150
     const val NORMAL = 100
 
+    /**
+     * 26 नवंबर 2026 (मालिक): बातचीत का temperature - 0.7 से 0.8 के बीच, डिफ़ॉल्ट 0.75. बहुत कम (0.2) = रटे-रटाए, मशीनी जवाब;
+     * बहुत ज़्यादा (1.2+) = बात भटक सकती है. पहले कुछ नहीं भेजा जाता था = Gemini का अपना 1.0. Settings में गति/पिच के नीचे slider.
+     * DK लाइव (Gemini Live - Gemini TTS / सीधी आवाज़) और बिना-Live बातचीत (ऑफ़लाइन आवाज़ वाला दिमाग) के जवाब पर.
+     * 100 के पैमाने पर (75 = 0.75).
+     */
+    const val MIN_TEMP = 0
+    const val MAX_TEMP = 150
+    const val DEFAULT_TEMP = 75
+
     @Volatile var speedPct = NORMAL
         private set
     @Volatile var pitchPct = NORMAL
+        private set
+    @Volatile var tempPct = DEFAULT_TEMP
         private set
     /** बदला तो गिनती - हर AudioTrack अपना लगाया version याद रखता है */
     @Volatile var version = 0
@@ -29,6 +41,7 @@ object VoiceTune {
 
     fun clampSpeed(p: Int) = p.coerceIn(MIN_SPEED, MAX_SPEED)
     fun clampPitch(p: Int) = p.coerceIn(MIN_PITCH, MAX_PITCH)
+    fun clampTemp(p: Int) = p.coerceIn(MIN_TEMP, MAX_TEMP)
 
     fun load(c: Context) {
         if (loaded) return
@@ -36,6 +49,7 @@ object VoiceTune {
         // नवंबर 2026 (मालिक): गति 95% / पिच 92% पर आवाज़ धीमी और देर से लगी - एक बार 100% पर लाओ (बाद में slider से बदल सकते हैं)
         if (!sp.getBoolean("tune_reset_nov26", false)) sp.edit().putInt("tune_speed", NORMAL).putInt("tune_pitch", NORMAL).putBoolean("tune_reset_nov26", true).apply()
         speedPct = clampSpeed(sp.getInt("tune_speed", NORMAL)); pitchPct = clampPitch(sp.getInt("tune_pitch", NORMAL))
+        tempPct = clampTemp(sp.getInt("tune_temp", DEFAULT_TEMP))
         loaded = true; version++
     }
 
@@ -49,12 +63,27 @@ object VoiceTune {
         VoiceEngines.sp(c).edit().putInt("tune_pitch", v).apply(); pitchPct = v; loaded = true; version++
     }
 
-    fun reset(c: Context) { setSpeed(c, NORMAL); setPitch(c, NORMAL) }
+    /** temperature बदलना: अगले जवाब से लगता है (Live = अगली बार जुड़ने पर). आवाज़ का version नहीं बदलता */
+    fun setTemp(c: Context, pct: Int) {
+        val v = clampTemp(pct); if (loaded && v == tempPct) return
+        VoiceEngines.sp(c).edit().putInt("tune_temp", v).apply(); tempPct = v
+    }
+
+    fun reset(c: Context) { setSpeed(c, NORMAL); setPitch(c, NORMAL); setTemp(c, DEFAULT_TEMP) }
 
     /** स्लाइडर पर: "95% (0.95x)" */
     fun fmt(pct: Int): String = String.format(java.util.Locale.US, "%d%% (%.2fx)", pct, pct / 100f)
     fun speed(): Float = speedPct / 100f
     fun pitch(): Float = pitchPct / 100f
+    /** बातचीत के जवाब का temperature (0.75 डिफ़ॉल्ट) */
+    fun temperature(): Double = tempPct / 100.0
+    /** स्लाइडर पर: "0.75 (सही)" */
+    fun fmtTemp(pct: Int): String = String.format(java.util.Locale.US, "%.2f", pct / 100.0) + when {
+        pct in 70..80 -> " (सही)"
+        pct < 40 -> " (मशीनी)"
+        pct >= 120 -> " (भटक सकती है)"
+        else -> ""
+    }
 
     /** PCM के इतने bytes बजने में असली समय (गति के साथ) */
     fun playMs(bytes: Int, rate: Int, speedPct: Int = this.speedPct): Long =

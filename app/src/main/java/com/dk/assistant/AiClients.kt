@@ -420,7 +420,8 @@ class GeminiClient(key: String, private val model: String) : AiClient {
                 .put("parts", JSONArray().put(JSONObject().put("text", it.text))))
         }
         contents.put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", prompt))))
-        val gen = JSONObject().put("maxOutputTokens", maxOut)
+        // 26 नवंबर 2026 (मालिक): बातचीत (stream) का temperature - डिफ़ॉल्ट 0.75 ([VoiceTune]). JSON / खोज वाले जवाब पहले जैसे
+        val gen = JSONObject().put("maxOutputTokens", maxOut).put("temperature", com.dk.assistant.voice.engine.VoiceTune.temperature())
         val chosen = if (thinking) ThinkLevel.geminiConfig(m, think) else null
         if (chosen != null) {
             // Settings में चुना स्तर (Low/Medium/High) - सोच के tokens भी गिने जाते हैं, इसलिए जवाब के लिए जगह बढ़ाई
