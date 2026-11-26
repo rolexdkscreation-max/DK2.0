@@ -20,7 +20,7 @@ object VoiceTune {
 
     /**
      * 26 नवंबर 2026 (मालिक): बातचीत का temperature - 0.7 से 0.8 के बीच, डिफ़ॉल्ट 0.75. बहुत कम (0.2) = रटे-रटाए, मशीनी जवाब;
-     * बहुत ज़्यादा (1.2+) = बात भटक सकती है. पहले कुछ नहीं भेजा जाता था = Gemini का अपना 1.0. Settings में गति/पिच के नीचे slider.
+     * बहुत ज़्यादा (1.2+) = बात भटक सकती है. पहले कुछ नहीं भेजा जाता था = Gemini का अपना 1.0. Settings में slider नहीं (मालिक, 26 नवंबर) - हमेशा 0.75.
      * DK लाइव (Gemini Live - Gemini TTS / सीधी आवाज़) और बिना-Live बातचीत (ऑफ़लाइन आवाज़ वाला दिमाग) के जवाब पर.
      * 100 के पैमाने पर (75 = 0.75).
      */
@@ -49,6 +49,8 @@ object VoiceTune {
         // नवंबर 2026 (मालिक): गति 95% / पिच 92% पर आवाज़ धीमी और देर से लगी - एक बार 100% पर लाओ (बाद में slider से बदल सकते हैं)
         if (!sp.getBoolean("tune_reset_nov26", false)) sp.edit().putInt("tune_speed", NORMAL).putInt("tune_pitch", NORMAL).putBoolean("tune_reset_nov26", true).apply()
         speedPct = clampSpeed(sp.getInt("tune_speed", NORMAL)); pitchPct = clampPitch(sp.getInt("tune_pitch", NORMAL))
+        // 26 नवंबर 2026 (मालिक: "Temperature सेटिंग में नहीं दिखना चाहिए"): slider हटा - slider से बदला पुराना मान एक बार 0.75 पर
+        if (!sp.getBoolean("tune_temp_hidden_v1", false)) sp.edit().putInt("tune_temp", DEFAULT_TEMP).putBoolean("tune_temp_hidden_v1", true).apply()
         tempPct = clampTemp(sp.getInt("tune_temp", DEFAULT_TEMP))
         loaded = true; version++
     }
