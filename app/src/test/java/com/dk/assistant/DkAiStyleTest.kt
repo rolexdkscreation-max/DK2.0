@@ -61,8 +61,8 @@ class DkAiStyleTest {
 
     @Test fun temperatureDefaultAndSetting() {
         VoiceTune.load(c)
-        assertEquals(75, VoiceTune.DEFAULT_TEMP)
-        assertEquals(0.75, VoiceTune.temperature(), 0.0001)
+        assertEquals(90, VoiceTune.DEFAULT_TEMP)   // 26 नवंबर 2026 (मालिक): 0.8-1.0 के बीच
+        assertEquals(0.90, VoiceTune.temperature(), 0.0001)
         assertTrue(VoiceTune.fmtTemp(75).startsWith("0.75"))
         VoiceTune.setTemp(c, 20); assertEquals(0.20, VoiceTune.temperature(), 0.0001)
         VoiceTune.setTemp(c, 999); assertEquals(VoiceTune.MAX_TEMP, VoiceTune.tempPct)

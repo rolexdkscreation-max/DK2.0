@@ -26,7 +26,8 @@ object VoiceTune {
      */
     const val MIN_TEMP = 0
     const val MAX_TEMP = 150
-    const val DEFAULT_TEMP = 75
+    /** 26 नवंबर 2026 (मालिक: "Temperature 0.8 से 1.0 के बीच"): 0.75 -> 0.90 (बीच का मान - ज़्यादा जीवंत, फिर भी भटके नहीं) */
+    const val DEFAULT_TEMP = 90
 
     @Volatile var speedPct = NORMAL
         private set
@@ -51,6 +52,8 @@ object VoiceTune {
         speedPct = clampSpeed(sp.getInt("tune_speed", NORMAL)); pitchPct = clampPitch(sp.getInt("tune_pitch", NORMAL))
         // 26 नवंबर 2026 (मालिक: "Temperature सेटिंग में नहीं दिखना चाहिए"): slider हटा - slider से बदला पुराना मान एक बार 0.75 पर
         if (!sp.getBoolean("tune_temp_hidden_v1", false)) sp.edit().putInt("tune_temp", DEFAULT_TEMP).putBoolean("tune_temp_hidden_v1", true).apply()
+        // 26 नवंबर 2026: 0.75 -> 0.90 - पुराना रखा मान एक बार नए पर
+        if (!sp.getBoolean("tune_temp_090_v1", false)) sp.edit().putInt("tune_temp", DEFAULT_TEMP).putBoolean("tune_temp_090_v1", true).apply()
         tempPct = clampTemp(sp.getInt("tune_temp", DEFAULT_TEMP))
         loaded = true; version++
     }
@@ -77,11 +80,11 @@ object VoiceTune {
     fun fmt(pct: Int): String = String.format(java.util.Locale.US, "%d%% (%.2fx)", pct, pct / 100f)
     fun speed(): Float = speedPct / 100f
     fun pitch(): Float = pitchPct / 100f
-    /** बातचीत के जवाब का temperature (0.75 डिफ़ॉल्ट) */
+    /** बातचीत के जवाब का temperature (0.90 डिफ़ॉल्ट) */
     fun temperature(): Double = tempPct / 100.0
-    /** स्लाइडर पर: "0.75 (सही)" */
+    /** स्लाइडर पर: "0.90 (सही)" */
     fun fmtTemp(pct: Int): String = String.format(java.util.Locale.US, "%.2f", pct / 100.0) + when {
-        pct in 70..80 -> " (सही)"
+        pct in 80..100 -> " (सही)"
         pct < 40 -> " (मशीनी)"
         pct >= 120 -> " (भटक सकती है)"
         else -> ""
