@@ -73,6 +73,6 @@ class LiveNaturalNov26Test {
         val p = VoiceFeel.PROMPT
         for (w in listOf("real little laugh", "small breath", "whisper it in his ear", "tired and sleepy", "emotional", "1-3 short sentences"))
             assertTrue("PROMPT: $w", p.contains(w))
-        assertTrue(lite.length < 900)
+        assertTrue("LITE ${lite.length}", lite.length < 520)
     }
 }

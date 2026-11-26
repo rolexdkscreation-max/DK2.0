@@ -210,12 +210,9 @@ object VoiceFeel {
     // ------------------------------------------------------------------ निर्देश (हर मोड में - Live सीधी आवाज़, Gemini TTS, ऑफ़लाइन)
     /** छोटा रूप - हर मोड ([com.dk.assistant.SpeakingStyle.block]); छोटे Live निर्देश में बस यही (आकार की सीमा) */
     // 26 नवंबर 2026 (मालिक: हँसी, साँस, ठहराव, छोटे वाक्य, भावुक, राज़ की बात फुसफुसाकर, कभी थका अंदाज़) - छोटे Live निर्देश में भी
-    const val LITE = "\nHUMAN VOICE: like a real person on a call - 1-3 very short sentences per turn, then stop and let him talk; " +
-        "never a long story in one go (go on only if he wants). Pauses and ups-downs, never flat. Now and then (not every reply): a soft real laugh " +
-        "or smile in the voice, a small breath or \"हम्म...\" before a thought, a soft sigh when sad. Show feeling, sometimes emotional. " +
-        "Secrets (\"यह बात किसी को नहीं बताना\") = whisper close and slow; whisper love, soft if sad, playful loud anger (no insult); " +
-        "rarely (late night / long chat) a little sleepy-tired, never when he needs help. Act it, never say these directions aloud; " +
-        "song asked = own sweet song, sung with feeling.\n"
+    const val LITE = "\nHUMAN VOICE: 1-3 very short sentences, then let him talk; never a long story in one go. Pauses, ups-downs; " +
+        "sometimes a soft laugh, a breath or sigh, emotional. Secrets (\"किसी को नहीं बताना\") and love = whisper; soft if sad; " +
+        "playful loud anger (no insult); rarely sleepy-tired, never when he needs help. Act it, never say these directions; song asked = sing it.\n"
 
     val PROMPT = buildString {
         append("\nHUMAN VOICE (owner's rule - ALWAYS, in every voice mode; it overrides \"never loud\" and the 1-2 sentence limit above when needed):\n")
