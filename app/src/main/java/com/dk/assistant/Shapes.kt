@@ -53,9 +53,9 @@ object Shapes {
         "galaxy" to "आकाशगंगा (गैलेक्सी)",
         "atom" to "एटम",
         "torus" to "छल्ला (रिंग)",
-        // 26 नवंबर 2026 (मालिक): पुराने डॉट वाले चेहरे की जगह DKAI होम / DK Live में होलोग्राफ़िक 3D कैरेक्टर ([com.dk.assistant.dkai.CharacterOrbView])
-        "face_male" to "पुरुष चेहरा (होलोग्राफ़िक 3D)",
-        "face_female" to "महिला चेहरा (होलोग्राफ़िक 3D)",
+        // 26 नवंबर 2026 (मालिक): पुराने डॉट वाले चेहरे की जगह DKAI होम / DK Live में ethereal AI कैरेक्टर ([com.dk.assistant.dkai.SpiritCharacterHost])
+        "face_male" to "पुरुष चेहरा (AI कैरेक्टर)",
+        "face_female" to "महिला चेहरा (AI कैरेक्टर)",
         // v3.62: भविष्य जैसे (futuristic) 3D डॉट वाले आकार
         "geodesic" to "जियोडेसिक गोला (त्रिकोण जाली)",
         "knot" to "क्वांटम गाँठ (ट्रेफ़ॉइल)",

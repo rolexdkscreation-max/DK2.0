@@ -117,8 +117,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     /** होम के बीच: ORB (चुना हुआ) या 3D अवतार - Settings › दिखावट › "DKAI का orb" */
     private lateinit var centerOrb: FluidOrbView
     private lateinit var centerClassic: com.dk.assistant.OrbView
-    /** 26 नवंबर 2026: होलोग्राफ़िक 3D कैरेक्टर (ORB की जगह) - सिर्फ़ चुनने पर बनता (WebView) */
-    private var centerHolo: CharacterOrbView? = null
+    /** 26 नवंबर 2026: ethereal महिला / पुरुष कैरेक्टर (ORB की जगह) - सिर्फ़ चुनने पर बनता */
+    private var centerSpirit: SpiritCharacterHost? = null
     private lateinit var centerAvatar: HomeAvatarView
     private var centerLook = ""
     /** ऑर्ब आर्टवर्क की रंग बदली कॉपी (रंग / तस्वीर वही तो दोबारा नहीं बनती) */
@@ -1190,8 +1190,8 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             HomeAvatars.fetchHq(c, av) { ok -> if (ok && !activity.isDestroyed) { centerSig = ""; renderCenter() } }
         }
         val classic = DkaiOrbs.get(c) == DkaiOrbs.CLASSIC
-        val holo = DkaiOrbs.holo(c)
-        val sig = "${av?.id}|${bmp != null}|${bmp?.width}|$classic|${DkaiOrbs.get(c)}|$holo"
+        val spirit = DkaiOrbs.spirit(c)
+        val sig = "${av?.id}|${bmp != null}|${bmp?.width}|$classic|${DkaiOrbs.get(c)}|$spirit|${com.dk.assistant.ui.ClayTheme.t.light}"
         val look = OrbLook.sig(c)                              // Settings › ORB / कैरेक्टर का साइज़ और रंग
         if (sig == centerSig && look == centerLook) return
         centerSig = sig; centerLook = look
@@ -1225,13 +1225,14 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         } else null
         if (tinted != null) centerAvatar.bitmap = tinted else centerAvatar.bitmap = bmp
         centerAvatar.visibility = if (showAv) View.VISIBLE else View.GONE
-        centerGlow?.layoutParams = avatarArea(showAv, k)
+        val showSpirit = !showAv && spirit != null
+        // कैरेक्टर = अभिवादन और नीचे के बीच की पूरी जगह (पूरा सिर-बाल-शरीर, कभी न कटे)
+        centerGlow?.layoutParams = avatarArea(showAv || showSpirit, k)
         // चलता ORB भी उसी साइज़ में (स्क्रीन की चौड़ाई से बड़ा नहीं)
         val orbPx = minOf(d(200f * k), (c.resources.displayMetrics.widthPixels * 0.72f).toInt())
         for (v in listOf<View>(centerOrb, centerClassic)) v.layoutParams = (v.layoutParams as FrameLayout.LayoutParams).apply { width = orbPx; height = orbPx }
         centerLogo.layoutParams = (centerLogo.layoutParams as FrameLayout.LayoutParams).apply { width = d(92f * k); height = d(92f * k) }
-        val showHolo = !showAv && holo != null
-        centerGlow?.background?.alpha = if (showAv || showHolo) 0 else 255
+        centerGlow?.background?.alpha = if (showAv || showSpirit) 0 else 255
         // पीछे की गोल चमक भी ORB के साइज़ के साथ (छोटे डिब्बे में बड़ी चमक = चौकोर किनारे)
         (centerGlow?.background as? android.graphics.drawable.GradientDrawable)?.gradientRadius = minOf(d(130f * k), c.resources.displayMetrics.widthPixels / 2).toFloat()
         liveBox.background = if (showAv) glassCard() else com.dk.assistant.ui.Clay.card(c)
@@ -1241,17 +1242,22 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         val sh = com.dk.assistant.ui.ClayTheme.scrim(if (overArt) 0.7f else 0f)
         for (tv in listOf(greetTxt, nameTxt)) if (overArt) tv.setShadowLayer(d(6f).toFloat(), 0f, d(1f).toFloat(), sh) else tv.setShadowLayer(0f, 0f, 0f, 0)
         renderBack()
-        centerOrb.visibility = if (!showAv && !classic && !showHolo) View.VISIBLE else View.GONE
-        centerClassic.visibility = if (!showAv && classic && !showHolo) View.VISIBLE else View.GONE
-        centerLogo.visibility = if (showAv || showHolo) View.GONE else View.VISIBLE
-        // 26 नवंबर 2026 (मालिक): होलोग्राफ़िक महिला / पुरुष = ORB वाली जगह पर, ORB के डिब्बे जितना (आवाज़ के साथ चमक)
-        if (showHolo && centerHolo == null) {
-            centerHolo = CharacterOrbView(c).apply { level = homeLevel }
-            (centerGlow as? FrameLayout)?.addView(centerHolo, 1, FrameLayout.LayoutParams(-1, -1))
+        centerOrb.visibility = if (!showAv && !classic && !showSpirit) View.VISIBLE else View.GONE
+        centerClassic.visibility = if (!showAv && classic && !showSpirit) View.VISIBLE else View.GONE
+        centerLogo.visibility = if (showAv || showSpirit) View.GONE else View.VISIBLE
+        // 26 नवंबर 2026 (मालिक): ethereal महिला / पुरुष = ORB वाली जगह पर, आवाज़ की हालत के साथ चमक
+        if (showSpirit && centerSpirit == null) {
+            centerSpirit = SpiritCharacterHost(c)
+            (centerGlow as? FrameLayout)?.addView(centerSpirit, 1, FrameLayout.LayoutParams(-1, -1))
         }
-        centerHolo?.let { h ->
-            if (holo != null) h.switchTo(holo)
-            h.visibility = if (showHolo) View.VISIBLE else View.GONE
+        centerSpirit?.let { h ->
+            if (showSpirit && spirit != null) {
+                h.visibility = View.VISIBLE
+                h.show(spirit)
+            } else {
+                h.hideAll()
+                h.visibility = View.GONE
+            }
         }
     }
 
