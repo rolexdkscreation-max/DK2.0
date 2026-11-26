@@ -117,8 +117,6 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     /** होम के बीच: ORB (चुना हुआ) या 3D अवतार - Settings › दिखावट › "DKAI का orb" */
     private lateinit var centerOrb: FluidOrbView
     private lateinit var centerClassic: com.dk.assistant.OrbView
-    /** 26 नवंबर 2026: होलोग्राफ़िक 3D कैरेक्टर (ORB की जगह) - सिर्फ़ चुनने पर बनता (WebView) */
-    private var centerHolo: CharacterOrbView? = null
     private lateinit var centerAvatar: HomeAvatarView
     private var centerLook = ""
     /** ऑर्ब आर्टवर्क की रंग बदली कॉपी (रंग / तस्वीर वही तो दोबारा नहीं बनती) */
@@ -1190,8 +1188,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             HomeAvatars.fetchHq(c, av) { ok -> if (ok && !activity.isDestroyed) { centerSig = ""; renderCenter() } }
         }
         val classic = DkaiOrbs.get(c) == DkaiOrbs.CLASSIC
-        val holo = DkaiOrbs.holo(c)
-        val sig = "${av?.id}|${bmp != null}|${bmp?.width}|$classic|${DkaiOrbs.get(c)}|$holo"
+        val sig = "${av?.id}|${bmp != null}|${bmp?.width}|$classic|${DkaiOrbs.get(c)}"
         val look = OrbLook.sig(c)                              // Settings › ORB / कैरेक्टर का साइज़ और रंग
         if (sig == centerSig && look == centerLook) return
         centerSig = sig; centerLook = look
@@ -1230,8 +1227,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         val orbPx = minOf(d(200f * k), (c.resources.displayMetrics.widthPixels * 0.72f).toInt())
         for (v in listOf<View>(centerOrb, centerClassic)) v.layoutParams = (v.layoutParams as FrameLayout.LayoutParams).apply { width = orbPx; height = orbPx }
         centerLogo.layoutParams = (centerLogo.layoutParams as FrameLayout.LayoutParams).apply { width = d(92f * k); height = d(92f * k) }
-        val showHolo = !showAv && holo != null
-        centerGlow?.background?.alpha = if (showAv || showHolo) 0 else 255
+        centerGlow?.background?.alpha = if (showAv) 0 else 255
         // पीछे की गोल चमक भी ORB के साइज़ के साथ (छोटे डिब्बे में बड़ी चमक = चौकोर किनारे)
         (centerGlow?.background as? android.graphics.drawable.GradientDrawable)?.gradientRadius = minOf(d(130f * k), c.resources.displayMetrics.widthPixels / 2).toFloat()
         liveBox.background = if (showAv) glassCard() else com.dk.assistant.ui.Clay.card(c)
@@ -1241,18 +1237,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         val sh = com.dk.assistant.ui.ClayTheme.scrim(if (overArt) 0.7f else 0f)
         for (tv in listOf(greetTxt, nameTxt)) if (overArt) tv.setShadowLayer(d(6f).toFloat(), 0f, d(1f).toFloat(), sh) else tv.setShadowLayer(0f, 0f, 0f, 0)
         renderBack()
-        centerOrb.visibility = if (!showAv && !classic && !showHolo) View.VISIBLE else View.GONE
-        centerClassic.visibility = if (!showAv && classic && !showHolo) View.VISIBLE else View.GONE
-        centerLogo.visibility = if (showAv || showHolo) View.GONE else View.VISIBLE
-        // 26 नवंबर 2026 (मालिक): होलोग्राफ़िक महिला / पुरुष = ORB वाली जगह पर, ORB के डिब्बे जितना (आवाज़ के साथ चमक)
-        if (showHolo && centerHolo == null) {
-            centerHolo = CharacterOrbView(c).apply { level = homeLevel }
-            (centerGlow as? FrameLayout)?.addView(centerHolo, 1, FrameLayout.LayoutParams(-1, -1))
-        }
-        centerHolo?.let { h ->
-            if (holo != null) h.switchTo(holo)
-            h.visibility = if (showHolo) View.VISIBLE else View.GONE
-        }
+        centerOrb.visibility = if (!showAv && !classic) View.VISIBLE else View.GONE
+        centerClassic.visibility = if (!showAv && classic) View.VISIBLE else View.GONE
+        centerLogo.visibility = if (showAv) View.GONE else View.VISIBLE
     }
 
     /** लाइव टेक्स्ट बॉक्स: हालत + यूज़र की पूरी लाइव बात, फिर उसी डिब्बे में DK की लाइव बात */

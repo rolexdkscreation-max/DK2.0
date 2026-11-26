@@ -35,8 +35,6 @@ class DkaiVoice(private val s: DkaiScreen) {
     private lateinit var badgeTxt: TextView
     private lateinit var orb: FluidOrbView
     private lateinit var classicOrb: OrbView
-    /** 26 नवंबर 2026: होलोग्राफ़िक 3D कैरेक्टर (ORB की जगह) - सिर्फ़ चुनने पर बनता (WebView) */
-    private var holoOrb: CharacterOrbView? = null
     private lateinit var orbBox: FrameLayout
     private lateinit var transcript: TextView
     private lateinit var box: LinearLayout
@@ -406,18 +404,8 @@ class DkaiVoice(private val s: DkaiScreen) {
     fun orbStyle() {
         if (!::orb.isInitialized) return
         val classic = DkaiOrbs.get(c) == DkaiOrbs.CLASSIC
-        val holo = DkaiOrbs.holo(c)
-        classicOrb.visibility = if (classic && holo == null) View.VISIBLE else View.GONE
-        orb.visibility = if (classic || holo != null) View.INVISIBLE else View.VISIBLE
-        // 26 नवंबर 2026 (मालिक): होलोग्राफ़िक महिला / पुरुष = ORB की जगह, उसी डिब्बे में, आवाज़ के साथ चमक
-        if (holo != null && holoOrb == null) {
-            holoOrb = CharacterOrbView(c).apply { level = this@DkaiVoice.level }
-            orbBox.addView(holoOrb, FrameLayout.LayoutParams(-1, -1))
-        }
-        holoOrb?.let { h ->
-            if (holo != null) h.switchTo(holo)
-            h.visibility = if (holo != null) View.VISIBLE else View.GONE
-        }
+        classicOrb.visibility = if (classic) View.VISIBLE else View.GONE
+        orb.visibility = if (classic) View.INVISIBLE else View.VISIBLE
         if (::miniOrb.isInitialized) {
             miniClassic.visibility = if (classic) View.VISIBLE else View.GONE
             miniOrb.visibility = if (classic) View.INVISIBLE else View.VISIBLE
