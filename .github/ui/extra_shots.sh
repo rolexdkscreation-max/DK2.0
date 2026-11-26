@@ -63,7 +63,9 @@ PY
   adb shell "chown $U:$U $P; chmod 660 $P; restorecon $P" || true
 }
 
-xa_home() { revive; timeout 90 adb shell am start -S -W -n $PKG/.MainActivity >/dev/null; shot "$1" "${2:-9}"; }
+# emulator का अपना "Pixel Launcher isn't responding" डायलॉग screenshot न ढके (ऐप का crash नहीं)
+xa_noanr() { adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true; tap "Wait" >/dev/null 2>&1 || true; }
+xa_home() { revive; xa_noanr; timeout 90 adb shell am start -S -W -n $PKG/.MainActivity >/dev/null; sleep "${2:-9}"; xa_noanr; shot "$1" 1; }
 
 xa_push
 # 27 नवंबर 2026: 8 थीम x 3 कैरेक्टर (नींद वाली bear-hood, तितली वाली, रोशनी वाला spirit) - कोई धुंधला चौकोर / आयत नहीं
