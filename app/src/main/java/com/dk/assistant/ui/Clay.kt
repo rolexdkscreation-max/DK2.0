@@ -36,7 +36,7 @@ object Clay {
     // ------------------------------------------------------------------ बने-बनाए रूप
     /** उभरा कार्ड / पट्टी (कोने 20–28dp) */
     fun raised(c: Context, radiusDp: Float = 22f, depthDp: Float = 6f, selectable: Boolean = false) =
-        ClayDrawable(ClayDrawable.Style.RAISED, radiusPx = dp(c, radiusDp), depthPx = dp(c, depthDp), selectable = selectable)
+        ClayCard.pressedCard(dp(c, radiusDp), dp(c, depthDp), selectable)   // 27 नवंबर 2026: साझा दबा रूप
     /**
      * 23 नवंबर 2026 (मालिक): पूरे ऐप का साझा कार्ड - गोलाई [ClayCard.RADIUS_DP], नरम दो परछाइयाँ, दबाने पर हल्का धँसे.
      * हर कार्ड / बड़ा डिब्बा यही ले, ताकि सब एक जैसे दिखें.
@@ -45,8 +45,8 @@ object Clay {
         ClayDrawable(ClayDrawable.Style.RAISED, radiusPx = dp(c, ClayCard.RADIUS_DP), depthPx = dp(c, ClayCard.DEPTH_DP), selectable = selectable, card = true)
     /** उभरा छोटा चिप (कार्ड से ज़रा अलग रंग) */
     fun chip(c: Context, radiusDp: Float = ClayDrawable.FULL, depthDp: Float = 4f, selectable: Boolean = false) =
-        ClayDrawable(ClayDrawable.Style.RAISED, radiusPx = if (radiusDp >= ClayDrawable.FULL) ClayDrawable.FULL else dp(c, radiusDp),
-            depthPx = dp(c, depthDp), selectable = selectable, fill = { ClayTheme.t.chip })
+        ClayCard.pressedCard(if (radiusDp >= ClayDrawable.FULL) ClayDrawable.FULL else dp(c, radiusDp),
+            dp(c, depthDp), selectable, fill = { ClayTheme.t.chip })   // 27 नवंबर 2026: साझा दबा रूप
     /** धँसा खाना (text box, usage बार) */
     fun inset(c: Context, radiusDp: Float = 20f, depthDp: Float = 3f) =
         ClayDrawable(ClayDrawable.Style.INSET, radiusPx = if (radiusDp >= ClayDrawable.FULL) ClayDrawable.FULL else dp(c, radiusDp), depthPx = dp(c, depthDp))
@@ -128,7 +128,7 @@ object Clay {
                 if (lp.weight == 0f) { lp.width = 0; lp.weight = 1f; r.layoutParams = lp }
             }
         } else {
-            r.background = ClayDrawable(ClayDrawable.Style.RAISED, radiusPx = dp(c, 20f), depthPx = dp(c, 5f), selectable = true)
+            r.background = ClayCard.pressedCard(dp(c, 20f), dp(c, 5f), selectable = true)   // 27 नवंबर 2026: साझा दबा रूप
             val box = ClayCheckDrawable(dpi(c, 24f)).apply { setBounds(0, 0, dpi(c, 24f), dpi(c, 24f)) }
             r.setCompoundDrawablesRelative(null, null, box, null)
             r.compoundDrawablePadding = dpi(c, 12f)

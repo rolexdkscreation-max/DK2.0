@@ -43,8 +43,16 @@ class ClayDrawable(
      * साझा कार्ड वाले नरम मानों ([ClayCard.shadow], [ClayCard.DARK_ALPHA] / [ClayCard.LIGHT_ALPHA]) से - ज़्यादा धुंधली,
      * पास वाली गहरी छाया और सख़्त किनारे की रेखा नहीं. ऊपर-बाएँ की हल्की चमक वही.
      */
-    val soft: Boolean = false
+    val soft: Boolean = false,
+    /**
+     * 27 नवंबर 2026 (मालिक: "Select AI Model के ऊपर वाले दबे कार्ड जैसा ही सब जगह"): [ClayCard.pressedCard] वाला साझा दबा रूप -
+     * शेप / गोलाई / भराव वही, पर साझा कार्ड जैसी परछाइयाँ: बाहर की परछाईं, ऊपर-बाएँ की चमक और किनारे की रेखा नहीं,
+     * अंदर की परछाईं हमेशा पूरी; दबाने पर [ClayCard.PRESS_SINK] गुना और गहरी. कार्ड वाला scale नहीं (आकार / लेआउट वही).
+     */
+    val sunk: Boolean = false
 ) : Drawable() {
+    /** साझा कार्ड या साझा दबा रूप: दोनों की परछाइयाँ एक जैसी */
+    private val flat = card || sunk
     enum class Style { RAISED, INSET, ACCENT }
 
     companion object {
@@ -112,7 +120,7 @@ class ClayDrawable(
         anim?.cancel()
         if (reduced() || bounds.isEmpty) { depth = to; invalidateSelf(); return }
         anim = ValueAnimator.ofFloat(depth, to).apply {
-            duration = if (card && to > depth) RELEASE_MS else PRESS_MS; interpolator = DecelerateInterpolator()
+            duration = if (flat && to > depth) RELEASE_MS else PRESS_MS; interpolator = DecelerateInterpolator()
             addUpdateListener { depth = it.animatedValue as Float; invalidateSelf() }
             start()
         }
@@ -164,6 +172,8 @@ class ClayDrawable(
         val d = dist(bounds)
         val r = radius()
         val raised = style != Style.INSET
+        // 27 नवंबर 2026: साझा दबा रूप ([sunk]) की परछाइयाँ हूबहू साझा कार्ड जैसी
+        val card = flat
         // ---- बाहर की दो परछाइयाँ (उभरा) - दबने पर धीमे-धीमे गायब
         // 23 नवंबर 2026 (मालिक: "दबाने वाला रूप ही मूल रूप"): साझा कार्ड पर बाहर की परछाईं कभी नहीं - दबी हालत में भी नहीं थी
         val out = if (raised && !card) depth else 0f
@@ -530,4 +540,12 @@ object ClayCard {
 
     /** pure: [d] (px) depth पर परछाईं की (दूरी, धुंधलापन) */
     fun shadow(d: Float): Pair<Float, Float> = (d * OFFSET_K) to (d * BLUR_K)
+
+    /**
+     * 27 नवंबर 2026 (मालिक): पूरे ऐप का एक ही साझा "दबा" (pressed / inset) रूप - पट्टी, चिप, छोटा बटन, सेक्शन डिब्बा, radio पट्टी.
+     * गोलाई / गहराई / भराव हर जगह पहले जैसे ही (इसलिए आकार, padding, लेआउट नहीं बदलते); सिर्फ़ परछाईं साझा दबी.
+     * डार्क / लाइट और हर थीम के रंग [ClayTheme.t] से (shadowDark ऊपर-बाएँ, shadowLight नीचे-दाएँ, गहराई [ClayTheme.SINK]).
+     */
+    fun pressedCard(radiusPx: Float, depthPx: Float, selectable: Boolean = false, fill: (() -> Int)? = null) =
+        ClayDrawable(ClayDrawable.Style.RAISED, radiusPx = radiusPx, depthPx = depthPx, selectable = selectable, fill = fill, sunk = true)
 }
