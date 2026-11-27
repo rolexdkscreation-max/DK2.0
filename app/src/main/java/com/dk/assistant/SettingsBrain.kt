@@ -48,7 +48,7 @@ private fun SettingsActivity.planOneKey() {
 
 /** प्रीमियम वाले हिस्से (अलग keys / कोडिंग / DK कंप्यूटर) मुफ़्त-बेसिक में: साफ़ संदेश + लाइसेंस वाला पन्ना */
 internal fun SettingsActivity.planLockCard(what: String) {
-    card(what, "प्रीमियम लाइसेंस के साथ", startOpen = true) { box ->
+    card(what, "प्रीमियम लाइसेंस के साथ") { box ->
         hint(box, "$what प्रीमियम लाइसेंस (या मालिक) के साथ खुलता है। Settings → लाइसेंस की में की डालें — की न हो तो वहीं \"लाइसेंस की पाएँ\" दबाएँ।")
         row(box, button("लाइसेंस की खोलें") {
             startActivity(android.content.Intent(this, SettingsActivity::class.java).putExtra("section", "license"))
@@ -68,7 +68,7 @@ internal fun SettingsActivity.secBrainMenu() {
     if (!separate) planOneKey()
     val one = Prefs.oneKeyOn(this)
     // नवंबर 2026 (मालिक): "एक key डालेगा तो सारे काम" - कोडिंग, स्टोरी, DK कंप्यूटर, वेबसाइट भी इसी एक key से
-    card("एक key से सब (ऑल-राउंडर)", "सिर्फ़ एक Gemini key — DK लाइव में बात, चैट, सुनना-लिखना, Google खोज, फ़ोन के काम, फ़ोटो बनाना, कोडिंग एजेंट, स्टोरी मोड, DK कंप्यूटर और वेबसाइट — सारे काम इसी एक key से", startOpen = one) { box ->
+    card("एक key से सब (ऑल-राउंडर)", "सिर्फ़ एक Gemini key — DK लाइव में बात, चैट, सुनना-लिखना, Google खोज, फ़ोन के काम, फ़ोटो बनाना, कोडिंग एजेंट, स्टोरी मोड, DK कंप्यूटर और वेबसाइट — सारे काम इसी एक key से") { box ->
         if (!separate) hint(box, "आपके प्लान में एक ही key: यही Gemini key DK के सारे काम चलाती है। अलग-अलग keys वाले हिस्से प्रीमियम लाइसेंस में खुलते हैं।")
         if (separate) switch(box, "एक key से सब चलाओ", one).setOnCheckedChangeListener { _, on ->
             save(false)

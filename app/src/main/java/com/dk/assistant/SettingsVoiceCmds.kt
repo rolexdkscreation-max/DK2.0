@@ -22,7 +22,7 @@ internal fun SettingsActivity.secVoiceCmds() {
     val rows = HashMap<Cmd, TextView>()
     fun refresh() { for ((k, tv) in rows) tv.text = UiLang.s(VoiceCmds.status(this, k)) }
 
-    card("आवाज़ रिकॉर्ड करके सिखाएँ", "लॉक, अनलॉक, \"DK कहाँ हो\", कॉल उठाना — अपनी आवाज़ में, इंटरनेट हो या न हो", startOpen = true) { box ->
+    card("आवाज़ रिकॉर्ड करके सिखाएँ", "लॉक, अनलॉक, \"DK कहाँ हो\", कॉल उठाना — अपनी आवाज़ में, इंटरनेट हो या न हो") { box ->
         if (!Setup.accessibilityOn(this)) hint(box, "⚠ पहले Settings → Accessibility में DK चालू करें — उसके बिना ये कमांड नहीं चलेंगी।")
         hint(box, "हर कमांड की 30 सेकंड की एक रिकॉर्डिंग: जो मन करे वो बोलिए, जैसे मन करे वैसे — बस वही बात ${VoiceTape.TIMES} बार, हर बार के बाद 2 सेकंड रुककर। " +
             "DK वही याद रखेगा। रिकॉर्डिंग सेव रहती है और \"सुनें\" से दोबारा सुन सकते हैं। दूर से या धीरे बोलेंगे तब भी पहचान लेगा। " +

@@ -10,7 +10,7 @@ import com.dk.assistant.autoreply.AutoReply
  * अपना स्विच (शुरू में बंद). चालू = उस ऐप का नया मैसेज आते ही DK आपकी ओर से, आपके ही ढंग में, सिर्फ़ उसी बात का जवाब देता है.
  */
 internal fun SettingsActivity.secAutoReply() {
-    card("ऑटो रिप्लाई कैसे काम करता है", "मैसेज आए तो DK आपकी ओर से, आपके ही ढंग में, सिर्फ़ उसी बात का जवाब", startOpen = true) { box ->
+    card("ऑटो रिप्लाई कैसे काम करता है", "मैसेज आए तो DK आपकी ओर से, आपके ही ढंग में, सिर्फ़ उसी बात का जवाब") { box ->
         val access = DKNotifListener.enabled(this)
         label(box, if (access) "✓ DK को नोटिफ़िकेशन पढ़ने की इजाज़त है" else "✗ नोटिफ़िकेशन की इजाज़त नहीं — इसके बिना ऑटो रिप्लाई नहीं चलेगा")
         if (!access) row(box, button("इजाज़त दें") { DKNotifListener.openSettings(this) })
@@ -23,13 +23,13 @@ internal fun SettingsActivity.secAutoReply() {
             "• WhatsApp पर \"अपने-आप बात\" या चैटिंग मोड चालू हो तो WhatsApp वही सँभालता है (दो जवाब कभी नहीं)।")
     }
 
-    card("ऑटो रिप्लाई चालू / बंद", "एक मुख्य स्विच — बंद = किसी भी ऐप में अपने-आप जवाब नहीं", startOpen = true) { box ->
+    card("ऑटो रिप्लाई चालू / बंद", "एक मुख्य स्विच — बंद = किसी भी ऐप में अपने-आप जवाब नहीं") { box ->
         val sw = switch(box, "ऑटो रिप्लाई", AutoReply.on(this))
         sw.setOnCheckedChangeListener { _, on -> AutoReply.setOn(this, on) }
         hint(box, "मुख्य स्विच चालू करने के बाद नीचे जिस ऐप पर चाहिए, सिर्फ़ उसी का स्विच चालू करें।")
     }
 
-    card("किन ऐप पर ऑटो रिप्लाई", "फ़ोन में मिले मैसेज वाले ऐप — हर एक का अपना स्विच (शुरू में बंद)", startOpen = true) { box ->
+    card("किन ऐप पर ऑटो रिप्लाई", "फ़ोन में मिले मैसेज वाले ऐप — हर एक का अपना स्विच (शुरू में बंद)") { box ->
         val apps = AutoReply.apps(this)
         if (apps.isEmpty()) hint(box, "फ़ोन में कोई मैसेज वाला ऐप नहीं मिला (WhatsApp, Telegram, Messenger...). ऐप डालने के बाद यह पेज फिर खोलें।")
         apps.forEach { a ->

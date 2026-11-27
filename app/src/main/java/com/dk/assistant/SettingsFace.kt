@@ -19,7 +19,7 @@ import com.dk.assistant.plus.FeatureFlags
  * मॉडल (~10 MB) पहली बार इंटरनेट से (SHA-256 जाँच के साथ) - APK में नहीं. तस्वीर कभी सेव नहीं होती, सिर्फ़ अंक (encrypted).
  */
 internal fun SettingsActivity.secFace() {
-    card("चेहरा पहचान", "Boss का चेहरा सेट करें — DK और टच मोड आपको पहचानें", startOpen = true) { box ->
+    card("चेहरा पहचान", "Boss का चेहरा सेट करें — DK और टच मोड आपको पहचानें") { box ->
         val st = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (4 * dp).toInt(), 0, (4 * dp).toInt()) }
         box.addView(st)
         fun refreshFace() { st.text = UiLang.s(GuardFaceSetup.status(this).replace("मालिक", "Boss")) }

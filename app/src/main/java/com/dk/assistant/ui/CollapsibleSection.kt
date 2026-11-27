@@ -15,7 +15,8 @@ import com.dk.assistant.R
 /**
  * v3.69: खुलने-बंद होने वाला सेटिंग हिस्सा (collapsible) - पूरे DK ऐप में एक जैसा.
  *
- * बंद हालत में सिर्फ़ नाम और तीर (›); नाम पर टैप = अंदर की सारी सेटिंग हल्के एनिमेशन से खुलें, दोबारा टैप = बंद.
+ * 27 नवंबर 2026 (मालिक): तीर बाईं ओर - बंद = नीचे की ओर, खुलते ही घूमकर ऊपर की ओर (बंद होने पर फिर नीचे). पूरे ऐप में यही.
+ * बंद हालत में सिर्फ़ नाम और तीर; नाम पर टैप = अंदर की सारी सेटिंग हल्के एनिमेशन से खुलें, दोबारा टैप = बंद.
  * शुरू में बंद. अंदर का सारा हिस्सा पहले ही बन जाता है (बस छिपा रहता है) - इसलिए सेव/पुराना कोड वैसे ही चलता है.
  *
  * नया हिस्सा जोड़ना:
@@ -53,7 +54,7 @@ class CollapsibleSection private constructor(ctx: Context, title: String, sub: S
         arrow = TextView(ctx).apply {
             text = "›"; textSize = 22f; setTextColor(k.accent); gravity = Gravity.CENTER
             background = Clay.circle(ctx, 3f)
-            rotation = if (startOpen) 90f else 0f
+            rotation = arrowAngle(startOpen)
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
         header.addView(arrow, LinearLayout.LayoutParams((40 * dp).toInt(), (40 * dp).toInt()).apply { marginEnd = (14 * dp).toInt() })
@@ -91,7 +92,7 @@ class CollapsibleSection private constructor(ctx: Context, title: String, sub: S
         if (open == isOpen && anim == null) return
         isOpen = open
         anim?.cancel(); anim = null
-        arrow.animate().rotation(if (open) 90f else 0f).setDuration(DURATION).start()
+        arrow.animate().rotation(arrowAngle(open)).setDuration(DURATION).start()
         if (!animate || !view.isAttachedToWindow) {
             body.visibility = if (open) View.VISIBLE else View.GONE
             body.layoutParams = body.layoutParams.apply { height = ViewGroup.LayoutParams.WRAP_CONTENT }
@@ -129,6 +130,10 @@ class CollapsibleSection private constructor(ctx: Context, title: String, sub: S
 
     companion object {
         const val DURATION = 220L
+        /** "›" को घुमाकर: बंद = 90° (नीचे), खुला = -90° (ऊपर) */
+        const val ARROW_CLOSED = 90f
+        const val ARROW_OPEN = -90f
+        fun arrowAngle(open: Boolean) = if (open) ARROW_OPEN else ARROW_CLOSED
 
         /**
          * सबसे आसान तरीका: नया कॉलम parent में जोड़ो (ऊपर 12dp जगह के साथ), body में सेटिंग बनाओ.

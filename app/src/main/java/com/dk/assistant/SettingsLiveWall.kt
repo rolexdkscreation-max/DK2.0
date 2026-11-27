@@ -26,7 +26,7 @@ internal fun SettingsActivity.secLiveWall() {
     val items = LiveWallStore.items(this)
     var cur = items.firstOrNull { it.id == LiveWallStore.selectedId(this) } ?: items.firstOrNull()
 
-    card("लाइव वॉलपेपर • देखें और लगाएँ", "असली समय और आपकी जगह के हिसाब से सूरज, चाँद, तारे — होम + लॉक स्क्रीन", startOpen = true) { box ->
+    card("लाइव वॉलपेपर • देखें और लगाएँ", "असली समय और आपकी जगह के हिसाब से सूरज, चाँद, तारे — होम + लॉक स्क्रीन") { box ->
         val name = TextView(this).apply { textSize = 16f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (4 * dp).toInt(), 0, 0) }
         box.addView(name)
         val sub = TextView(this).apply { textSize = 12.5f; setTextColor(0x99FFFFFF.toInt()); setPadding((4 * dp).toInt(), (2 * dp).toInt(), 0, (8 * dp).toInt()) }

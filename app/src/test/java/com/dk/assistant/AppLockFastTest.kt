@@ -45,10 +45,14 @@ class AppLockFastTest {
         assertTrue(src("SettingsAppLock.kt").contains("autoLen = AppLockStore.pinLen(this)"))
     }
 
-    @Test fun padIsFuturisticHud() {
+    // 27 नवंबर 2026 (मालिक): HUD वाला पैड (षट्कोण, स्कैन, "ACCESS ..." लिखावट) जानबूझकर हटा - अब DK का Clay पैनल + उभरे गोल बटन
+    // (backup/dk-settings-collapse-pinpad-before-1127). गलत/सही और CLR/OK वाला काम वैसा ही.
+    @Test fun padIsClayLikeDk() {
         val v = src("AppLockViews.kt")
-        assertTrue(v.contains("private fun hexPath(") && v.contains("fun reject()") && v.contains("fun grant()"))
-        assertTrue(v.contains("\"ACCESS GRANTED\"") && v.contains("\"ACCESS DENIED\""))
+        assertTrue(v.contains("fun reject()") && v.contains("fun grant()"))
+        assertTrue(v.contains("background = com.dk.assistant.ui.Clay.card(context)"))
+        assertTrue(v.contains("com.dk.assistant.ui.Clay.circle(context, KEY_DEPTH_DP, accent = k == \"OK\")"))
+        assertFalse(v.contains("SCAN_S") || v.contains("private fun hexPath(") || v.contains("SECURE INPUT"))
         assertTrue(v.contains("if (autoLen > 0) \"CLR\" else \"OK\""))
     }
 

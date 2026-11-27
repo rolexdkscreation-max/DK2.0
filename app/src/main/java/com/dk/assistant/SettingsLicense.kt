@@ -35,7 +35,7 @@ internal const val OWNER_LINE = "Welcome Boss • सब कुछ चालू,
 
 internal fun SettingsActivity.secLicense() {
     if (!BackendConfig.ready()) {
-        card(LICENSE_CARD, "DK का सर्वर इस ऐप में नहीं जुड़ा", startOpen = true) { box ->
+        card(LICENSE_CARD, "DK का सर्वर इस ऐप में नहीं जुड़ा") { box ->
             hint(box, "यह ऐप बिना सर्वर के बना है (GitHub Secrets में BACKEND_URL / Firebase नहीं थे)। " +
                 "आपकी अपनी AI keys से सब पहले जैसा चलता है। सर्वर जुड़ा नया APK आने पर यहाँ लाइसेंस की डाल सकेंगे।")
             BackendConfig.whatsappLink()?.let { l -> row(box, button("लाइसेंस की पाएँ") { openWa(l) }) }
@@ -43,7 +43,7 @@ internal fun SettingsActivity.secLicense() {
         return
     }
     // 18 नवंबर 2026 (मालिक: "मालिक से लॉगिन किया, फिर भी 10 मिनट दिखा रहा है") - मालिक को सीमा वाली बात नहीं
-    card(LICENSE_CARD, if (BackendSession.owner(this)) OWNER_LINE else "मुफ़्त: रोज़ 10 मिनट बातचीत • बेसिक: खोज और रिसर्च • प्रीमियम: सब कुछ", startOpen = true) { box -> licenseBody(box) }
+    card(LICENSE_CARD, if (BackendSession.owner(this)) OWNER_LINE else "मुफ़्त: रोज़ 10 मिनट बातचीत • बेसिक: खोज और रिसर्च • प्रीमियम: सब कुछ") { box -> licenseBody(box) }
     card(LICENSE_LOGIN_CARD, if (BackendSession.google(this)) "✓ " + BackendSession.email(this) else "चाहें तो • नाम अपने-आप • बिना लॉगिन भी सब शर्तों के साथ चलता है") { box -> loginBody(box) }
     if (BackendSession.owner(this)) card(LICENSE_ADMIN_CARD, "नई की • सूची • बंद करें") { box -> adminBody(box) }
 }

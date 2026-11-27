@@ -72,7 +72,7 @@ internal fun SettingsActivity.secSt3() {
     val voiceViews = ArrayList<() -> Unit>()
 
     // ------------------------------------------------------------ 1. मुख्य मॉडल
-    card("1. मुख्य आवाज़-मॉडल (एक बार)", "करीब ${mbs(St3Store.neededSet(this).sumOf { it.bytes })} • सभी आवाज़ों के लिए एक ही", startOpen = true) { box ->
+    card("1. मुख्य आवाज़-मॉडल (एक बार)", "करीब ${mbs(St3Store.neededSet(this).sumOf { it.bytes })} • सभी आवाज़ों के लिए एक ही") { box ->
         hint(box, "स्रोत: Hugging Face - ${St3Config.REPO} (तय संस्करण ${St3Config.COMMIT.take(7)}) • License ${St3Config.LICENSE}. फ़ोन की ऐप-स्टोरेज में रहता है, कभी भी हटा सकते हैं. रुका / नेट गया = जहाँ रुका वहीं से आगे; पूरा होने पर SHA-256 से जाँच.")
         hint(box, "तेज़ मॉडल: उसी मॉडल का Android फ़ोन के लिए तेज़ बना रूप (${St3Config.FAST_REPO}, ${St3Config.FAST_COMMIT.take(7)}) - आवाज़ वही, बनना 2-4 गुना जल्दी. पुराना मॉडल फ़ोन में हो तो Wi-Fi पर यह अपने-आप आ जाता है; पुराना अपने-आप नहीं मिटता (\"हटाएँ\" से हटेगा).")
         val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; visibility = View.GONE }
@@ -121,7 +121,7 @@ internal fun SettingsActivity.secSt3() {
     }
 
     // ------------------------------------------------------------ 2. आवाज़ें F1-F5
-    card("2. आवाज़ें (महिला)", "हर आवाज़ छोटी (~300 KB) • डाउनलोड करके \"चुनें\"", startOpen = true) { box ->
+    card("2. आवाज़ें (महिला)", "हर आवाज़ छोटी (~300 KB) • डाउनलोड करके \"चुनें\"") { box ->
         for (v in St3Config.VOICES) {
             val a = v.asset
             label(box, "${v.name} (${v.id}) • ${mbs(a.bytes)}")
@@ -158,7 +158,7 @@ internal fun SettingsActivity.secSt3() {
     }
 
     // ------------------------------------------------------------ 3. रफ़्तार / कदम / टेस्ट
-    card("3. रफ़्तार, साफ़ी और टेस्ट", "रफ़्तार ${St3Config.SPEED_DEF} • कदम ${St3Config.STEPS_DEF} (डिफ़ॉल्ट)", startOpen = true) { box ->
+    card("3. रफ़्तार, साफ़ी और टेस्ट", "रफ़्तार ${St3Config.SPEED_DEF} • कदम ${St3Config.STEPS_DEF} (डिफ़ॉल्ट)") { box ->
         label(box, "बोलने की रफ़्तार")
         val spTxt = TextView(this).apply { textSize = 13f; setTextColor(0xB3FFFFFF.toInt()) }
         val spMax = Math.round((St3Config.SPEED_MAX - St3Config.SPEED_MIN) * 100)
