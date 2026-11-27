@@ -33,6 +33,7 @@ class FaceCam(
     private var shot: ImageCapture? = null
     val canSnap: Boolean get() = shot != null && !stopped
     private var provider: ProcessCameraProvider? = null
+    private var camera: androidx.camera.core.Camera? = null
     private var useCases: Array<androidx.camera.core.UseCase> = emptyArray()
     private val exec = Executors.newSingleThreadExecutor { r -> Thread(r, "dk-face-cam").apply { isDaemon = true } }
     @Volatile private var last = 0L
@@ -66,11 +67,11 @@ class FaceCam(
                 }
                 val ic = if (capture) ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).build() else null
                 if (ic != null) try {
-                    p.bindToLifecycle(act, sel, preview, an, ic); useCases = arrayOf(preview, an, ic); shot = ic
+                    camera = p.bindToLifecycle(act, sel, preview, an, ic); useCases = arrayOf(preview, an, ic); shot = ic
                     return@addListener
                 } catch (e: Exception) { DKLog.d("कैमरा: पूरी फ़ोटो वाला हिस्सा इस फ़ोन पर साथ नहीं चला (${e.message}) - पहचान वाले फ़्रेम से फ़ोटो"); p.unbindAll() }
                 useCases = arrayOf(preview, an)
-                p.bindToLifecycle(act, sel, preview, an)
+                camera = p.bindToLifecycle(act, sel, preview, an)
             } catch (e: Exception) { onFail(e.message ?: "कैमरा नहीं खुला") }
         }, ContextCompat.getMainExecutor(act))
     }
@@ -92,6 +93,23 @@ class FaceCam(
                 override fun onError(e: ImageCaptureException) { done(null) }
             })
         } catch (_: Throwable) { done(null) }
+    }
+
+    /**
+     * 27 नवंबर 2026 (धूप में रंग वाली लाइव जाँच): रंग के दौरान कैमरे का auto white-balance + auto exposure रोको - नहीं तो कैमरा
+     * स्क्रीन की लाल / नीली रोशनी को ख़ुद "ठीक" करके चेहरे से मिटा देता है ([FlashLive]). [on] = false = फिर से अपने-आप.
+     * किसी फ़ोन पर न चले = कुछ नहीं (जाँच पहले जैसी).
+     */
+    @androidx.annotation.OptIn(markerClass = [androidx.camera.camera2.interop.ExperimentalCamera2Interop::class])
+    fun lockLight(on: Boolean) {
+        val c = camera ?: return
+        try {
+            val opts = androidx.camera.camera2.interop.CaptureRequestOptions.Builder()
+                .setCaptureRequestOption(android.hardware.camera2.CaptureRequest.CONTROL_AWB_LOCK, on)
+                .setCaptureRequestOption(android.hardware.camera2.CaptureRequest.CONTROL_AE_LOCK, on)
+                .build()
+            androidx.camera.camera2.interop.Camera2CameraControl.from(c.cameraControl).setCaptureRequestOptions(opts)
+        } catch (e: Throwable) { Quiet.note(e) }
     }
 
     fun stop() {

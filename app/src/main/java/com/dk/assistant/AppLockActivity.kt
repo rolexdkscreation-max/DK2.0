@@ -272,6 +272,7 @@ class AppLockActivity : AppCompatActivity() {
         val go = {
             say("सीधे कैमरे में देखिए — लाइव चेहरा जाँच रहा हूँ")
             cam = FaceCam(this, pv, gapMs = FlashLive.CAM_GAP_MS) { b -> flashScr.sample(b); onFrame(b) }.also { it.start { why -> say("कैमरा नहीं खुला ($why) — दूसरा तरीका चुनें", HoloScanView.WARN) } }
+            flashScr.cam = cam
         }
         if (FaceAI.hasSpoof(this)) go()
         else {
@@ -287,7 +288,7 @@ class AppLockActivity : AppCompatActivity() {
     }
 
     private fun stopFace() {
-        flashScr.cancel()
+        flashScr.cancel(); flashScr.stopLux(); flashScr.cam = null
         try { cam?.stop() } catch (e: Exception) { Quiet.note(e) }
         cam = null; holo = null
     }
@@ -316,7 +317,7 @@ class AppLockActivity : AppCompatActivity() {
                 val s = e?.let { FaceAI.score(this, it) }
                 val other = e?.let { x -> FacePeople.all(this).maxOfOrNull { FaceMatch.cosineSimilarity(it.print, x) } }
                 val v = gate.feed(QuickFaceGate.Frame(now, dets.size, det?.let { it.x + it.w / 2f } ?: 0f, det?.let { it.y + it.h / 2f } ?: 0f,
-                    det?.w ?: 0f, yaw, s, other, real, FaceAI.hasSpoof(this)))
+                    det?.w ?: 0f, yaw, s, other, real, FaceAI.hasSpoof(this), lux = flashScr.lux()))
                 if (det == null) holo?.show(HoloScanView.Mode.SEARCH, emptyList())
                 else holo?.let { h ->
                     val tone = when (v.state) { QuickFaceGate.State.PASS -> HoloScanView.OK; QuickFaceGate.State.FAIL -> HoloScanView.BAD; else -> HoloScanView.SCAN }

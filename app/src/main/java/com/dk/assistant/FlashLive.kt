@@ -19,13 +19,33 @@ import kotlin.math.hypot
  *    कैमरे की देर (~0-[LAG_MAX] ms) के लिए हर देर पर जाँच, सबसे अच्छी चुनी.
  *  - बीच में चेहरा गायब / कूदा / आकार बदला ([track]) = फ़ेल.
  * बहुत तेज़ धूप में स्क्रीन की रोशनी चेहरे पर नहीं दिखती - तब पास नहीं (PIN / फ़ोन लॉक से खोलें). Pure - JVM test.
+ *
+ * 27 नवंबर 2026 (मालिक: "आउटडोर में धूप रहते रंग वाली जाँच नहीं होती - एक्यूरेट करो, सिर्फ़ असली इंसान से खुले, फ़ोटो / वीडियो से नहीं"):
+ *  - जड़: धूप में चेहरे पर रंग का असर बहुत छोटा (~0.5-1%) और कैमरे के शोर में एक-दो हिस्से ऊपर-नीचे हो जाते हैं - तो
+ *    "हर लाल हर नीले से ऊपर" वाली सख़्त शर्त असली चेहरे पर भी टूटती थी. ऊपर से कैमरा ख़ुद रंग / चमक बराबर कर देता था (AWB / AE).
+ *  - अब: [SLOTS] 6 → 10 हिस्से (ज़्यादा सबूत) और दूसरा रास्ता - आँकड़ों वाली जाँच ([tStat], Welch / pooled t): लाल और नीले
+ *    हिस्सों का फ़र्क़ शोर से [T_MIN] गुना बड़ा हो, चेहरे पर भी और "चेहरा - आस-पास" पर भी, और कम से कम [WEAK_DIFF] / [WEAK_FACE].
+ *    वीडियो / फ़ोटो में "चेहरा - आस-पास" का असली फ़र्क़ शून्य - शोर से 6 गुना होना लगभग नामुमकिन (simulation: 1500 में 0).
+ *  - रंग के दौरान कैमरे का AWB / AE ताला ([FaceCam.lockLight]) - रंग का असर कैमरा मिटा न दे.
+ *  - फिर भी नतीजा न निकले और सच में धूप हो ([QuickFaceGate]) = धूप वाली random सिर-घुमाना जाँच ([SunTurns]), फ़ेल नहीं.
  */
 class FlashLive(val seq: IntArray = randomSeq(), private val slotMs: Long = SLOT_MS) {
-    data class Result(val live: Boolean, val diff: Float, val face: Float, val lag: Long, val inOrder: Boolean, val samples: Int) {
-        fun log() = "flash: live=$live diff=${"%.3f".format(diff)} face=${"%.3f".format(face)} lag=$lag क्रम=$inOrder नमूने=$samples"
+    /**
+     * [tDiff] / [tFace] = लाल-नीले फ़र्क़ शोर से कितने गुना (आँकड़ों वाली जाँच). [luma] = रंग के दौरान चेहरे की औसत चमक (0-1, NaN = पता नहीं).
+     * उल्टा क्रम (पिछली बार का रिकॉर्ड) = [tDiff] बहुत नीचे (ऋण).
+     */
+    data class Result(val live: Boolean, val diff: Float, val face: Float, val lag: Long, val inOrder: Boolean, val samples: Int,
+                      val tDiff: Float = 0f, val tFace: Float = 0f, val luma: Float = Float.NaN, val worstT: Float = 0f) {
+        /**
+         * रंग का साफ़ जवाब है पर इस बार के क्रम से उल्टा (किसी देर पर t ≤ -[T_MIN], और किसी पर भी सही-दिशा में पक्का नहीं) =
+         * वीडियो में पिछली बार की चमक. धूप में तो रंग दिखता ही नहीं - तब धूप वाली दूसरी जाँच भी नहीं.
+         */
+        val against get() = worstT <= -T_MIN && maxOf(tDiff, tFace) < T_MIN
+        fun log() = "flash: live=$live diff=${"%.3f".format(diff)} face=${"%.3f".format(face)} t=${"%.1f".format(tDiff)}/${"%.1f".format(tFace)} " +
+            "lag=$lag क्रम=$inOrder नमूने=$samples चमक=${if (luma.isNaN()) "-" else "%.2f".format(luma)}"
     }
 
-    private data class S(val t: Long, val face: Float, val ring: Float)
+    private data class S(val t: Long, val face: Float, val ring: Float, val luma: Float = Float.NaN)
     private val samples = ArrayList<S>()
     @Volatile var startAt = 0L
         private set
@@ -52,9 +72,9 @@ class FlashLive(val seq: IntArray = randomSeq(), private val slotMs: Long = SLOT
     /**
      * हर कैमरा फ़्रेम: चेहरे के बीच का और उसके आस-पास के घेरे का रंग-नाप ([chroma]).
      */
-    fun sample(t: Long, face: Float, ring: Float) {
+    fun sample(t: Long, face: Float, ring: Float, luma: Float = Float.NaN) {
         if (startAt == 0L || !face.isFinite() || !ring.isFinite()) return
-        synchronized(samples) { samples.add(S(t, face, ring)) }
+        synchronized(samples) { samples.add(S(t, face, ring, luma)) }
     }
 
     /** वही लगातार चेहरा? null = नहीं दिखा. false = टूटा (फ़ेल) */
@@ -78,13 +98,15 @@ class FlashLive(val seq: IntArray = randomSeq(), private val slotMs: Long = SLOT
     fun result(): Result {
         val all = synchronized(samples) { samples.toList() }
         var best: Result? = null
+        var worst = 0f
         var lag = 0L
         while (lag <= LAG_MAX) {
             val r = at(all, lag)
             if (r != null && (best == null || score(r) > score(best))) best = r
+            if (r != null) worst = minOf(worst, r.tDiff, r.tFace)
             lag += LAG_STEP
         }
-        return best ?: Result(false, 0f, 0f, 0L, false, all.size)
+        return best?.copy(worstT = worst) ?: Result(false, 0f, 0f, 0L, false, all.size)
     }
 
     private fun score(r: Result) = (if (r.live) 10f else 0f) + (if (r.inOrder) 1f else 0f) + r.diff
@@ -104,13 +126,19 @@ class FlashLive(val seq: IntArray = randomSeq(), private val slotMs: Long = SLOT
         val diff = red.map { diffSlot[it] }.average().toFloat() - blue.map { diffSlot[it] }.average().toFloat()
         val face = red.map { faceSlot[it] }.average().toFloat() - blue.map { faceSlot[it] }.average().toFloat()
         val inOrder = red.minOf { diffSlot[it] } > blue.maxOf { diffSlot[it] } && red.minOf { faceSlot[it] } > blue.maxOf { faceSlot[it] }
-        val live = inOrder && diff >= MIN_DIFF && face >= MIN_FACE
-        return Result(live, diff, face, lag, inOrder, red.size + blue.size)
+        val tD = tStat(red.map { diffSlot[it] }, blue.map { diffSlot[it] })
+        val tF = tStat(red.map { faceSlot[it] }, blue.map { faceSlot[it] })
+        // पुराना सख़्त रास्ता (घर के अंदर - बड़ा, साफ़ असर) या आँकड़ों वाला (धूप / कम असर पर भी पक्का, शोर से बहुत बड़ा)
+        val strict = inOrder && diff >= MIN_DIFF && face >= MIN_FACE
+        val stat = tD >= T_MIN && tF >= T_MIN && diff >= WEAK_DIFF && face >= WEAK_FACE
+        val lumas = all.mapNotNull { s -> s.luma.takeIf { it.isFinite() } }
+        return Result(strict || stat, diff, face, lag, inOrder, red.size + blue.size, tD, tF, if (lumas.isEmpty()) Float.NaN else lumas.average().toFloat())
     }
 
     companion object {
-        const val SLOTS = 6
-        const val SLOT_MS = 240L
+        /** 27 नवंबर 2026: 6 → 10 (धूप में छोटे असर के लिए ज़्यादा सबूत), हर रंग 240 → 200 ms - कुल ~2 s */
+        const val SLOTS = 10
+        const val SLOT_MS = 200L
         /** रंग बदलने के बाद इतना छोड़ो (स्क्रीन + कैमरा के बीच का धुंधला पल) */
         const val SETTLE_MS = 60L
         const val LAG_MAX = 330L
@@ -121,6 +149,11 @@ class FlashLive(val seq: IntArray = randomSeq(), private val slotMs: Long = SLOT
         const val MIN_DIFF = 0.015f
         /** चेहरे पर ख़ुद कम से कम इतना फ़र्क़ (स्क्रीन की रोशनी सच में पड़ी) */
         const val MIN_FACE = 0.02f
+        /** आँकड़ों वाला रास्ता: लाल-नीला फ़र्क़ शोर से कम से कम इतने गुना (t). शोर अकेले से ~1/5000 */
+        const val T_MIN = 6f
+        /** आँकड़ों वाला रास्ता: फिर भी कम से कम इतना असली फ़र्क़ ("चेहरा - आस-पास" और चेहरे पर) */
+        const val WEAK_DIFF = 0.005f
+        const val WEAK_FACE = 0.006f
         const val RED = 0xFFFF0000.toInt()
         const val BLUE = 0xFF0000FF.toInt()
         /** रंग इतनी तेज़ी से (कैमरे के फ़्रेम) */
@@ -137,12 +170,25 @@ class FlashLive(val seq: IntArray = randomSeq(), private val slotMs: Long = SLOT
             }
         }
 
+        /**
+         * लाल वाले और नीले वाले हिस्सों का फ़र्क़ शोर से कितने गुना (pooled two-sample t). कम हिस्से = 0.
+         * शोर का नीचे का हद [NOISE_FLOOR] (बिल्कुल सपाट नाप पर अनंत न हो).
+         */
+        fun tStat(red: List<Float>, blue: List<Float>): Float {
+            if (red.size < 2 || blue.size < 2) return 0f
+            val mr = red.average(); val mb = blue.average()
+            val ss = red.sumOf { (it - mr) * (it - mr) } + blue.sumOf { (it - mb) * (it - mb) }
+            val sp = kotlin.math.sqrt(ss / (red.size + blue.size - 2)).coerceAtLeast(NOISE_FLOOR.toDouble())
+            return ((mr - mb) / (sp * kotlin.math.sqrt(1.0 / red.size + 1.0 / blue.size))).toFloat()
+        }
+        const val NOISE_FLOOR = 0.0005f
+
         /** (R - B) / (R + G + B) - लाल रोशनी पर ऊपर, नीली पर नीचे. 0 = नाप नहीं */
         fun chroma(r: Long, g: Long, b: Long): Float { val s = r + g + b; return if (s <= 0L) 0f else (r - b).toFloat() / s }
 
         /**
          * ARGB pixels में से: चेहरे के बीच का हिस्सा (डिब्बे का बीच [INNER]) और आस-पास का घेरा ([RING_IN]..[RING_OUT] गुना डिब्बा).
-         * @return [face, ring] chroma, या null (बहुत कम pixel)
+         * @return [face, ring] chroma + [2] चेहरे की चमक (0-1), या null (बहुत कम pixel)
          */
         fun measure(px: IntArray, w: Int, h: Int, x: Float, y: Float, bw: Float, bh: Float, step: Int = 4): FloatArray? {
             if (w <= 0 || h <= 0 || bw <= 0f || bh <= 0f) return null
@@ -167,7 +213,7 @@ class FlashLive(val seq: IntArray = randomSeq(), private val slotMs: Long = SLOT
                 yy += step
             }
             if (fn < MIN_PX || rn < MIN_PX) return null
-            return floatArrayOf(chroma(fr, fg, fb), chroma(rr, rg, rb))
+            return floatArrayOf(chroma(fr, fg, fb), chroma(rr, rg, rb), (fr + fg + fb).toFloat() / (fn * 3f * 255f))
         }
 
         const val INNER = 0.5f
