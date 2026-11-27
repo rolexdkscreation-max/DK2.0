@@ -1,7 +1,6 @@
 package com.dk.assistant.backup
 
 import android.accounts.Account
-import android.graphics.Typeface
 import android.os.Bundle
 import android.text.InputType
 import android.view.View
@@ -75,8 +74,7 @@ class BackupActivity : AppCompatActivity() {
 
     private fun build() {
         container.removeAllViews()
-        card { box ->
-            title(box, "DK की याददाश्त का बैकअप")
+        card("DK की याददाश्त का बैकअप") { box ->
             text(box, "अपना Google ईमेल डालें - DK की सारी बातचीत और याद रखी बातें उसी खाते के Google Drive में सुरक्षित रहेंगी (WhatsApp जैसा).\n" +
                 "ऐप हटाकर दोबारा डालें तो यही ईमेल डालकर \"रिस्टोर करो\" दबाएँ - सारी बातें वापस आ जाएँगी.")
             hint(box, "सिर्फ़ याददाश्त जाती है - API keys, सेटिंग, फ़ोटो या कुछ और नहीं. Drive में यह छिपे फ़ोल्डर में रहता है; DK आपकी दूसरी Drive फ़ाइलें नहीं देखता.")
@@ -100,8 +98,7 @@ class BackupActivity : AppCompatActivity() {
             box.addView(lastText)
             showLast()
         }
-        card { box ->
-            title(box, "ध्यान दें")
+        card("ध्यान दें") { box ->
             text(box, "• ईमेल वही हो जो इस फ़ोन में Google खाते के रूप में जुड़ा है (फ़ोन Settings → Accounts).\n" +
                 "• पहली बार Google पूछेगा \"DK को Drive में अपना डेटा रखने दें?\" - Allow दबाएँ.\n" +
                 "• रिस्टोर = जोड़ना: फ़ोन में जो बातें हैं वे नहीं मिटतीं, बैकअप की बाकी बातें जुड़ जाती हैं.\n" +
@@ -209,18 +206,10 @@ class BackupActivity : AppCompatActivity() {
     private fun ui(f: () -> Unit) = runOnUiThread { if (!isFinishing && !isDestroyed) f() }
 
     // ------------------------------------------------------------------ छोटे हिस्से (कनेक्टर स्क्रीन जैसे)
-    private fun card(body: (LinearLayout) -> Unit) {
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setBackgroundResource(R.drawable.glass_card)
-            val p = (16 * dp).toInt(); setPadding(p, p, p, p)
-        }
-        body(box)
-        container.addView(box, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = (12 * dp).toInt() })
+    // 27 नवंबर 2026 (मालिक: हर सेटिंग स्क्रीन के हिस्से शुरू में बंद, टैप पर खुलें): साझा ui/CollapsibleSection
+    private fun card(title: String, body: (LinearLayout) -> Unit) {
+        com.dk.assistant.ui.CollapsibleSection.add(this, container, UiLang.s(title), body = body)
     }
-
-    private fun title(box: LinearLayout, t: String) = box.addView(TextView(this).apply {
-        text = UiLang.s(t); textSize = 16f; setTextColor(0xFFFFFFFF.toInt()); setTypeface(typeface, Typeface.BOLD)
-    })
 
     private fun text(box: LinearLayout, t: String) = box.addView(TextView(this).apply {
         text = UiLang.s(t); textSize = 13f; setTextColor(0xE6FFFFFF.toInt()); setPadding((4 * dp).toInt(), (8 * dp).toInt(), 0, 0); setLineSpacing(0f, 1.15f)

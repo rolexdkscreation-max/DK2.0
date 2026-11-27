@@ -263,11 +263,8 @@ class SettingsActivity : AppCompatActivity() {
             } else box.addView(TextView(this).apply { text = "›"; textSize = 28f; setTextColor(com.dk.assistant.ui.ClayTheme.t.gray) })
             // 14 नवंबर 2026 (मालिक): काँच (ग्लासी) हर जगह से हटा - इसलिए "दिखावट" पर काँच वाला slider भी नहीं
             // 14 नवंबर 2026 (मालिक): डार्क / लाइट मोड सेटिंग खोलते ही दिखे (अंदर जाए बिना)
-            if (id == "ui" && searchHit == null) txt.addView(SwitchCompat(this).apply {
-                text = "लाइट मोड (बंद = डार्क)"; textSize = 13f; setTextColor(com.dk.assistant.ui.ClayTheme.t.sub)
-                isChecked = com.dk.assistant.dkai.DkaiTheme.light
-                setOnCheckedChangeListener { _, on -> com.dk.assistant.dkai.DkaiTheme.setLight(this@SettingsActivity, on); save(false); recreate() }
-            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (44 * dp).toInt()))
+            // 27 नवंबर 2026: दिखावट के अंदर वाला टॉगल भी यही ([lightModeSwitch]) - एक ही रूप, एक ही state
+            if (id == "ui" && searchHit == null) txt.addView(lightModeSwitch { on -> com.dk.assistant.dkai.DkaiTheme.setLight(this@SettingsActivity, on); save(false); recreate() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (44 * dp).toInt()))
             val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             lp.topMargin = (12 * dp).toInt()
             container.addView(box, lp)

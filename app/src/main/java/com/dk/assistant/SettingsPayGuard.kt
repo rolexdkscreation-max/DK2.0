@@ -12,7 +12,7 @@ import kotlinx.coroutines.withContext
  * फ़ोन के सारे पेमेंट ऐप अपने-आप दिखते हैं (हर एक का अलग स्विच). [PayGuard]
  */
 internal fun SettingsActivity.secPayGuard() {
-    card("पेमेंट ऐप पर अपने-आप बंद / चालू", "पेमेंट ऐप खुलते ही DK का फ़ोन कंट्रोल बंद, बाहर आते ही चालू", startOpen = true) { box ->
+    card("पेमेंट ऐप पर अपने-आप बंद / चालू", "पेमेंट ऐप खुलते ही DK का फ़ोन कंट्रोल बंद, बाहर आते ही चालू") { box ->
         val master = switch(box, "चालू", PayGuard.on(this))
         master.setOnCheckedChangeListener { _, on -> PayGuard.setOn(this, on) }
 

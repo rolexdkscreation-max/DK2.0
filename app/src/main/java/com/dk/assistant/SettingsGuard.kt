@@ -27,7 +27,7 @@ internal fun SettingsActivity.secGuard() {
         quiet = true; swOn.isChecked = Guard.active(); quiet = false
     }
 
-    card("टच मोड", "कोई और फ़ोन छुए / उठाए तो सायरन + चेतावनी", startOpen = true) { box ->
+    card("टच मोड", "कोई और फ़ोन छुए / उठाए तो सायरन + चेतावनी") { box ->
         if (!Setup.accessibilityOn(this)) hint(box, "⚠ पहले Settings → Accessibility में DK चालू करें — उसके बिना टच मोड नहीं चलेगा।")
         swOn = switch(box, "टच मोड चालू", Guard.active())
         status = TextView(this).apply {
@@ -52,7 +52,7 @@ internal fun SettingsActivity.secGuard() {
 
     // 22 नवंबर 2026 (मालिक): दो टॉगल - छूने / उठाने पर सायरन (पहले जैसा, बाय डिफ़ॉल्ट चालू) और
     // हमेशा वाला "गलत PIN = सायरन" (बाय डिफ़ॉल्ट बंद) - फ़ोन जेब में, कोई चुराकर लॉक खोलने की कोशिश करे तो तुरंत सायरन + लोकेशन
-    card("सायरन कब बजे", "छूने / उठाने पर • लॉक स्क्रीन पर गलत PIN पर (हमेशा)", startOpen = true) { box ->
+    card("सायरन कब बजे", "छूने / उठाने पर • लॉक स्क्रीन पर गलत PIN पर (हमेशा)") { box ->
         switch(box, "छूने / उठाने / खिसकाने पर सायरन (टच मोड चालू हो तब)", Guard.motionOn(this))
             .setOnCheckedChangeListener { _, v ->
                 Prefs.edit(this) { putBoolean(Guard.P_MOTION, v) }
@@ -80,7 +80,7 @@ internal fun SettingsActivity.secGuard() {
 
     // नवंबर 2026 (मालिक): पहले चेहरा सेट करने की जगह ही नहीं थी (29 अक्टूबर को "चेहरा पहचान" Settings से हटी) -
     // इसलिए चेतावनी स्क्रीन मालिक को पहचान नहीं पाती थी और सायरन बंद नहीं होता था. अब यहीं, सिर्फ़ टच मोड के लिए.
-    card("मालिक का चेहरा", "पहली बार एक बार सेट करें — फिर अलार्म बजे और कैमरा आपको देखे तो सायरन अपने-आप बंद", startOpen = true) { box ->
+    card("मालिक का चेहरा", "पहली बार एक बार सेट करें — फिर अलार्म बजे और कैमरा आपको देखे तो सायरन अपने-आप बंद") { box ->
         val st = TextView(this).apply { textSize = 14f; setTextColor(com.dk.assistant.ui.ClayTheme.t.text); setPadding((4 * dp).toInt(), (4 * dp).toInt(), 0, (4 * dp).toInt()) }
         box.addView(st)
         fun refreshFace() { st.text = UiLang.s(GuardFaceSetup.status(this)) }

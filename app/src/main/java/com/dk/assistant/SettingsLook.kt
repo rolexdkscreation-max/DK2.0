@@ -39,18 +39,13 @@ internal fun SettingsActivity.secUi() {
     }
     // 14 नवंबर 2026 (मालिक: "सेटिंग में डार्क / लाइट थीम का मोड नहीं दिख रहा"): जड़ - यह बदलाव सिर्फ़ ⚙ लंबा दबाने वाली
     // सूची में छिपा था. अब यहाँ सबसे ऊपर - DKAI होम, मेनू, सेटिंग और DK Computer चुने रंग में
-    card("डार्क / लाइट मोड", "DKAI होम, मेनू, सेटिंग और DK Computer का रंग", startOpen = true) { box ->
-        val g = radios(box, SettingsThemeMode.ITEMS, SettingsThemeMode.current(com.dk.assistant.dkai.DkaiTheme.light), 6050)
-        g.setOnCheckedChangeListener { _, id ->
-            val light = SettingsThemeMode.isLight(SettingsThemeMode.ITEMS.getOrNull(id - 6050)?.first ?: return@setOnCheckedChangeListener)
-            if (light == com.dk.assistant.dkai.DkaiTheme.light) return@setOnCheckedChangeListener
-            com.dk.assistant.dkai.DkaiTheme.setLight(this, light)
-            toast(if (light) "लाइट मोड चालू" else "डार्क मोड चालू")
-            save(false); recreate()
-        }
+    // 27 नवंबर 2026 (मालिक): दो लिखे बटन (डार्क / लाइट) की जगह एक असली टॉगल - Profile वाले "लाइट मोड (बंद = डार्क)" जैसा ही,
+    // उसी state ([com.dk.assistant.dkai.DkaiTheme.light]) से: एक बदले तो दूसरा भी (दोनों recreate पर वही पढ़ते हैं)
+    card("डार्क / लाइट मोड", "DKAI होम, मेनू, सेटिंग और DK Computer का रंग") { box ->
+        box.addView(lightModeSwitch { on -> com.dk.assistant.dkai.DkaiTheme.setLight(this, on); save(false); recreate() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (44 * dp).toInt()))
         hint(box, "बदलते ही यह स्क्रीन नए रंग में खुलती है; DKAI होम लौटते ही नए रंग में दिखेगा।")
     }
-    card("DKAI का orb", "नए DKAI होम में आवाज़ वाला orb — 7 नए या पुराना DK orb", startOpen = true) { box ->
+    card("DKAI का orb", "नए DKAI होम में आवाज़ वाला orb — 7 नए या पुराना DK orb") { box ->
         val orbs = com.dk.assistant.dkai.DkaiOrbs.ORBS
         val g = radios(box, orbs, com.dk.assistant.dkai.DkaiOrbs.get(this), 6600)
         g.setOnCheckedChangeListener { _, id -> orbs.getOrNull(id - 6600)?.let { com.dk.assistant.dkai.DkaiOrbs.set(this, it.first) } }
@@ -58,15 +53,15 @@ internal fun SettingsActivity.secUi() {
     }
     // 23 नवंबर 2026 (मालिक): "होम कैरेक्टर" - कोलाज के सारे आर्टवर्क छोटे प्रीव्यू के साथ (+ ऊपर वाला ORB). चुनाव सेव रहता है
     // (ऐप बंद होने के बाद भी). पहले वाला अवतार हटा; नए आर्टवर्क ऐप के अंदर हैं (डाउनलोड नहीं).
-    card("होम कैरेक्टर", "होम के बीच में कौन दिखे — टैप करके चुनें", startOpen = true) { box ->
+    card("होम कैरेक्टर", "होम के बीच में कौन दिखे — टैप करके चुनें") { box ->
         homeCharacterGrid(box)
         hint(box, "डिफ़ॉल्ट: DK वेव ऑर्ब। \"ORB\" = ऊपर \"DKAI का orb\" में चुना हुआ चलता orb।")
     }
     // 23 नवंबर 2026 (मालिक): ORB / कैरेक्टर छोटा-बड़ा + ORB के अपने रंग (एक रंग, या 2 से 5 रंग मिलाकर)
-    card("ORB का साइज़ और रंग", "ORB / कैरेक्टर छोटा-बड़ा करें, ORB को अपने रंग दें", startOpen = true) { box ->
+    card("ORB का साइज़ और रंग", "ORB / कैरेक्टर छोटा-बड़ा करें, ORB को अपने रंग दें") { box ->
         orbLookCard(box)
     }
-    card("झलक", "बदलाव यहीं तुरंत दिखता है", startOpen = true) { box ->
+    card("झलक", "बदलाव यहीं तुरंत दिखता है") { box ->
         box.addView(OrbView(this).apply { previewStyle = Shapes.NEON; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (170 * dp).toInt()))
         row(box,
@@ -95,7 +90,7 @@ internal fun SettingsActivity.secUi() {
         box.addView(sb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (48 * dp).toInt()))
     }
     // 14 नवंबर 2026 (मालिक: "ग्लासी इफेक्ट वाला सब हटा दो, सभी जगह से"): काँच और चमक वाला कार्ड हटाया - हर स्क्रीन अब होम जैसी सपाट (PlainLook)
-    card("एनिमेशन", "ओर्ब के छल्ले, पृष्ठभूमि की रोशनी और मेनू का खुलना", startOpen = true) { box ->
+    card("एनिमेशन", "ओर्ब के छल्ले, पृष्ठभूमि की रोशनी और मेनू का खुलना") { box ->
         val g = radios(box, T.MOTIONS, T.look.motion, 6300)
         g.setOnCheckedChangeListener { _, id ->
             val v = T.MOTIONS.getOrNull(id - 6300)?.first ?: return@setOnCheckedChangeListener
@@ -104,7 +99,7 @@ internal fun SettingsActivity.secUi() {
         if (T.systemNoAnim) hint(box, "फ़ोन की सेटिंग में एनिमेशन बंद हैं — इसलिए DK अभी अपने-आप कम एनिमेशन में है।")
     }
     // नवंबर 2026 (मालिक): एक ही तैरता ORB (नीचे बीच में) - दिखे/छिपे + आकार. ORB पर दो उंगलियों से pinch भी
-    card("तैरता ORB", "DK सुने या बोले तभी दिखे, चुप = छिप जाए — उंगली से कहीं भी खिसकाएँ", startOpen = true) { box ->
+    card("तैरता ORB", "DK सुने या बोले तभी दिखे, चुप = छिप जाए — उंगली से कहीं भी खिसकाएँ") { box ->
         val on = SwitchCompat(this).apply {
             text = UiLang.s("ORB दिखाओ"); isChecked = Prefs.floatOrbOn(this@secUi); textSize = 14f
             setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (10 * dp).toInt(), 0, (6 * dp).toInt())
@@ -141,7 +136,7 @@ internal fun SettingsActivity.secUi() {
             (if (DKAccessibilityService.instance == null) " (अभी DK की Accessibility सेवा बंद है — ORB तभी दिखेगा जब वह चालू हो।)" else ""))
     }
     // v4.x: जवाब आने से पहले बुलबुले में चलने वाला "लिख रही है" एनीमेशन
-    card("टाइपिंग एनीमेशन", "जवाब आने से पहले चैट के बुलबुले में क्या चले — जो पसंद हो चुनें", startOpen = true) { box ->
+    card("टाइपिंग एनीमेशन", "जवाब आने से पहले चैट के बुलबुले में क्या चले — जो पसंद हो चुनें") { box ->
         val cur = Prefs.typingStyle(this)
         val prev = DKWorkingIndicator(this).apply { bare = true; state = WorkState.THINKING; typingPreview = cur }
         box.addView(prev, LinearLayout.LayoutParams((56 * dp).toInt(), (56 * dp).toInt()).apply { gravity = Gravity.CENTER_HORIZONTAL })
@@ -165,7 +160,7 @@ internal fun SettingsActivity.secUi() {
         }
         hint(box, "हर जगह एक जैसा चाहिए तो ऊपर वाली सूची में भी \"छोटा कंप्यूटर\" चुन लें — तब चैट में भी वही दिखेगा।")
     }
-    card("दिखावट पहले जैसी करें", "सिर्फ़ रंग-रूप शुरुआती जैसा — बातचीत, यादें, key और आवाज़ की सेटिंग नहीं मिटतीं", startOpen = true) { box ->
+    card("दिखावट पहले जैसी करें", "सिर्फ़ रंग-रूप शुरुआती जैसा — बातचीत, यादें, key और आवाज़ की सेटिंग नहीं मिटतीं") { box ->
         row(box, button("दिखावट रीसेट करें") {
             UiDialog(this, Glass.DIALOG)
                 .setTitle("दिखावट पहले जैसी करें?")
@@ -220,9 +215,21 @@ internal fun SettingsActivity.secOrb() {
 // 15 नवंबर 2026 (मालिक: "Wallpaper section पूरी तरह हटाओ"): वॉलपेपर का कार्ड, चित्र, गैलरी-picker और download - सब हटा.
 // पीछे सिर्फ़ थीम का सादा रंग. पुराना सेव "ui_wallpaper" मान चुपचाप अनदेखा (NeonTheme.LEGACY_WALL).
 
+/**
+ * 27 नवंबर 2026: Profile और दिखावट - दोनों जगह का एक ही "लाइट मोड" टॉगल (वही रूप, वही state). चालू = लाइट, बंद = डार्क.
+ * बदलते ही पूरे ऐप में ([com.dk.assistant.dkai.DkaiTheme.setLight] - सेव भी), फिर यह स्क्रीन नए रंग में.
+ */
+internal fun SettingsActivity.lightModeSwitch(change: (Boolean) -> Unit): SwitchCompat = SwitchCompat(this).apply {
+    text = SettingsThemeMode.SWITCH; textSize = 13f; setTextColor(com.dk.assistant.ui.ClayTheme.t.sub)
+    isChecked = com.dk.assistant.dkai.DkaiTheme.light
+    setOnCheckedChangeListener { _, on -> if (on != com.dk.assistant.dkai.DkaiTheme.light) change(on) }
+}
+
 /** 14 नवंबर 2026: सेटिंग का डार्क / लाइट मोड (pure, JUnit) */
 object SettingsThemeMode {
     const val TITLE = "डार्क / लाइट मोड"
+    /** 27 नवंबर 2026: Profile और दिखावट के टॉगल का नाम (English में "Light mode (off = dark)") */
+    const val SWITCH = "लाइट मोड (बंद = डार्क)"
     val ITEMS = listOf("dark" to "डार्क (गहरा)", "light" to "लाइट (उजला)")
     fun current(light: Boolean) = if (light) "light" else "dark"
     fun isLight(key: String) = key == "light"

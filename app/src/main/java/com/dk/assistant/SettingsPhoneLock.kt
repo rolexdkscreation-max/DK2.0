@@ -33,7 +33,7 @@ internal fun SettingsActivity.secPhoneLock() {
         }
     }
 
-    card("आवाज़ से फ़ोन लॉक / अनलॉक", "बोलते ही — बिना AI, बिना इंटरनेट, सीधे फ़ोन पर", startOpen = true) { box ->
+    card("आवाज़ से फ़ोन लॉक / अनलॉक", "बोलते ही — बिना AI, बिना इंटरनेट, सीधे फ़ोन पर") { box ->
         if (!Setup.accessibilityOn(this)) hint(box, "⚠ पहले Settings → Accessibility में DK चालू करें — उसके बिना फ़ोन लॉक / अनलॉक नहीं होगा।")
         swLock = switch(box, "आवाज़ से फ़ोन लॉक करो", PhoneLockStore.lockOn(this))
         swUnlock = switch(box, "आवाज़ से फ़ोन अनलॉक करो (PIN / पैटर्न DK डालेगा)", PhoneLockStore.unlockOn(this))

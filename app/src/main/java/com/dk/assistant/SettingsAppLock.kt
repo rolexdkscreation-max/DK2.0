@@ -30,7 +30,7 @@ internal fun SettingsActivity.secAppLock() {
         })
     }
 
-    card("ऐप लॉक", "DK और कोई भी ऐप — PIN • पैटर्न • फ़िंगरप्रिंट / फ़ेस • DK फ़ेस स्कैन", startOpen = true) { box ->
+    card("ऐप लॉक", "DK और कोई भी ऐप — PIN • पैटर्न • फ़िंगरप्रिंट / फ़ेस • DK फ़ेस स्कैन") { box ->
         if (!Setup.accessibilityOn(this)) hint(box, "⚠ पहले Settings → Accessibility में DK चालू करें — उसके बिना ऐप लॉक नहीं चलेगा (ऐप खुलना DK वहीं से देखता है)।")
         state = TextView(this).apply { textSize = 13f; setTextColor(com.dk.assistant.ui.ClayTheme.t.sub); setPadding((4 * dp).toInt(), (8 * dp).toInt(), 0, 0) }
         box.addView(state)

@@ -139,7 +139,7 @@ class TemplateSettingsActivity : AppCompatActivity() {
     }
 
     private fun card(title: String, sub: String): LinearLayout =
-        com.dk.assistant.ui.CollapsibleSection.add(this, col, title, sub, startOpen = true) {}.body
+        com.dk.assistant.ui.CollapsibleSection.add(this, col, title, sub) {}.body
 
     private fun hint(box: LinearLayout, t: String) {
         box.addView(TextView(this).apply { text = t; textSize = 12f; setTextColor(0x99FFFFFF.toInt()); setPadding(0, (4 * dp).toInt(), 0, (6 * dp).toInt()) })

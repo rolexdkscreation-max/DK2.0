@@ -75,7 +75,7 @@ internal fun SettingsActivity.profileTopCard() {
 /** प्रोफ़ाइल पन्ने में सबसे ऊपर: असली नाम का खाना + उसके आगे verified टिक (लिखते ही, अपने-आप सेव) */
 internal fun SettingsActivity.realNameCard() {
     val tier = VerifiedBadge.of(this)
-    card("असली नाम + verified टिक", "Settings में सबसे ऊपर यही नाम • लाइसेंस हो तो नाम के आगे टिक", startOpen = true) { box ->
+    card("असली नाम + verified टिक", "Settings में सबसे ऊपर यही नाम • लाइसेंस हो तो नाम के आगे टिक") { box ->
         val ed = field(box, "असली नाम (Real name)", Prefs.realName(this),
             googleName(this).ifBlank { "जैसे: धीरज कुमार सिंह" })
         // खाना और टिक एक ही लाइन में

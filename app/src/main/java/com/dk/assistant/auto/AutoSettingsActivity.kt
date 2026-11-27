@@ -196,7 +196,7 @@ class AutoSettingsActivity : AppCompatActivity() {
     }
 
     private fun card(title: String, sub: String): LinearLayout =
-        com.dk.assistant.ui.CollapsibleSection.add(this, col, title, sub.ifBlank { null }, startOpen = true) {}.body
+        com.dk.assistant.ui.CollapsibleSection.add(this, col, title, sub.ifBlank { null }) {}.body
 
     private fun switch(box: LinearLayout, t: String, on: Boolean, change: (Boolean) -> Unit): SwitchCompat =
         SwitchCompat(this).apply {

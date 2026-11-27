@@ -12,7 +12,7 @@ import android.widget.TextView
  */
 internal fun SettingsActivity.secReels() {
     // नवंबर 2026 (मालिक): 7 दिन का हिसाब, सब ऐप की कुल लिमिट + DK की आवाज़ (सिर्फ़ Accessibility चालू होने पर सच्ची गिनती)
-    card("7 दिन का रील हिसाब", "आज, कल, हर दिन — कितनी रील, कितने मिनट, कम हुई या ज़्यादा", startOpen = true) { box ->
+    card("7 दिन का रील हिसाब", "आज, कल, हर दिन — कितनी रील, कितने मिनट, कम हुई या ज़्यादा") { box ->
         val t = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (6 * dp).toInt(), 0, (4 * dp).toInt()); setLineSpacing(0f, 1.2f) }
         box.addView(t)
         fun refresh() {
@@ -27,7 +27,7 @@ internal fun SettingsActivity.secReels() {
         hint(box, "7 दिन पूरे होते ही हिसाब अपने-आप साफ़ होकर नया हफ़्ता शुरू होता है। DK लाइव से पूछ सकते हैं: \"आज कितनी रील देखीं?\" / \"इस हफ़्ते का हिसाब बताओ\"।")
     }
 
-    card("सब ऐप की कुल रोज़ लिमिट और आवाज़", "जैसे 100 — पार हुई तो DK बोलकर बताएगा", startOpen = true) { box ->
+    card("सब ऐप की कुल रोज़ लिमिट और आवाज़", "जैसे 100 — पार हुई तो DK बोलकर बताएगा") { box ->
         label(box, "इंस्टाग्राम + YouTube + फेसबुक मिलाकर रोज़ कितनी रील (0 = कोई लिमिट नहीं)")
         val ed = EditText(this).apply {
             setText(ReelDaily.totalLimit(this@secReels).toString())
@@ -47,7 +47,7 @@ internal fun SettingsActivity.secReels() {
             "यह कुल लिमिट सिर्फ़ बोलती है, ऐप बंद नहीं करती — ऐप बंद / फ़ोन लॉक नीचे \"हर ऐप की रील लिमिट\" से।")
     }
 
-    card("रील गिनती (ऊपर छोटी पट्टी)", "रील / शॉर्ट्स देखते समय ऊपर दिखे: आज कितनी रील देखीं", startOpen = true) { box ->
+    card("रील गिनती (ऊपर छोटी पट्टी)", "रील / शॉर्ट्स देखते समय ऊपर दिखे: आज कितनी रील देखीं") { box ->
         val sw = switch(box, "ऊपर गिनती वाली छोटी पट्टी दिखाओ", ReelStore.popupOn(this))
         sw.setOnCheckedChangeListener { _, on -> ReelStore.setPopup(this, on) }
         val today = TextView(this).apply { textSize = 14f; setTextColor(0xFFFFFFFF.toInt()); setPadding((4 * dp).toInt(), (8 * dp).toInt(), 0, (4 * dp).toInt()) }
@@ -67,7 +67,7 @@ internal fun SettingsActivity.secReels() {
             "जब DK खुद फ़ोन चला रहा हो (जैसे सोशल रिव्यू) तब न गिनती, न रोक।")
     }
 
-    card("हर ऐप की रील लिमिट", "रोज़ कितनी रील — पूरी होते ही फ़ोन लॉक या ऐप बंद", startOpen = true) { box ->
+    card("हर ऐप की रील लिमिट", "रोज़ कितनी रील — पूरी होते ही फ़ोन लॉक या ऐप बंद") { box ->
         val eds = ReelRules.App.values().associateWith { a ->
             label(box, (if (a == ReelRules.App.YOUTUBE) "YouTube (शॉर्ट्स + वीडियो मिलाकर)" else a.hi) + " — रोज़ कितनी (0 = कोई लिमिट नहीं)")
             EditText(this).apply {
