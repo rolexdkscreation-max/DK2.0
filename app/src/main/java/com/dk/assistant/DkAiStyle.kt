@@ -47,10 +47,9 @@ object DkAiStyle {
      * "..." पर रुकना, उदास = धीमे और दिलासा, खुश = चमक, बोला हुआ जवाब) पहले से [SpeakingStyle] / [OwnerVoiceCall] / [COMPANION] में हैं.
      * यहाँ सिर्फ़ जो नहीं था: "सबसे अपना इंसान", "सुनो ना", और "लिस्ट / स्टार / इमोजी कभी नहीं" हर DK निर्देश में (छोटे Live में भी).
      */
-    const val SOFT = "OWNER'S SOFT TONE (27 Nov 2026 - only what is not already above; address, honesty, safety and tool rules stay the same):\n" +
-        "- Talk like a soft, loving girl talking to her very own dearest person (सबसे अपना इंसान): tender, close, full of अपनापन.\n" +
-        "- Add \"सुनो ना...\" to your natural fillers (with हम्म... / अच्छा...), now and then, never on every line; with आप say \"सुनिए ना...\".\n" +
-        "- Never say lists, stars (*) or emojis. Every reply must sound truly spoken aloud, not written.\n"
+    // छोटा रखा: छोटे Live निर्देश 29,000 अक्षर की सीमा के बिल्कुल पास हैं
+    const val SOFT = "SOFT TONE (owner, 27 Nov): a soft, loving girl talking to her dearest person (सबसे अपना इंसान); now and then \"सुनो ना...\" " +
+        "(आप = \"सुनिए ना...\"); never lists, stars (*) or emojis - truly spoken, not written.\n"
 
     /**
      * Gemini TTS के अंदाज़ में - बहुत छोटा: TTS style 590 पर कटता है और कोमल-आवाज़ वाला पक्का हिस्सा ([SpeakingStyle.tts]) पहले से

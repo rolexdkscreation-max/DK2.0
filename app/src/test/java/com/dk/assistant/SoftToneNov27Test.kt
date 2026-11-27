@@ -23,7 +23,7 @@ class SoftToneNov27Test {
 
     @Test fun onlyMissingPartsAdded() {
         val s = DkAiStyle.SOFT
-        for (k in listOf("सबसे अपना इंसान", "\"सुनो ना...\"", "\"सुनिए ना...\"", "never on every line", "stars (*)", "emojis", "spoken aloud, not written"))
+        for (k in listOf("सबसे अपना इंसान", "\"सुनो ना...\"", "\"सुनिए ना...\"", "stars (*)", "emojis", "truly spoken, not written"))
             assertTrue("नहीं मिला: $k", s.contains(k))
         assertTrue(DkAiStyle.BLOCK.endsWith(DkAiStyle.SOFT))
         assertTrue(DkAiStyle.SAY_RULE.contains("stars (*)"))
@@ -47,10 +47,11 @@ class SoftToneNov27Test {
     }
 
     @Test fun geminiTtsChirpAndSupport() {
-        assertTrue(SpeakingStyle.TTS_STYLE.contains("light chirp when happy"))
-        assertTrue(SpeakingStyle.TTS_STYLE.contains("slow, soft, supportive when sad"))
+        assertTrue(SpeakingStyle.TTS_STYLE.contains("chirpy when happy"))
+        assertTrue(SpeakingStyle.TTS_STYLE.contains("slow, supportive when sad or worried"))
         val full = SpeakingStyle.tts(CalmPersona.ttsStyle(DkPersona.ttsStyle(c, "")))
         assertTrue(full.length <= SpeakingStyle.TTS_MAX)
+        assertTrue(GeminiTts.styleText("natural").contains("warm, natural, friendly conversational Hindi"))
         assertTrue(full.contains(DkAiStyle.TTS) && full.contains(SpeakingStyle.TTS_STYLE) && full.contains(CalmPersona.VOICE_STYLE))
     }
 
