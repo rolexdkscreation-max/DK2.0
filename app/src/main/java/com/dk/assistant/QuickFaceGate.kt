@@ -182,7 +182,11 @@ class QuickFaceGate(private val side: Int = FaceLiveness.randomSide(), private v
         if (fake()) { reset(); return Verdict(State.FAIL, "फ़ोटो / वीडियो / स्क्रीन पकड़ी गई — असली इंसान नहीं") }
         f.score?.let { s ->
             if (s < FaceMath.MATCH * 0.8f) { reset(); return Verdict(State.FAIL, "यह चेहरा मालिक का नहीं (${(s * 100).toInt()}%)") }
-            if (s >= FaceMath.STRICT && (f.otherBest == null || s - f.otherBest >= FacePeople.MARGIN)) { if (st.index >= st.steps.size) sunMatched = true; lastScore = s }
+            val strong = s >= FaceMath.STRICT && (f.otherBest == null || s - f.otherBest >= FacePeople.MARGIN)
+            if (strong) {
+                lastScore = s
+                if (st.index >= st.steps.size) sunMatched = true
+            }
         }
         when (st.update(f.at, f.yaw)) {
             SunTurns.State.FAIL -> { val w = st.why; reset(); return Verdict(State.FAIL, "धूप वाली लाइव जाँच फ़ेल ($w) — फ़ोटो / वीडियो? फिर से या PIN") }

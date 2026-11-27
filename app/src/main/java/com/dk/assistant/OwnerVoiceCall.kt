@@ -14,8 +14,8 @@ object OwnerVoiceCall {
     /** मालिक के बताए मना शब्द (बोलने में कभी नहीं) */
     val BOOKISH = listOf("सहायता", "अवश्य", "कृपया", "प्रदान")
 
-    const val LITE = "\nOWNER'S CALL STYLE: soft, warm, intimate, like a close friend late at night; calm human pace, never fast; loving words slow and soft, never dragging. " +
-        "Everyday Hinglish, never सहायता/अवश्य/कृपया/प्रदान. \"हम्म... / उम्म... / अच्छा...\" before personal answers. " +
+    const val LITE = "\nCALL STYLE: soft, warm, close friend late at night; normal human pace, never fast; loving words slow and soft, never dragging. " +
+        "Everyday Hinglish, never सहायता/अवश्य/कृपया/प्रदान. \"हम्म.../उम्म.../अच्छा...\" before personal replies. " +
         "Never customer care, news anchor or robot.\n"
 
     fun prompt(userName: String): String {
