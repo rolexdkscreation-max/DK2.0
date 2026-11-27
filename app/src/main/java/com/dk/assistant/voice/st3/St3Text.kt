@@ -16,7 +16,7 @@ object St3Text {
 
     private val REPLACE = listOf(
         "–" to "-", "‑" to "-", "—" to "-", "_" to " ", "\u201C" to "\"", "\u201D" to "\"", "\u2018" to "'", "\u2019" to "'",
-        "´" to "'", "`" to "'", "[" to " ", "]" to " ", "|" to " ", "/" to " ", "#" to " ", "→" to " ", "←" to " ",
+        "´" to "'", "`" to "'", "[" to " ", "]" to " ", "|" to " ", "/" to " ", "#" to " ", "→" to " ", "←" to " ", "*" to " ", "•" to " ",   // 27 नवंबर 2026: स्टार / बुलेट कभी बोले नहीं जाते
     )
     private val EXPR = listOf("@" to " at ", "e.g.," to "for example, ", "i.e.," to "that is, ")
     private val SPECIAL = Regex("[♥☆♡©\\\\]")
