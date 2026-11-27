@@ -26,7 +26,16 @@ object HomeAvatars {
                       val subject: List<Float> = FULL_SUBJECT,
                       val badgeY: Float = BADGE_Y, val hqSubject: List<Float>? = null, val hqBadgeY: Float? = null,
                       /** 26 नवंबर 2026: वैकल्पिक rig (आँखें) - [CharacterRig.fits] वाली तस्वीर पर ही पलक; न हो = साँस + रोशनी ही */
-                      val rig: CharacterRig? = null)
+                      val rig: CharacterRig? = null,
+                      /**
+                       * 27 नवंबर 2026 (मालिक: "पूरी Home स्क्रीन पर फुल-स्क्रीन फोटो, चेहरा कभी न कटे"): [focus] = (x, y) 0..1 -
+                       * स्क्रीन की ~36% ऊँचाई पर; [face] = चेहरे का आयत (बायाँ, ऊपर, दायाँ, नीचे) 0..1 - कभी न कटे / न ढके.
+                       * [hqFocus]/[hqFace] = HQ तस्वीर वाले मान ([hqLook]). [land] = चौड़ी स्क्रीन (टैबलेट landscape) की अलग
+                       * तस्वीर (वैकल्पिक) + उसके [landFocus]/[landFace]. न हों = [CharacterFrame] के डिफ़ॉल्ट.
+                       */
+                      val focus: List<Float>? = null, val face: List<Float>? = null,
+                      val hqFocus: List<Float>? = null, val hqFace: List<Float>? = null,
+                      val land: String? = null, val landFocus: List<Float>? = null, val landFace: List<Float>? = null)
 
     const val PREF = "home_center"
     const val ORB = "orb"
@@ -56,18 +65,18 @@ object HomeAvatars {
      * पहले 8 कैरेक्टर, फिर 3 ऑर्ब. डाउनलोड की ज़रूरत नहीं, इंटरनेट के बिना भी.
      */
     val BUNDLED = listOf(
-        Avatar("dk_art_hearts", "दिल वाली", "girl", "dk_art_hearts.png", "dk_art_hearts", subject = listOf(0.22f, 0f, 0.82f, 1f), hqSubject = HQ_CHAR,
+        Avatar("dk_art_hearts", "दिल वाली", "girl", "dk_art_hearts.png", "dk_art_hearts", subject = listOf(0.22f, 0f, 0.82f, 1f), hqSubject = HQ_CHAR, hqFocus = listOf(0.47f, 0.40f), hqFace = listOf(0.33f, 0.22f, 0.62f, 0.58f),
             rig = CharacterRig.square(0.373f, 0.353f, 0.066f, 0.044f, 0.514f, 0.371f, 0.066f, 0.044f)),
-        Avatar("dk_art_headphone_orb", "हेडफ़ोन", "girl", "dk_art_headphone_orb.png", "dk_art_headphone_orb", subject = listOf(0.14f, 0f, 0.86f, 1f), hqSubject = HQ_CHAR),
-        Avatar("dk_art_glasses_bun", "चश्मा", "girl", "dk_art_glasses_bun.png", "dk_art_glasses_bun", subject = listOf(0.2f, 0.05f, 0.85f, 1f), hqSubject = HQ_CHAR,
+        Avatar("dk_art_headphone_orb", "हेडफ़ोन", "girl", "dk_art_headphone_orb.png", "dk_art_headphone_orb", subject = listOf(0.14f, 0f, 0.86f, 1f), hqSubject = HQ_CHAR, hqFocus = listOf(0.50f, 0.46f), hqFace = listOf(0.32f, 0.33f, 0.70f, 0.62f)),
+        Avatar("dk_art_glasses_bun", "चश्मा", "girl", "dk_art_glasses_bun.png", "dk_art_glasses_bun", subject = listOf(0.2f, 0.05f, 0.85f, 1f), hqSubject = HQ_CHAR, hqFocus = listOf(0.49f, 0.50f), hqFace = listOf(0.32f, 0.33f, 0.66f, 0.66f),
             rig = CharacterRig.square(0.409f, 0.481f, 0.085f, 0.053f, 0.563f, 0.503f, 0.085f, 0.053f)),
-        Avatar("dk_art_cat_ears", "बिल्ली-कान", "girl", "dk_art_cat_ears.png", "dk_art_cat_ears", subject = listOf(0.15f, 0f, 0.85f, 1f), hqSubject = HQ_CHAR,
+        Avatar("dk_art_cat_ears", "बिल्ली-कान", "girl", "dk_art_cat_ears.png", "dk_art_cat_ears", subject = listOf(0.15f, 0f, 0.85f, 1f), hqSubject = HQ_CHAR, hqFocus = listOf(0.48f, 0.40f), hqFace = listOf(0.32f, 0.27f, 0.64f, 0.55f),
             rig = CharacterRig.square(0.533f, 0.355f, 0.075f, 0.040f)),
-        Avatar("dk_art_glasses_dark", "चश्मा (काली)", "girl", "dk_art_glasses_dark.png", "dk_art_glasses_dark", subject = listOf(0.12f, 0f, 0.92f, 1f), hqSubject = HQ_CHAR,
+        Avatar("dk_art_glasses_dark", "चश्मा (काली)", "girl", "dk_art_glasses_dark.png", "dk_art_glasses_dark", subject = listOf(0.12f, 0f, 0.92f, 1f), hqSubject = HQ_CHAR, hqFocus = listOf(0.42f, 0.43f), hqFace = listOf(0.23f, 0.27f, 0.60f, 0.62f),
             rig = CharacterRig.square(0.323f, 0.382f, 0.066f, 0.040f, 0.442f, 0.422f, 0.066f, 0.040f)),
-        Avatar("dk_art_butterfly_headphones", "तितली + हेडफ़ोन", "girl", "dk_art_butterfly_headphones.png", "dk_art_butterfly_headphones", subject = listOf(0.2f, 0f, 0.86f, 1f), hqSubject = HQ_CHAR),
-        Avatar("dk_art_sleepy", "नींद वाली", "girl", "dk_art_sleepy.png", "dk_art_sleepy", subject = listOf(0.2f, 0f, 0.92f, 1f), hqSubject = HQ_CHAR),
-        Avatar("dk_art_butterfly_girl", "तितली वाली", "girl", "dk_art_butterfly_girl.png", "dk_art_butterfly_girl", subject = listOf(0.15f, 0f, 0.85f, 1f), hqSubject = HQ_CHAR,
+        Avatar("dk_art_butterfly_headphones", "तितली + हेडफ़ोन", "girl", "dk_art_butterfly_headphones.png", "dk_art_butterfly_headphones", subject = listOf(0.2f, 0f, 0.86f, 1f), hqSubject = HQ_CHAR, hqFocus = listOf(0.56f, 0.36f), hqFace = listOf(0.36f, 0.24f, 0.70f, 0.48f)),
+        Avatar("dk_art_sleepy", "नींद वाली", "girl", "dk_art_sleepy.png", "dk_art_sleepy", subject = listOf(0.2f, 0f, 0.92f, 1f), hqSubject = HQ_CHAR, hqFocus = listOf(0.53f, 0.47f), hqFace = listOf(0.38f, 0.32f, 0.72f, 0.64f)),
+        Avatar("dk_art_butterfly_girl", "तितली वाली", "girl", "dk_art_butterfly_girl.png", "dk_art_butterfly_girl", subject = listOf(0.15f, 0f, 0.85f, 1f), hqSubject = HQ_CHAR, hqFocus = listOf(0.49f, 0.32f), hqFace = listOf(0.36f, 0.18f, 0.62f, 0.47f),
             rig = CharacterRig.square(0.427f, 0.317f, 0.067f, 0.040f, 0.564f, 0.301f, 0.067f, 0.040f)),
         Avatar("orb_art_butterfly", "तितली ऑर्ब (DK)", "orb", "orb_art_butterfly.png", "orb_art_butterfly", orb = true, badge = "DK",
             subject = listOf(0.02f, 0f, 0.7f, 1f), hqSubject = listOf(0.15f, 0.1f, 0.85f, 0.9f), hqBadgeY = 0.56f),
@@ -102,12 +111,33 @@ object HomeAvatars {
                 val o = arr.optJSONObject(i) ?: continue
                 val id = o.optString("id"); val f = o.optString("file")
                 if (!safeId(id) || !safeFile(f) || out.containsKey(id)) continue
+                // 27 नवंबर 2026: "focus" [x, y], "face" [l, t, r, b], "land" {file, focus, face} - गलत / न हो = डिफ़ॉल्ट
+                val land = o.optJSONObject("land")
+                val lf = land?.optString("file")?.takeIf { safeFile(it) }
                 out[id] = Avatar(id, o.optString("name").ifBlank { id }, o.optString("gender").ifBlank { "girl" }, f,
-                    rig = CharacterRig.parse(o.optJSONObject("rig")))
+                    rig = CharacterRig.parse(o.optJSONObject("rig")),
+                    focus = CharacterFrame.okFocus(floats(o.optJSONArray("focus"))), face = CharacterFrame.okFace(floats(o.optJSONArray("face"))),
+                    land = lf, landFocus = if (lf == null) null else CharacterFrame.okFocus(floats(land?.optJSONArray("focus"))),
+                    landFace = if (lf == null) null else CharacterFrame.okFace(floats(land?.optJSONArray("face"))))
             }
             out.values.toList()
         } catch (_: Exception) { emptyList() }
     }
+
+    private fun floats(a: org.json.JSONArray?): List<Float>? {
+        if (a == null) return null
+        val out = ArrayList<Float>()
+        for (i in 0 until a.length()) { val v = a.optDouble(i, Double.NaN); if (v.isNaN()) return null; out.add(v.toFloat()) }
+        return out
+    }
+
+    /**
+     * 27 नवंबर 2026 (pure): होम की पूरी स्क्रीन वाली तस्वीर के लिए (तस्वीर का नाम, focus, face). [wide] = चौड़ी स्क्रीन
+     * (टैबलेट landscape) और अलग [Avatar.land] तस्वीर दी हो = वही; नहीं = वही एक तस्वीर, वही focus नियम.
+     */
+    fun frameOf(a: Avatar, wide: Boolean): Triple<String, List<Float>, List<Float>> =
+        if (wide && a.land != null) Triple(a.land, CharacterFrame.focusOf(a.landFocus, a.landFace), CharacterFrame.faceOf(a.landFocus, a.landFace))
+        else Triple(a.file, CharacterFrame.focusOf(a.focus, a.face), CharacterFrame.faceOf(a.focus, a.face))
 
     /** ऐप के अंदर वाले पहले, फिर डाउनलोड वाले नए (एक id एक बार; हटाए गए कभी नहीं) */
     fun merge(net: List<Avatar>): List<Avatar> = (DEFAULTS + net).filter { it.id !in REMOVED }.distinctBy { it.id }
@@ -127,7 +157,8 @@ object HomeAvatars {
     fun hqName(a: Avatar): String? = if (a.res != null && safeId(a.id)) a.id + HQ_SUFFIX else null
 
     /** pure: HQ तस्वीर आ गई = उसी तस्वीर के हिसाब से न-कटने वाला हिस्सा और "DK" की जगह */
-    fun hqLook(a: Avatar): Avatar = a.copy(subject = a.hqSubject ?: a.subject, badgeY = a.hqBadgeY ?: a.badgeY)
+    fun hqLook(a: Avatar): Avatar = a.copy(subject = a.hqSubject ?: a.subject, badgeY = a.hqBadgeY ?: a.badgeY,
+        focus = a.hqFocus ?: a.focus, face = a.hqFace ?: a.face)
 
     /** PNG फ़ाइल की शुरुआत (8 बाइट) सही? */
     fun isPng(head: ByteArray): Boolean = head.size >= 8 && head[0] == 0x89.toByte() && head[1] == 'P'.code.toByte() &&
@@ -273,6 +304,33 @@ object HomeAvatars {
         var s = 1
         while (maxOf(o.outWidth, o.outHeight) / (s * 2) >= maxPx) s *= 2
         return go(BitmapFactory.Options().apply { inSampleSize = s })
+    }
+
+    private var landKey: String? = null
+    private var landMem: Bitmap? = null
+
+    /** 27 नवंबर 2026: चौड़ी स्क्रीन वाली अलग तस्वीर ([Avatar.land]) - फ़ोन में हो तो (स्क्रीन जितनी बड़ी), नहीं = null */
+    fun landBitmap(c: Context, a: Avatar, maxPx: Int): Bitmap? {
+        val n = a.land ?: return null
+        val f = File(dir(c), n).takeIf { it.exists() && it.length() > 64 } ?: return null
+        val key = n + "|" + f.lastModified() + "|" + maxPx
+        if (key == landKey) landMem?.let { return it }
+        val b = try { decode(maxPx) { o -> BitmapFactory.decodeFile(f.path, o) } } catch (e: Throwable) { com.dk.assistant.Quiet.note(e); null }
+        if (b == null) { f.delete(); return null }
+        landKey = key; landMem = b
+        return b
+    }
+
+    /** चौड़ी स्क्रीन वाली तस्वीर इंटरनेट से (एक बार). [done] UI thread पर */
+    fun fetchLand(c: Context, a: Avatar, done: (Boolean) -> Unit = {}) {
+        val app = c.applicationContext
+        val n = a.land ?: return
+        if (!busy.add("land:" + n)) return
+        Thread {
+            var ok = false
+            try { ok = save(app, n, MAX_BYTES) } catch (e: Throwable) { com.dk.assistant.Quiet.note(e) } finally { busy.remove("land:" + n) }
+            main.post { try { done(ok) } catch (e: Exception) { com.dk.assistant.Quiet.note(e) } }
+        }.start()
     }
 
     private val busy = java.util.Collections.synchronizedSet(HashSet<String>())

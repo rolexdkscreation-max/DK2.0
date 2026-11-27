@@ -129,6 +129,19 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
     private var tintMem: android.graphics.Bitmap? = null
     /** पूरी स्क्रीन वाला कैरेक्टर (होम टैब के पीछे) */
     private lateinit var bgAvatar: HomeAvatarView
+    /**
+     * 27 नवंबर 2026 (मालिक: "चुना कैरेक्टर पूरी Home स्क्रीन पर फुल-स्क्रीन फोटो"): सबसे नीचे की परत - तस्वीर अपनी
+     * बैकग्राउंड के साथ किनारे से किनारे ([FullBleedCharacterView]); ऊपर हल्का पर्दा [topScrim] सिर्फ़ ऊपर की पट्टी के पीछे.
+     */
+    private var fullBg: FullBleedCharacterView? = null
+    private var topScrim: View? = null
+    private var headSub: View? = null
+    private var liveWave: WaveformView? = null
+    /** अभी होम पर फुल-स्क्रीन कैरेक्टर (ORB / वेव / DNA छुपे) */
+    private var fullOn = false
+    private var barsFull: Boolean? = null
+    private var landTried: String? = null
+    private var tabsGlass: android.graphics.drawable.Drawable? = null
     private lateinit var centerLogo: Logo3D
     private var centerSig = ""
     /** होम का लाइव टेक्स्ट बॉक्स (यूज़र की बात -> DK की बात) */
@@ -166,6 +179,17 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             bgAvatar = HomeAvatarView(c).apply { level = homeLevel; active = homeActive; call = homeCall; cover = true; fade = true
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO; visibility = View.GONE }
             root.addView(bgAvatar, FrameLayout.LayoutParams(-1, -1))
+            // सबसे नीचे फुल-स्क्रीन कैरेक्टर, उसके ऊपर सिर्फ़ ऊपर की पट्टी जितना हल्का पर्दा, फिर सारा UI (content)
+            fullBg = FullBleedCharacterView(c).apply {
+                visibility = View.GONE
+                minFaceK = if (com.dk.assistant.UiFitRules.isTablet(c.resources.configuration.smallestScreenWidthDp)) CharacterFrame.TABLET_FACE_K else 0f
+                topSafe = { fullTop() }
+                bottomSafe = { fullBottom() }
+            }
+            root.addView(fullBg, FrameLayout.LayoutParams(-1, -1))
+            topScrim = View(c).apply { visibility = View.GONE; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                background = scrimDrawable() }
+            root.addView(topScrim, FrameLayout.LayoutParams(-1, d(140f), Gravity.TOP))
         }
         root.addView(content, FrameLayout.LayoutParams(-1, -1))
         // 23 नवंबर 2026 (मालिक): होम = ऊपर का हेडर + बीच में ORB / अवतार + लाइव टेक्स्ट; Chat = वही हेडर + बातचीत + होम वाला इनपुट बॉक्स
@@ -191,7 +215,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             placeMini()
             ins
         }
-        root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> placeMini() }
+        root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> placeMini(); placeFull() }
         activity.onBackPressedDispatcher.addCallback(activity, back)
         activity.lifecycle.addObserver(androidx.lifecycle.LifecycleEventObserver { _, e ->
             if (e == androidx.lifecycle.Lifecycle.Event.ON_DESTROY) { scanPanel?.release(); scanPanel = null }
@@ -301,6 +325,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         greetSlot = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL; setPadding(d(12f), 0, 0, 0) }
         sub.addView(greetSlot, LinearLayout.LayoutParams(0, -2, 1f))
         content.addView(sub, LinearLayout.LayoutParams(-1, -2))
+        headSub = sub
 
         alertRow = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE; setPadding(d(12f), d(8f), d(12f), 0) }
         content.addView(alertRow)
@@ -416,6 +441,75 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         if (chatPage || !::bgAvatar.isInitialized) return
         val on = tabNow == com.dk.assistant.ui.HomeTabs.Tab.HOME && bgAvatar.bitmap != null
         bgAvatar.visibility = if (on) View.VISIBLE else View.GONE
+        // 27 नवंबर 2026: फुल-स्क्रीन कैरेक्टर सिर्फ़ होम टैब पर (Chat / Scan / Memory पहले जैसे)
+        val full = fullOn && tabNow == com.dk.assistant.ui.HomeTabs.Tab.HOME && fullBg?.bitmap != null
+        fullBg?.visibility = if (full) View.VISIBLE else View.GONE
+        topScrim?.visibility = if (full) View.VISIBLE else View.GONE
+        if (full && tabsGlass == null) tabsGlass = glassCard(0x9A, 0x8C)
+        com.dk.assistant.ui.HomeTabs.glass(tabsBar, if (full) tabsGlass else null)
+        applyBars(full)
+        if (full) placeFull()
+    }
+
+    /** फुल-स्क्रीन कैरेक्टर: चेहरा इससे नीचे (status bar + हेडर + READY वाली पंक्ति) */
+    private fun fullTop(): Int = headSub?.takeIf { it.height > 0 }?.bottom ?: (DkaiUi.insetTop + d(62f + 52f))
+
+    /** फुल-स्क्रीन कैरेक्टर: चेहरा इससे ऊपर (नीचे की 5-टैब पट्टी + nav bar) */
+    private fun fullBottom(): Int {
+        val h = root.height
+        val bar = tabsBar?.takeIf { it.visibility == View.VISIBLE && it.height > 0 }
+        return if (h > 0 && bar != null) (h - bar.top + d(8f)).coerceAtLeast(0) else insetBottom + d(96f)
+    }
+
+    /** ऊपर का पर्दा ठीक ऊपर की पट्टी जितना (चेहरे तक नहीं); पट्टियों का नाप बदला = कैरेक्टर की जगह फिर नापो */
+    private var fullKey = ""
+    private fun placeFull() {
+        val v = fullBg ?: return
+        if (v.visibility != View.VISIBLE) return
+        val top = fullTop(); val bottom = fullBottom()
+        topScrim?.let { s ->
+            val lp = s.layoutParams
+            if (lp != null && lp.height != top) { lp.height = top; s.layoutParams = lp }
+        }
+        val key = "${root.width}|${root.height}|$top|$bottom"
+        if (key != fullKey) { fullKey = key; v.relayout() }
+    }
+
+    /** हल्का पर्दा: डार्क थीम = हल्का गहरा, लाइट थीम = हल्का उजला (थीम की लिखावट पढ़ी जाए), नीचे पूरी तरह पारदर्शी */
+    private fun scrimDrawable(): android.graphics.drawable.Drawable {
+        val k = com.dk.assistant.ui.ClayTheme.t
+        val a = if (k.light) com.dk.assistant.ui.NeonTheme.alpha(k.bg, 0x8C) else com.dk.assistant.ui.ClayTheme.scrim(0.42f)
+        val m = if (k.light) com.dk.assistant.ui.NeonTheme.alpha(k.bg, 0x3C) else com.dk.assistant.ui.ClayTheme.scrim(0.16f)
+        return android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(a, m, android.graphics.Color.TRANSPARENT))
+    }
+
+    /**
+     * फुल-स्क्रीन कैरेक्टर = status bar / nav bar पारदर्शी, तस्वीर उनके पीछे तक (UI inset padding से अपनी जगह पर).
+     * नहीं = पहले जैसी थीम-रंग वाली पट्टियाँ.
+     */
+    private fun applyBars(full: Boolean) {
+        val w = activity.window ?: return
+        if (barsFull == full) return
+        val first = barsFull == null
+        barsFull = full
+        if (first && !full) return                 // पहली बार और कैरेक्टर नहीं = पहले जैसा, कुछ न छुओ
+        try {
+            androidx.core.view.WindowCompat.setDecorFitsSystemWindows(w, !full)
+            val ctl = androidx.core.view.WindowInsetsControllerCompat(w, w.decorView)
+            if (full) {
+                w.statusBarColor = android.graphics.Color.TRANSPARENT
+                w.navigationBarColor = android.graphics.Color.TRANSPARENT
+                if (android.os.Build.VERSION.SDK_INT >= 29) { w.isNavigationBarContrastEnforced = false; w.isStatusBarContrastEnforced = false }
+                val light = com.dk.assistant.ui.ClayTheme.t.light
+                ctl.isAppearanceLightStatusBars = light; ctl.isAppearanceLightNavigationBars = light
+            } else {
+                com.dk.assistant.ui.Clay.Refresh.bars(activity)
+                val light = com.dk.assistant.ui.ClayTheme.t.light
+                ctl.isAppearanceLightStatusBars = light; ctl.isAppearanceLightNavigationBars = light
+            }
+            ViewCompat.requestApplyInsets(root)
+        } catch (e: Exception) { com.dk.assistant.Quiet.note(e) }
     }
 
     /** Chat स्क्रीन: ChatActivity वाला वही हेडर, उसके नीचे बातचीत (panelHost) */
@@ -536,6 +630,9 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
             isVerticalFadingEdgeEnabled = true; setFadingEdgeLength(d(14f))
         }
         liveBox.addView(liveScroll, LinearLayout.LayoutParams(-1, -2))
+        // 27 नवंबर 2026 (मालिक: फुल-स्क्रीन कैरेक्टर पर हलचल हल्की): बॉक्स में एक पतली लहर - सिर्फ़ फुल-स्क्रीन कैरेक्टर पर
+        liveWave = WaveformView(c).apply { level = homeLevel; active = homeActive; visibility = View.GONE }
+        liveBox.addView(liveWave, LinearLayout.LayoutParams(-1, d(14f)).apply { topMargin = d(6f) })
         // कैरेक्टर परत हमेशा पूरी stage; बॉक्स layout में नहीं - नीचे टिकी ऊपर की परत (कैरेक्टर कभी नहीं खिसकता / छोटा होता).
         // चौड़ाई = उपलब्ध जगह (दोनों तरफ़ 14dp); topMargin = बॉक्स कभी stage के ऊपर तक न पहुँचे
         stage.setCharacter(glow, avatarArea(false))
@@ -1172,10 +1269,10 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
      * कैरेक्टर के ऊपर वाला लाइव कार्ड: हल्का पारदर्शी काँच (पीछे कैरेक्टर दिखता रहे) - थीम के surface से,
      * ऊपर-बाएँ हल्की चमक वाली किनारी. रंग सिर्फ़ [com.dk.assistant.ui.ClayTheme.t] से.
      */
-    private fun glassCard(): android.graphics.drawable.Drawable {
+    private fun glassCard(a1: Int = 0xC4, a2: Int = 0xBA): android.graphics.drawable.Drawable {
         val k = com.dk.assistant.ui.ClayTheme.t
         return android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            intArrayOf(com.dk.assistant.ui.NeonTheme.alpha(com.dk.assistant.ui.NeonTheme.mix(k.surface, k.rim, 0.12f), 0xC4), com.dk.assistant.ui.NeonTheme.alpha(k.surface, 0xBA))).apply {
+            intArrayOf(com.dk.assistant.ui.NeonTheme.alpha(com.dk.assistant.ui.NeonTheme.mix(k.surface, k.rim, 0.12f), a1), com.dk.assistant.ui.NeonTheme.alpha(k.surface, a2))).apply {
             cornerRadius = d(com.dk.assistant.ui.ClayCard.RADIUS_DP).toFloat()   // गोलाई साझा कार्ड वाली ([com.dk.assistant.ui.ClayCard])
             setStroke(maxOf(1, d(1f)), com.dk.assistant.ui.NeonTheme.alpha(k.rim, 0x88))
         }
@@ -1209,11 +1306,29 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         }
         val classic = DkaiOrbs.get(c) == DkaiOrbs.CLASSIC
         val spirit = DkaiOrbs.spirit(c)
-        val sig = "${av?.id}|${bmp != null}|${bmp?.width}|$classic|${DkaiOrbs.get(c)}|$spirit|${com.dk.assistant.ui.ClayTheme.t.light}"
+        // 27 नवंबर 2026 (मालिक): कैरेक्टर (ORB नहीं) चुना + असली तस्वीर फ़ोन में = पूरी Home स्क्रीन पर फुल-स्क्रीन फोटो.
+        // ऐप के अंदर वाले आर्टवर्क की छोटी (90-190px) तस्वीर फुल-स्क्रीन में धुंधली - HQ आने तक पहले वाला बीच का कैरेक्टर
+        val full = av != null && !av.orb && bmp != null && (av.res == null || HomeAvatars.hqReady(c, av))
+        val wide = c.resources.displayMetrics.let { it.widthPixels > it.heightPixels }
+        val frame = if (full && av != null) HomeAvatars.frameOf(av, wide) else null
+        val landBmp = if (full && av != null && wide && av.land != null) HomeAvatars.landBitmap(c, av, maxOf(c.resources.displayMetrics.widthPixels, d(320f))) else null
+        if (full && av != null && wide && av.land != null && landBmp == null && landTried != av.land) {
+            landTried = av.land
+            HomeAvatars.fetchLand(c, av) { ok -> if (ok && !activity.isDestroyed) { centerSig = ""; renderCenter() } }
+        }
+        val sig = "${av?.id}|${bmp != null}|${bmp?.width}|$classic|${DkaiOrbs.get(c)}|$spirit|${com.dk.assistant.ui.ClayTheme.t.light}|$full|$wide|${landBmp?.width}"
         val look = OrbLook.sig(c)                              // Settings › ORB / कैरेक्टर का साइज़ और रंग
         if (sig == centerSig && look == centerLook) return
         centerSig = sig; centerLook = look
-        val showAv = bmp != null
+        fullOn = full
+        if (full && frame != null && av != null) {
+            // तस्वीर अपनी जगह - चौड़ी स्क्रीन वाली अलग तस्वीर हो तो वही, उसके focus / face के साथ; नहीं = वही तस्वीर, वही नियम
+            val f = if (landBmp != null) frame else HomeAvatars.frameOf(av, false)
+            fullBg?.show(landBmp ?: bmp, f.second, f.third)
+        } else fullBg?.show(null, CharacterFrame.DEFAULT_FOCUS, CharacterFrame.DEFAULT_FACE)
+        liveWave?.visibility = if (full) View.VISIBLE else View.GONE
+        // फुल-स्क्रीन कैरेक्टर = बीच वाला ORB / वेव / DNA / कैरेक्टर सब छुपे (नीचे वाले showAv / spirit बंद)
+        val showAv = bmp != null && !full
         // 23 नवंबर 2026 (मालिक का कोलाज): ऐप के अंदर वाला आर्टवर्क = बीच में, कभी न कटे, पीछे रोशनी + बहती वेव
         centerAvatar.art = showAv && av?.res != null
         centerAvatar.orb = av?.orb == true
@@ -1224,7 +1339,7 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         centerAvatar.tablet = com.dk.assistant.UiFitRules.isTablet(c.resources.configuration.smallestScreenWidthDp)
         centerAvatar.reserveBottom = stage.reservePx   // चेहरा संदेश बॉक्स की सबसे बड़ी ऊँचाई के ऊपर (तय मान)
         // आर्टवर्क READY पट्टी से नीचे की बार के ठीक ऊपर तक (नीचे की खाली पट्टी सिर्फ़ ORB के लिए)
-        heroBox.setPadding(0, 0, 0, if (centerAvatar.art || bmp != null || spirit != null) 0 else d(maxOf(0f, GREET_LIFT_DP - cardDrop)))
+        heroBox.setPadding(0, 0, 0, if (centerAvatar.art || bmp != null || spirit != null || full) 0 else d(maxOf(0f, GREET_LIFT_DP - cardDrop)))
         // 23 नवंबर 2026 (मालिक: "अवतार पूरी स्क्रीन नहीं"): अवतार सिर्फ़ अभिवादन के नीचे से READY कार्ड के ऊपर तक (बीच वाली जगह),
         // अनुपात वही (Fit), किनारे ऐप के पीछे में घुलते हुए ([HomeAvatarView.fade]). कार्ड / टॉप बार / नीचे की पट्टी पर नहीं चढ़ता.
         bgAvatar.bitmap = null
@@ -1245,26 +1360,26 @@ class DkaiScreen(val activity: ComponentActivity, val host: DkaiHost) {
         } else null
         if (tinted != null) centerAvatar.bitmap = tinted else centerAvatar.bitmap = bmp
         centerAvatar.visibility = if (showAv) View.VISIBLE else View.GONE
-        val showSpirit = !showAv && spirit != null
+        val showSpirit = !showAv && !full && spirit != null
         // कैरेक्टर = अभिवादन और नीचे के बीच की पूरी जगह (पूरा सिर-बाल-शरीर, कभी न कटे)
-        centerGlow?.layoutParams = avatarArea(showAv || showSpirit, k)
+        centerGlow?.layoutParams = avatarArea(showAv || showSpirit || full, k)
         // चलता ORB भी उसी साइज़ में (स्क्रीन की चौड़ाई से बड़ा नहीं)
         val orbPx = minOf(d(200f * k), (c.resources.displayMetrics.widthPixels * 0.72f).toInt())
         for (v in listOf<View>(centerOrb, centerClassic)) v.layoutParams = (v.layoutParams as FrameLayout.LayoutParams).apply { width = orbPx; height = orbPx }
         centerLogo.layoutParams = (centerLogo.layoutParams as FrameLayout.LayoutParams).apply { width = d(92f * k); height = d(92f * k) }
-        centerGlow?.background?.alpha = if (showAv || showSpirit) 0 else 255
+        centerGlow?.background?.alpha = if (showAv || showSpirit || full) 0 else 255
         // पीछे की गोल चमक भी ORB के साइज़ के साथ (छोटे डिब्बे में बड़ी चमक = चौकोर किनारे)
         (centerGlow?.background as? android.graphics.drawable.GradientDrawable)?.gradientRadius = minOf(d(130f * k), c.resources.displayMetrics.widthPixels / 2).toFloat()
-        liveBox.background = if (showAv) glassCard() else com.dk.assistant.ui.Clay.card(c)
-        liveBox.setTag(com.dk.assistant.PlainLook.SKIP, if (showAv) true else null)   // काँच वाला कार्ड ठोस Clay में न बदले
+        liveBox.background = if (full) glassCard(0x9A, 0x8C) else if (showAv) glassCard() else com.dk.assistant.ui.Clay.card(c)
+        liveBox.setTag(com.dk.assistant.PlainLook.SKIP, if (showAv || full) true else null)   // काँच वाला कार्ड ठोस Clay में न बदले
         // कैरेक्टर के ऊपर अभिवादन साफ़ पढ़ा जाए: हल्की परछाईं (थीम का पर्दा-रंग). ऊपर की पट्टी में हो तो परछाईं नहीं
         val overArt = showAv && greetSlot == null
         val sh = com.dk.assistant.ui.ClayTheme.scrim(if (overArt) 0.7f else 0f)
         for (tv in listOf(greetTxt, nameTxt)) if (overArt) tv.setShadowLayer(d(6f).toFloat(), 0f, d(1f).toFloat(), sh) else tv.setShadowLayer(0f, 0f, 0f, 0)
         renderBack()
-        centerOrb.visibility = if (!showAv && !classic && !showSpirit) View.VISIBLE else View.GONE
-        centerClassic.visibility = if (!showAv && classic && !showSpirit) View.VISIBLE else View.GONE
-        centerLogo.visibility = if (showAv || showSpirit) View.GONE else View.VISIBLE
+        centerOrb.visibility = if (!showAv && !classic && !showSpirit && !full) View.VISIBLE else View.GONE
+        centerClassic.visibility = if (!showAv && classic && !showSpirit && !full) View.VISIBLE else View.GONE
+        centerLogo.visibility = if (showAv || showSpirit || full) View.GONE else View.VISIBLE
         // 26 नवंबर 2026 (मालिक): ethereal महिला / पुरुष = ORB वाली जगह पर, आवाज़ की हालत के साथ चमक
         if (showSpirit && centerSpirit == null) {
             centerSpirit = SpiritCharacterHost(c)

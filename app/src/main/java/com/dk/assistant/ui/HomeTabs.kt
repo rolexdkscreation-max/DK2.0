@@ -137,6 +137,17 @@ object HomeTabs {
         }
     }
 
+    /**
+     * 27 नवंबर 2026 (मालिक: होम पर फुल-स्क्रीन कैरेक्टर): पट्टी काँच जैसी (हल्का गहरा tint, गोल किनारे, पतली लकीर) -
+     * null = पहले वाली ठोस पट्टी. चयन-बूँद, आइकन, रंग वही.
+     */
+    fun glass(bar: View?, d: android.graphics.drawable.Drawable?) {
+        val l = bar?.getTag(R.id.dk_home_tabs) as? LiquidTabs ?: return
+        if (l.glass === d) return
+        l.glass = d
+        l.invalidateSelf()
+    }
+
     /** अभी चुना टैब (पट्टी पर) */
     fun selected(bar: View?): Tab? = (bar?.getTag(R.id.dk_home_tabs) as? LiquidTabs)?.sel
 
@@ -185,6 +196,8 @@ class LiquidTabs(private val bar: LinearLayout, var sel: HomeTabs.Tab, radius: F
     private var anim: android.animation.ValueAnimator? = null
     /** न चुने टैब की लिखावट का रंग */
     var fg: Int = ClayTheme.t.gray
+    /** 27 नवंबर 2026 (मालिक: होम पर फुल-स्क्रीन कैरेक्टर): दिया हो = ठोस पट्टी की जगह यह काँच वाली पट्टी (चयन-बूँद वही) */
+    var glass: android.graphics.drawable.Drawable? = null
 
     private fun target(): android.graphics.RectF? {
         for (i in 0 until bar.childCount) {
@@ -219,8 +232,8 @@ class LiquidTabs(private val bar: LinearLayout, var sel: HomeTabs.Tab, radius: F
     }
 
     override fun draw(c: android.graphics.Canvas) {
-        base.bounds = bounds
-        base.draw(c)
+        val g = glass
+        if (g != null) { g.bounds = bounds; g.draw(c) } else { base.bounds = bounds; base.draw(c) }
         val to = target() ?: return
         if (l.isNaN() || (anim?.isRunning != true)) { l = to.left; r = to.right }
         blob.setBounds(l.toInt(), to.top.toInt(), r.toInt(), to.bottom.toInt())
