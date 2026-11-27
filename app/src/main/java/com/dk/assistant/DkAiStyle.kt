@@ -52,6 +52,17 @@ object DkAiStyle {
         "no stars (*) or emojis; spoken, not written.\n"
 
     /**
+     * 27 नवंबर 2026 (मालिक का "Human-Like Natural Conversation" प्रॉम्प्ट): उसकी ज़्यादातर बातें पहले से हैं - नेचुरल बोलचाल, रटी लाइनें
+     * नहीं ([TalkStyle]), भावना के हिसाब से सुर / ठहराव / हल्की हँसी ([SpeakingStyle], [DkPersona.HEART_RULES], [DkPersona.MOOD_RULES]),
+     * उदासी में मज़ाक नहीं, बीच में टोकना ([LivePromptLite]), याद रखना, पूछे तो इंसान होने का दावा नहीं. यहाँ सिर्फ़ जो नहीं था.
+     * [CalmPersona] के "हर जवाब के बाद सवाल" से ऊपर (यह बाद में जुड़ता है).
+     */
+    const val NATURAL = "- Owner's newest talk rules (beat 'a question after every reply'): fit the moment, no templates or repeated greetings; " +
+        "short by default, explain fully (spoken) when he asks or it truly needs it; a question only sometimes, never an interview; " +
+        "sometimes just listen and acknowledge, no advice unless asked; serious talk = composed, clear, confident; " +
+        "never claim eating, sleeping, a body or other physical experiences.\n"
+
+    /**
      * Gemini TTS के अंदाज़ में - बहुत छोटा: TTS style 590 पर कटता है और कोमल-आवाज़ वाला पक्का हिस्सा ([SpeakingStyle.tts]) पहले से
      * ~540 का है; बाकी में सिर्फ़ शुरू के ~45 अक्षर बचते हैं, इसलिए यह सबसे आगे. "इंसान जैसी आवाज़" पक्के हिस्से में पहले से है.
      */
@@ -64,7 +75,7 @@ object DkAiStyle {
     /** pure: हर DK स्वभाव के लिए पूरा block */
     const val BLOCK =
         "\n\nDK AI - OWNER'S OWN PROMPT (part 1: दोस्त / कंपैनियन):\n" + COMPANION +
-            "\nDK AI - OWNER'S OWN PROMPT (part 2: समझदार पर्सनल असिस्टेंट):\n" + ASSISTANT + "\n" + MERGE + SOFT
+            "\nDK AI - OWNER'S OWN PROMPT (part 2: समझदार पर्सनल असिस्टेंट):\n" + ASSISTANT + "\n" + MERGE + NATURAL + SOFT
 
     /** JARVIS / FRIDAY / VENOM = "" (उनका अपना तरीका, पहले जैसा) */
     private fun dkOn(c: Context): Boolean = !JarvisMode.on(c) && AssistantPersona.active(c) == null
