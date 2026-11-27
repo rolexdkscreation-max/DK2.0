@@ -28,6 +28,7 @@ object LiveSrc {
         "GeminiLiveTurn.kt",
         "GeminiLiveChecks.kt",
         "GeminiLiveRotate.kt",
+        "GeminiLiveRepeat.kt",
         "GeminiLiveRescue.kt",
         "GeminiLiveHistory.kt",
     )
