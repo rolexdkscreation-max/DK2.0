@@ -402,7 +402,11 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         outLevels.maxOfOrNull { it.second } ?: 0.0
     }
     /** Live socket पर भेजो + दर्ज करो (टूटने पर लॉग) */
-    internal fun WebSocket.tx(m: String): Boolean { wire.sent(m); if (LiveRepeat.isInput(m)) repeatGuard.onInput(); return send(m) }
+    internal fun WebSocket.tx(m: String): Boolean {
+        wire.sent(m)
+        if (LiveRepeat.isInput(m)) repeatGuard.onInput()
+        return send(m)
+    }
     /** Server ka aakhri sandesh (koi bhi) - atka stream pakadne ke liye */
     @Volatile internal var lastServerAt = 0L
     /** नवंबर 2026: server का आखिरी कोई भी संदेश (VAD / resumption भी) - अटका session पकड़ने के लिए */
