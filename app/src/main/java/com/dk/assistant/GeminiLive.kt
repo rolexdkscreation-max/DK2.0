@@ -402,7 +402,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         outLevels.maxOfOrNull { it.second } ?: 0.0
     }
     /** Live socket पर भेजो + दर्ज करो (टूटने पर लॉग) */
-    internal fun WebSocket.tx(m: String): Boolean { wire.sent(m); return send(m) }
+    internal fun WebSocket.tx(m: String): Boolean { wire.sent(m); if (LiveRepeat.isInput(m)) repeatGuard.onInput(); return send(m) }
     /** Server ka aakhri sandesh (koi bhi) - atka stream pakadne ke liye */
     @Volatile internal var lastServerAt = 0L
     /** नवंबर 2026: server का आखिरी कोई भी संदेश (VAD / resumption भी) - अटका session पकड़ने के लिए */
@@ -440,6 +440,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     // v3.41: suna par jawab shuru nahi = 4.5s ki jagah 3.5s me bachao (atka sawaal jaldi dobara)
     // v3.46: 2.5s -> 1.8s (सर्वर ने सुना हो तो ~1s में text भेज देता है); 0.4s -> 0.25s (छोटे आदेश "हाँ", "रुको" भी बचें - caption के शब्द ज़रूरी)
     internal val replyWatch = ReplyWatchdog(timeoutMs = LiveStay.NO_REPLY_MS, minSpeechMs = 250, answerTimeoutMs = 3500)   // नवंबर 2026: 1.8s -> 6s (पहला जवाब अक्सर 2-4s)
+    /** 27 नवंबर 2026 (मालिक: "एक ही जवाब 3-4 बार, मेरी बात नहीं सुनता"): दोहराव / दोबारा-भेजी बात / गूँज ([LiveRepeat]) */
+    internal val repeatGuard = LiveRepeat()
     @Volatile internal var unheard = 0
     @Volatile internal var rescued = 0
     /** v3.29: suna par jawab shuru nahi kiya -> wahi baat text me dobara (kitni baar) */

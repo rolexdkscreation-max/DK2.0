@@ -105,6 +105,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         sc.optJSONObject("interimInputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let { liveHeardCall(it, false) }
     }
     sc.optJSONObject("inputTranscription")?.optString("text")?.takeIf { it.isNotBlank() && !muteTurn }?.let { t ->
+        if (echoHeard(t)) return@let               // 27 नवंबर 2026: DK की अपनी आवाज़ की गूँज - उस पर जवाब नहीं
         if (!turnActive) startTurn()
         Ducker.duck(svc, "Live: user बोल रहा")
         suspectAt = 0L                     // user ki baat ka text aaya = rokna sahi tha (goonj nahi)
@@ -144,6 +145,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
                 val noLeak = leakFilter.push(tx)               // v4.1: "phone_task{…}" न दिखे, न बोला जाए - काम सीधे
                 val clean = if (noLeak.isEmpty()) "" else tagFilter?.push(noLeak) ?: noLeak   // v3.71: [खुश] जैसा टैग न बोला जाए, न दिखे
                 if (clean.isNotEmpty()) synchronized(turnLock) { replyText.append(clean) }
+                if (repeatCheck()) return@let          // 27 नवंबर 2026: वही पुराना जवाब / दोबारा भेजी बात का दूसरा जवाब
                 splitHoldCheck(); pumpSplit()
                 continue
             }
@@ -175,6 +177,7 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         // screen par abhi nahi - revealTick() awaaz ke saath-saath dikhata hai
         val tc = leakFilter.push(t)              // v4.1: लिखी हुई tool call हटाओ (और उसी पल असली काम)
         val soFar = synchronized(turnLock) { replyText.append(tc); if (replyText.length < 240) replyText.toString() else null }
+        if (repeatCheck()) return@let              // 27 नवंबर 2026: वही पुराना जवाब / दोबारा भेजी बात का दूसरा जवाब
         // v3.71: सीधी आवाज़ में टैग नहीं (बोल दिया जाता) - शुरू के शब्दों से अवतार का भाव
         soFar?.let { com.dk.assistant.avatar.EmotionGuess.of(it) }?.takeIf { it != com.dk.assistant.avatar.Mood.NORMAL }
             ?.let { com.dk.assistant.avatar.MoodState.set(it) }
