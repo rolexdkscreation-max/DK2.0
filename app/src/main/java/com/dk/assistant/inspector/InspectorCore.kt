@@ -270,6 +270,13 @@ object InspectorCore {
             "AI ने समय पर जवाब नहीं दिया (timeout)", "पीछे चल रहे काम का AI (जैसे OpenRouter free) धीमा रहा - ऐप crash नहीं हुआ।",
             "पीछे वाला काम धीमा या अधूरा रह सकता है।", "Gemini key ठीक रखें - बंद key पर DK धीमे free मॉडल पर जाता है।",
             "कोड बदलाव ज़रूरी नहीं (fallback पहले से)।", "वही काम दोबारा करें; timeout बार-बार न आए।"),
+        // 27 नवंबर 2026 (DKI-DA1B71, "Critical crash" 123 बार): "Coder: AI नेटवर्क दिक्कत (IOException) - अपने-आप दोबारा" crash नहीं -
+        // फ़ोन पर नेट/DNS नहीं था (सारे API पर एक ही पल UnknownHost), Coder ने खुद दोबारा कोशिश की. पहले "IOException" शब्द से crash बनता था.
+        Rule("ai_net", Component.API, Certainty.CONFIRMED, Severity.LOW,
+            Regex("(Coder: .{0,200}नेटवर्क दिक्कत|AI API अस्थायी गलती)"),
+            "AI तक इंटरनेट नहीं पहुँचा (Coder ने खुद दोबारा कोशिश की)", "फ़ोन से AI server तक नेट/DNS का रास्ता नहीं बना (UnknownHost / timeout) - ऐप crash नहीं हुआ।",
+            "उतनी देर Coding Agent का AI जवाब नहीं देता; नेट लौटते ही अपने-आप आगे।", "Wi-Fi / mobile data देखें; VPN, Private DNS या ad-blocker बंद करके देखें।",
+            "कोड बदलाव ज़रूरी नहीं (CoderAi खुद 3 बार कोशिश करता है, फिर अगला API)।", "नेट ठीक होने पर वही काम दें; जवाब आए।"),
         // नवंबर 2026 (DKI-C7025E, "Critical crash" 67 बार): ConnectException/UnknownHost = फ़ोन से Google तक नेट नहीं - ऐप crash नहीं
         Rule("live_net", Component.LIVE_CONNECTION, Certainty.CONFIRMED, Severity.LOW,
             Regex("(?i)(ConnectException|UnknownHostException|NoRouteToHostException|SocketTimeoutException|SocketException|SSLHandshakeException|Failed to connect to|Unable to resolve host|का पता नहीं मिला|Software caused connection abort|Network is unreachable)"),

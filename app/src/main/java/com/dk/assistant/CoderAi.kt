@@ -604,6 +604,20 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             return if (hinted.isEmpty()) 60 else hinted.minOrNull()!!.coerceIn(20, 90)
         }
 
+        /**
+         * 27 नवंबर 2026 (DKI-DA1B71): पूरी chain fail होने पर असली गलती (UnknownHost आदि) [java.io.IOException] में लिपटी आती थी,
+         * तो लॉग में सिर्फ़ "IOException" दिखता था. अब अंदर की असली नेटवर्क गलती का नाम. Pure
+         */
+        fun netName(e: Throwable): String {
+            var t: Throwable? = e
+            var n = 0
+            while (t != null && n < 6) {
+                if (t.javaClass != java.io.IOException::class.java) return t.javaClass.simpleName
+                t = t.cause; n++
+            }
+            return e.javaClass.simpleName
+        }
+
         /** Chhoti Hindi wajah report ke liye */
         fun reason(e: Exception): String {
             val code = (e as? AiException)?.code
@@ -613,7 +627,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
                 404 -> "मॉडल नहीं मिला (404)"
                 413 -> "बात बहुत लंबी, इस API की सीमा से बड़ी (413)"
                 500, 502, 503, 504 -> "सर्वर पर भीड़/दिक्कत ($code)"
-                null -> "नेटवर्क दिक्कत (${e.javaClass.simpleName})"
+                null -> "नेटवर्क दिक्कत (${netName(e)})"
                 else -> "गलती $code: ${e.message?.lineSequence()?.firstOrNull()?.take(80)}"
             }
         }
