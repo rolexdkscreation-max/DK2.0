@@ -61,7 +61,7 @@ class PressedCardNov27Test {
         // बाहर की परछाईं / चमक / किनारा: साझा कार्ड और दबे रूप दोनों पर नहीं
         val cd = src("ui/ClayDrawables.kt")
         assertTrue(cd.contains("private val flat = card || sunk"))
-        assertTrue(cd.contains("val out = if (raised && !flat) depth else 0f"))
-        assertTrue(cd.contains("val inn = if (flat) 1f else"))
+        assertTrue(cd.contains("val card = flat"))
+        assertTrue(cd.contains("val out = if (raised && !card) depth else 0f"))
     }
 }

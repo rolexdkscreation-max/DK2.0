@@ -172,9 +172,11 @@ class ClayDrawable(
         val d = dist(bounds)
         val r = radius()
         val raised = style != Style.INSET
+        // 27 नवंबर 2026: साझा दबा रूप ([sunk]) की परछाइयाँ हूबहू साझा कार्ड जैसी
+        val card = flat
         // ---- बाहर की दो परछाइयाँ (उभरा) - दबने पर धीमे-धीमे गायब
         // 23 नवंबर 2026 (मालिक: "दबाने वाला रूप ही मूल रूप"): साझा कार्ड पर बाहर की परछाईं कभी नहीं - दबी हालत में भी नहीं थी
-        val out = if (raised && !flat) depth else 0f
+        val out = if (raised && !card) depth else 0f
         if (soft && out > 0.01f && d > 0.5f) {
             val (off0, bl) = ClayCard.shadow(d)
             val off = off0 * out
@@ -233,7 +235,7 @@ class ClayDrawable(
         }
 
         // ---- ऊपर-बाएँ की चमक (हाइलाइट): उभरा डिब्बा स्क्रीन से ऊपर उठा दिखे
-        if (raised && !flat && depth > 0.01f) {   // कार्ड: दबी हालत में यह चमक नहीं थी, इसलिए मूल रूप में भी नहीं
+        if (raised && !card && depth > 0.01f) {   // कार्ड: दबी हालत में यह चमक नहीं थी, इसलिए मूल रूप में भी नहीं
             val gr = maxOf(shape.width(), shape.height()) * 0.75f
             val hl = NeonTheme.alpha(k.rim, if (style == Style.ACCENT || soft) 0x55 else if (k.light) 0xB0 else 0x30)
             c.save(); c.clipPath(path)
@@ -246,13 +248,13 @@ class ClayDrawable(
 
         // ---- अंदर की परछाईं (धँसा / दबा हुआ) - [ClayTheme.SINK] से गहरी
         // कार्ड: हमेशा पूरी (= पहले वाला दबा रूप, हूबहू वही मान); दबाने पर [ClayCard.PRESS_SINK] गुना और गहरी
-        val inn = if (flat) 1f else if (raised) (1f - depth) else 1f
+        val inn = if (card) 1f else if (raised) (1f - depth) else 1f
         if (inn > 0.01f) {
             val id = maxOf(d, 3f * (bounds.height().coerceAtLeast(1) / 48f).coerceIn(0.6f, 1.6f))
             c.save()
             c.clipPath(path)
             shP.style = Paint.Style.STROKE
-            val sink = ClayTheme.SINK * (if (flat) 1f + (ClayCard.PRESS_SINK - 1f) * (1f - depth) else 1f)
+            val sink = ClayTheme.SINK * (if (card) 1f + (ClayCard.PRESS_SINK - 1f) * (1f - depth) else 1f)
             shP.strokeWidth = id * 1.6f * sink
             shP.maskFilter = blurOf(id * 0.8f * sink)
             val off = id * 0.5f * sink
@@ -264,7 +266,7 @@ class ClayDrawable(
             c.restore()
         }
         // ---- ऊपर का बहुत पतला उजला किनारा (उभार को साफ़ दिखाने के लिए)
-        if (raised && !flat && depth > 0.5f) {   // कार्ड पर सख़्त किनारे की रेखा नहीं (मालिक)
+        if (raised && !card && depth > 0.5f) {   // कार्ड पर सख़्त किनारे की रेखा नहीं (मालिक)
             if (!soft) {   // नरम (साझा कार्ड जैसी) सतह पर भी रेखा नहीं
                 rimP.strokeWidth = maxOf(1.2f, d * 0.16f)
                 // ऊपर-बाएँ उजला किनारा -> नीचे-दाएँ हल्का गहरा किनारा (तिरछा)
