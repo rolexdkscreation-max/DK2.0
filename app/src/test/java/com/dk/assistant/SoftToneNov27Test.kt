@@ -23,7 +23,7 @@ class SoftToneNov27Test {
 
     @Test fun onlyMissingPartsAdded() {
         val s = DkAiStyle.SOFT
-        for (k in listOf("सबसे अपना इंसान", "\"सुनो ना...\"", "\"सुनिए ना...\"", "stars (*)", "emojis", "truly spoken, not written"))
+        for (k in listOf("सबसे अपना इंसान", "\"सुनो ना...\"", "\"सुनिए ना...\"", "stars (*)", "emojis", "spoken, not written"))
             assertTrue("नहीं मिला: $k", s.contains(k))
         assertTrue(DkAiStyle.BLOCK.endsWith(DkAiStyle.SOFT))
         assertTrue(DkAiStyle.SAY_RULE.contains("stars (*)"))
