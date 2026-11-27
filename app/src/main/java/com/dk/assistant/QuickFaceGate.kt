@@ -22,12 +22,19 @@ import kotlin.math.hypot
  *  - 22 नवंबर 2026 (मालिक: "रिकॉर्ड किया वीडियो दिखाया तो भी खुल गया"): ऊपर का सब पास होने के बाद भी आख़िरी ताला -
  *    स्क्रीन की random रंगीन रोशनी ([FlashLive], ~1.5 s). उसका जवाब सिर्फ़ सामने खड़ा असली चेहरा देता है, वीडियो / फ़ोटो नहीं.
  *    बीच में चेहरा हटा / बदला / दूसरा आया = FAIL.
+ *  - 27 नवंबर 2026 (मालिक: "आउटडोर में धूप रहते नहीं होता… रियल इंसान से ही"): रंग वाली जाँच में अब आँकड़ों वाला रास्ता
+ *    ([FlashLive.tStat]) और कैमरे का रंग-ताला. फिर भी नतीजा न निकले और **सच में धूप** हो ([Frame.lux] ≥ [SUN_LUX], या
+ *    light sensor न हो तो चेहरे की चमक ≥ [SUN_LUMA]) और रंग का जवाब उल्टा न हो ([FlashLive.Result.against]) = फ़ेल नहीं,
+ *    धूप वाली random सिर-घुमाना जाँच ([SunTurns]) + AI anti-spoof की सख़्त शर्त (नए सिरे से) + आख़िर में सीधे चेहरे पर सख़्त
+ *    मालिक-मिलान. घर के अंदर / छाँव में (धूप नहीं) रंग न दिखे = पहले जैसा FAIL (वहाँ वीडियो / फ़ोटो ही वजह).
  */
 class QuickFaceGate(private val side: Int = FaceLiveness.randomSide(), private val allowTurn: Boolean = true) {
     data class Frame(
         val at: Long, val faces: Int, val cx: Float = 0f, val cy: Float = 0f, val w: Float = 0f,
         val yaw: Float? = null, val score: Float? = null, val otherBest: Float? = null, val real: Float? = null,
         val spoofReady: Boolean = true,
+        /** 27 नवंबर 2026: फ़ोन के light sensor से आस-पास की रोशनी (lux). null = sensor नहीं */
+        val lux: Float? = null,
     )
     enum class State { WAIT, PASS, FAIL }
     /** [step] 0-3 स्क्रीन के ●●● के लिए, [turn] = अभी सिर घुमाने को कहा */
@@ -40,6 +47,11 @@ class QuickFaceGate(private val side: Int = FaceLiveness.randomSide(), private v
     @Volatile var lastFlash: FlashLive.Result? = null
         private set
     val flashing get() = flash != null
+    /** धूप वाली सिर-घुमाना जाँच चल रही हो तो */
+    @Volatile var sun: SunTurns? = null
+        private set
+    /** अब तक की सबसे तेज़ रोशनी (lux) - धूप है या नहीं */
+    private var maxLux = 0f
     /** आख़िरी सख़्त मिलान (0-1) */
     @Volatile var lastScore = 0f
         private set
@@ -54,7 +66,7 @@ class QuickFaceGate(private val side: Int = FaceLiveness.randomSide(), private v
     private var turned = false
 
     fun reset() {
-        votes.clear(); hits = 0; notBoss = 0; lastAt = 0L; lastW = 0f; matchAt = 0L; turnAsked = false; turned = false; flash = null
+        votes.clear(); hits = 0; notBoss = 0; lastAt = 0L; lastW = 0f; matchAt = 0L; turnAsked = false; turned = false; flash = null; sun = null
     }
 
     fun mean(): Float = if (votes.isEmpty()) 0f else votes.sum() / votes.size
@@ -67,7 +79,9 @@ class QuickFaceGate(private val side: Int = FaceLiveness.randomSide(), private v
 
     fun feed(f: Frame): Verdict {
         if (!f.spoofReady) return Verdict(State.FAIL, "AI anti-spoof मॉडल तैयार नहीं — PIN से खोलें")
+        f.lux?.let { if (it.isFinite() && it > maxLux) maxLux = it }
         flash?.let { fl -> return flashStep(fl, f) }
+        sun?.let { st -> return sunStep(st, f) }
         if (f.faces == 0) {
             if (lastAt > 0L && f.at - lastAt > GAP_MS) reset()
             hits = 0
@@ -128,16 +142,72 @@ class QuickFaceGate(private val side: Int = FaceLiveness.randomSide(), private v
             return Verdict(State.FAIL, "लाइव जाँच बीच में टूटी ($why) — फिर से")
         }
         if (!fl.done(f.at)) return Verdict(State.WAIT, "लाइव जाँच — रंग बदल रहे हैं, सीधे देखते रहिए", 3)
-        val r = fl.result(); lastFlash = r; reset()
-        return if (r.live) Verdict(State.PASS, "✓ LIVE — असली इंसान, मालिक पक्का", 3)
-        else Verdict(State.FAIL, FLASH_FAIL)
+        val r = fl.result(); lastFlash = r
+        if (r.live) { reset(); return passed() }
+        if (sunny(r)) return startSun(f)
+        reset()
+        return Verdict(State.FAIL, FLASH_FAIL)
     }
+
+    /** सच में धूप (रंग इसीलिए नहीं दिखा) और रंग का जवाब उल्टा नहीं (पुराना क्रम वाला वीडियो नहीं) */
+    private fun sunny(r: FlashLive.Result): Boolean {
+        if (r.against) return false
+        return if (maxLux > 0f) maxLux >= SUN_LUX else r.luma.isFinite() && r.luma >= SUN_LUMA
+    }
+
+    private fun startSun(f: Frame): Verdict {
+        flash = null
+        // AI की गिनती नए सिरे से (धूप वाले फ़्रेम), मिलान भी नया - आख़िर में सीधे चेहरे पर फिर से सख़्त
+        votes.clear(); hits = 0; notBoss = 0; lastAt = f.at; lastW = 0f
+        val st = SunTurns(); sun = st; sunAt = f.at; sunMatched = false
+        return Verdict(State.WAIT, st.hint(), 3, true)
+    }
+
+    private var sunAt = 0L
+    private var sunMatched = false
+
+    private fun sunStep(st: SunTurns, f: Frame): Verdict {
+        val broke = when {
+            f.faces > 1 -> "एक से ज़्यादा चेहरे"
+            f.faces == 0 -> if (f.at - lastAt > GAP_MS) "चेहरा हट गया" else null
+            lastW > 0f && (hypot(f.cx - lastCx, f.cy - lastCy) > FaceLiveness.JUMP * lastW ||
+                f.w / lastW > FaceLiveness.RESIZE || lastW / f.w > FaceLiveness.RESIZE) -> "चेहरा बदला / कूदा"
+            f.at - sunAt > SUN_MAX_MS -> "समय ख़त्म"
+            else -> null
+        }
+        if (broke != null) { reset(); return Verdict(State.FAIL, "धूप वाली लाइव जाँच टूटी ($broke) — फिर से") }
+        if (f.faces == 0) return Verdict(State.WAIT, st.hint(), 3, true)
+        lastAt = f.at; lastCx = f.cx; lastCy = f.cy; lastW = f.w
+        f.real?.let { votes.addLast(it.coerceIn(0f, 1f)); while (votes.size > WINDOW) votes.removeFirst() }
+        if (fake()) { reset(); return Verdict(State.FAIL, "फ़ोटो / वीडियो / स्क्रीन पकड़ी गई — असली इंसान नहीं") }
+        f.score?.let { s ->
+            if (s < FaceMath.MATCH * 0.8f) { reset(); return Verdict(State.FAIL, "यह चेहरा मालिक का नहीं (${(s * 100).toInt()}%)") }
+            if (s >= FaceMath.STRICT && (f.otherBest == null || s - f.otherBest >= FacePeople.MARGIN)) { if (st.index >= st.steps.size) sunMatched = true; lastScore = s }
+        }
+        when (st.update(f.at, f.yaw)) {
+            SunTurns.State.FAIL -> { val w = st.why; reset(); return Verdict(State.FAIL, "धूप वाली लाइव जाँच फ़ेल ($w) — फ़ोटो / वीडियो? फिर से या PIN") }
+            SunTurns.State.WAIT -> return Verdict(State.WAIT, st.hint(), 3, true)
+            SunTurns.State.DONE -> Unit
+        }
+        // सब कदम सही - अब सीधे चेहरे पर सख़्त मिलान + AI पक्का
+        if (sunMatched && sureReal()) { reset(); return passed() }
+        return Verdict(State.WAIT, "✓ सिर घुमाना सही — सीधे देखिए, AI लाइव जाँच (${votes.size}/${FaceSpoof.SURE_FRAMES})…", 3)
+    }
+
+    /** PASS सिर्फ़ यहीं से - रंगीन रोशनी ([flashStep]) या धूप वाली जाँच ([sunStep]) के बाद */
+    private fun passed() = Verdict(State.PASS, "✓ LIVE — असली इंसान, मालिक पक्का", 3)
 
     private fun turnHint() = if (turned) "✓ ठीक — अब सीधे कैमरे में देखिए" else "सिर हल्का-सा ${FaceLiveness.side(side)} घुमाइए"
 
     companion object {
         const val FLASH_FAIL = "स्क्रीन की रोशनी चेहरे पर नहीं दिखी — फ़ोटो / वीडियो / स्क्रीन? (बहुत तेज़ धूप हो तो छाँव में आइए या PIN से खोलें)"
         const val FLASH_START_MS = 2_000L
+        /** इससे ज़्यादा रोशनी = धूप (बादल वाला बाहर ~10 हज़ार, सीधी धूप 30 हज़ार - 1 लाख lux; घर के अंदर 50-1000) */
+        const val SUN_LUX = 8_000f
+        /** light sensor न हो: रंग के दौरान चेहरे की औसत चमक इतनी (0-1) = बहुत तेज़ रोशनी */
+        const val SUN_LUMA = 0.62f
+        /** धूप वाली पूरी जाँच की हद */
+        const val SUN_MAX_MS = 15_000L
         const val HITS = 2
         const val WINDOW = 6
         const val FAST_FRAMES = 4

@@ -21,10 +21,40 @@ class FlashScreen(private val act: Activity) {
         private set
     /** आख़िरी चेहरे का डिब्बा (worker धागा लिखता है, कैमरा धागा पढ़ता है) */
     @Volatile var box: FloatArray? = null
+    /** 27 नवंबर 2026: रंग के दौरान इस कैमरे का रंग / चमक ताला ([FaceCam.lockLight]) */
+    @Volatile var cam: FaceCam? = null
+
+    // 27 नवंबर 2026: आस-पास की रोशनी (lux) - धूप है तो [QuickFaceGate] धूप वाली जाँच देता है
+    @Volatile private var luxNow = Float.NaN
+    private var luxOn = false
+    private val luxListener = object : android.hardware.SensorEventListener {
+        override fun onSensorChanged(e: android.hardware.SensorEvent) { e.values.firstOrNull()?.let { luxNow = it } }
+        override fun onAccuracyChanged(s: android.hardware.Sensor?, a: Int) = Unit
+    }
+
+    /** आस-पास की रोशनी (lux), null = light sensor नहीं / अभी पढ़ा नहीं. पहली बार पढ़ते ही sensor चालू */
+    fun lux(): Float? {
+        if (!luxOn) {
+            luxOn = true
+            try {
+                val sm = act.getSystemService(android.content.Context.SENSOR_SERVICE) as? android.hardware.SensorManager
+                sm?.getDefaultSensor(android.hardware.Sensor.TYPE_LIGHT)?.let { sm.registerListener(luxListener, it, android.hardware.SensorManager.SENSOR_DELAY_NORMAL) }
+            } catch (e: Throwable) { Quiet.note(e) }
+        }
+        return luxNow.takeIf { it.isFinite() }
+    }
+
+    /** light sensor बंद (स्क्रीन बंद होते समय) */
+    fun stopLux() {
+        if (!luxOn) return
+        luxOn = false
+        try { (act.getSystemService(android.content.Context.SENSOR_SERVICE) as? android.hardware.SensorManager)?.unregisterListener(luxListener) } catch (e: Throwable) { Quiet.note(e) }
+    }
 
     /** रंग शुरू (UI धागे से). [onShown] = रंग खत्म होने पर */
     fun begin(f: FlashLive, onShown: () -> Unit = {}) {
         flash = f
+        cam?.lockLight(true)
         f.start(System.currentTimeMillis())
         val v = layer ?: FrameLayout(act).apply {
             elevation = 1000f
@@ -52,6 +82,7 @@ class FlashScreen(private val act: Activity) {
     /** रंगीन परत हटाओ, चमक पहले जैसी */
     fun end() {
         layer?.visibility = View.GONE
+        cam?.lockLight(false)
         if (bright) { bright = false; act.window.let { w -> w.attributes = w.attributes.apply { screenBrightness = oldBright } } }
     }
 
@@ -70,7 +101,7 @@ class FlashScreen(private val act: Activity) {
             val x1 = (cx + ox).toInt().coerceIn(x0 + 1, b.width); val y1 = (cy + oy).toInt().coerceIn(y0 + 1, b.height)
             val w = x1 - x0; val h = y1 - y0
             val px = IntArray(w * h); b.getPixels(px, 0, w, x0, y0, w, h)
-            FlashLive.measure(px, w, h, bx[0] - x0, bx[1] - y0, bx[2], bx[3])?.let { f.sample(now, it[0], it[1]) }
+            FlashLive.measure(px, w, h, bx[0] - x0, bx[1] - y0, bx[2], bx[3])?.let { f.sample(now, it[0], it[1], it[2]) }
         } catch (e: Throwable) { Quiet.note(e) }
     }
 }

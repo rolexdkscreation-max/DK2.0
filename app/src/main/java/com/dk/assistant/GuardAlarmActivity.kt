@@ -149,6 +149,7 @@ class GuardAlarmActivity : AppCompatActivity() {
         if (face && !FaceAI.hasSpoof(this)) Thread { FaceAI.downloadSpoof(applicationContext) }.apply { isDaemon = true }.start()
         if (!photo && !face) return
         cam = FaceCam(this, preview, capture = photo, gapMs = if (face) FlashLive.CAM_GAP_MS else 350L) { b -> flashScr.sample(b); onFrame(b, photo, face) }.also { it.start { w -> DKLog.d("टच मोड: कैमरा नहीं खुला ($w)"); faceUi("कैमरा नहीं खुला: $w") } }
+        flashScr.cam = cam
     }
 
     /** बीच का [SHARP_BOX]² हिस्सा (तेज़ी नापने को) */
@@ -213,7 +214,7 @@ class GuardAlarmActivity : AppCompatActivity() {
         val s = e?.let { FaceAI.score(this, it) }
         val other = e?.let { x -> FacePeople.all(this).maxOfOrNull { FaceMatch.cosineSimilarity(it.print, x) } }
         val v = g.feed(QuickFaceGate.Frame(now, dets.size, det?.let { it.x + it.w / 2f } ?: 0f, det?.let { it.y + it.h / 2f } ?: 0f,
-            det?.w ?: 0f, yaw, s, other, real, true))
+            det?.w ?: 0f, yaw, s, other, real, true, lux = flashScr.lux()))
         lastStep = v.step; lastHint = v.why
         if (v.flash) runOnUiThread { g.flash?.let { flashScr.begin(it) } }
         g.lastFlash?.let { if (v.state != QuickFaceGate.State.WAIT) DKLog.d("टच मोड ${it.log()}") }
@@ -224,7 +225,7 @@ class GuardAlarmActivity : AppCompatActivity() {
                 if (det != null) holo?.let { h -> h.place(det, b.width, b.height, true, tone = HoloScanView.OK)?.let { f ->
                     h.show(HoloScanView.Mode.AUTHORIZED, listOf(f), 3, bars(s), HoloScanView.AUTHORIZED, "स्वागत है, ${Prefs.userName(this).trim().ifBlank { "Boss" }}") } }
                 faceUi("✓ मालिक पहचाने गए — असली इंसान (लाइव)")
-                Guard.disarm(this, "मालिक का चेहरा पहचाना ($pct%, AI anti-spoof + स्क्रीन की रंगीन रोशनी से असली इंसान जाँचा)")
+                Guard.disarm(this, "मालिक का चेहरा पहचाना ($pct%, AI anti-spoof + ${if (g.lastFlash?.live == false) "धूप वाली random सिर-घुमाना जाँच" else "स्क्रीन की रंगीन रोशनी"} से असली इंसान जाँचा)")
                 runOnUiThread { root.postDelayed({ finish() }, AUTH_SHOW_MS) }
             }
             QuickFaceGate.State.FAIL -> {
@@ -315,7 +316,7 @@ class GuardAlarmActivity : AppCompatActivity() {
     override fun onDestroy() {
         shown = false
         try { cam?.stop() } catch (e: Exception) { Quiet.note(e) }
-        flashScr.cancel()
+        flashScr.cancel(); flashScr.stopLux(); flashScr.cam = null
         work.shutdown()
         if (current?.get() === this) current = null
         super.onDestroy()
