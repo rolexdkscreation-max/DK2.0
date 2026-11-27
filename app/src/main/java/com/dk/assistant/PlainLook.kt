@@ -300,16 +300,19 @@ object PlainLook {
         val chip = { com.dk.assistant.ui.ClayTheme.t.chip }
         fun c(style: ClayStyle, r: Float, depth: Float = 5f, oval: Boolean = false, fill: (() -> Int)? = null) =
             com.dk.assistant.ui.ClayDrawable(style, radiusPx = if (r >= FULL) FULL else r * dp, oval = oval, depthPx = depth * dp, fill = fill)
+        // 27 नवंबर 2026 (मालिक): पट्टी / पिल / DK का बुलबुला = साझा दबा रूप [com.dk.assistant.ui.ClayCard.pressedCard]
+        fun p(r: Float, depth: Float, fill: (() -> Int)? = null) =
+            com.dk.assistant.ui.ClayCard.pressedCard(if (r >= FULL) FULL else r * dp, depth * dp, fill = fill)
         return when (k) {
             Kind.CARD -> com.dk.assistant.ui.ClayDrawable(ClayStyle.RAISED, radiusPx = com.dk.assistant.ui.ClayCard.RADIUS_DP * dp,
                 depthPx = com.dk.assistant.ui.ClayCard.DEPTH_DP * dp, card = true)   // साझा कार्ड ([com.dk.assistant.ui.ClayCard])
             Kind.CIRCLE -> c(ClayStyle.RAISED, 0f, 4f, oval = true, fill = chip)
             Kind.ACCENT_CIRCLE -> c(ClayStyle.ACCENT, 0f, 4f, oval = true)
-            Kind.PILL -> c(ClayStyle.RAISED, FULL, 4f, fill = chip)
+            Kind.PILL -> p(FULL, 4f, fill = chip)
             Kind.ACCENT -> c(ClayStyle.ACCENT, FULL, 4f)
-            Kind.ROW -> c(ClayStyle.RAISED, 20f, 4f, fill = chip)
+            Kind.ROW -> p(20f, 4f, fill = chip)
             Kind.FIELD -> c(ClayStyle.INSET, 20f, 3f)
-            Kind.BUBBLE_DK -> c(ClayStyle.RAISED, 22f, 4f)
+            Kind.BUBBLE_DK -> p(22f, 4f)
             Kind.BUBBLE_ME -> c(ClayStyle.ACCENT, 22f, 4f)
         }
     }
@@ -351,8 +354,10 @@ object PlainLook {
         // 23 नवंबर 2026 (मालिक): कोड में बने कार्ड (होम / मेमोरी / चैट...) भी वही साझा कार्ड
         if (k == Kind.CARD && !oval && r < FULL && (v.height == 0 || h >= 56 * dp)) return com.dk.assistant.ui.ClayDrawable(ClayStyle.RAISED,
             radiusPx = com.dk.assistant.ui.ClayCard.RADIUS_DP * dp, depthPx = maxOf(depth, com.dk.assistant.ui.ClayCard.DEPTH_DP * dp), card = true)
-        return com.dk.assistant.ui.ClayDrawable(style, radiusPx = r, oval = oval, depthPx = depth,
-            fill = if (small && style == ClayStyle.RAISED) ({ com.dk.assistant.ui.ClayTheme.t.chip }) else null)
+        val fill: (() -> Int)? = if (small && style == ClayStyle.RAISED) ({ com.dk.assistant.ui.ClayTheme.t.chip }) else null
+        // 27 नवंबर 2026 (मालिक): उभरे आयताकार डिब्बे / पिल -> साझा दबा रूप; गोल बटन और नीले (accent) वैसे ही
+        if (style == ClayStyle.RAISED && !oval) return com.dk.assistant.ui.ClayCard.pressedCard(r, depth, fill = fill)
+        return com.dk.assistant.ui.ClayDrawable(style, radiusPx = r, oval = oval, depthPx = depth, fill = fill)
     }
 
     /**

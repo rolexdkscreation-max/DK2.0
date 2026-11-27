@@ -152,8 +152,9 @@ object DkaiUi {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; minimumHeight = d(c, 52f)
         setPadding(d(c, 12f), d(c, 8f), d(c, 12f), d(c, 8f))
         // 23 नवंबर 2026 (Soft Clay): उभरी पट्टी; चुनी = accent का चमकदार ढलान + दाईं ओर सफ़ेद ✓ वाला गोल खाना
-        background = com.dk.assistant.ui.ClayDrawable(com.dk.assistant.ui.ClayDrawable.Style.RAISED, radiusPx = DkaiTheme.dpf(c, 20f),
-            depthPx = DkaiTheme.dpf(c, 4.5f), selectable = true, fill = { com.dk.assistant.ui.ClayTheme.t.chip })
+        // 27 नवंबर 2026 (मालिक): हर पट्टी (Select AI Model समेत) साझा दबा रूप [com.dk.assistant.ui.ClayCard.pressedCard]
+        background = com.dk.assistant.ui.ClayCard.pressedCard(DkaiTheme.dpf(c, 20f), DkaiTheme.dpf(c, 4.5f),
+            selectable = true, fill = { com.dk.assistant.ui.ClayTheme.t.chip })
         isSelected = selected
         setPadding(d(c, 14f), d(c, 10f), d(c, 14f), d(c, 10f))
         isClickable = true; isFocusable = true; contentDescription = title + (sub?.let { ", $it" } ?: "")

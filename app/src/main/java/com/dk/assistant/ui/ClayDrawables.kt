@@ -43,8 +43,16 @@ class ClayDrawable(
      * साझा कार्ड वाले नरम मानों ([ClayCard.shadow], [ClayCard.DARK_ALPHA] / [ClayCard.LIGHT_ALPHA]) से - ज़्यादा धुंधली,
      * पास वाली गहरी छाया और सख़्त किनारे की रेखा नहीं. ऊपर-बाएँ की हल्की चमक वही.
      */
-    val soft: Boolean = false
+    val soft: Boolean = false,
+    /**
+     * 27 नवंबर 2026 (मालिक: "Select AI Model के ऊपर वाले दबे कार्ड जैसा ही सब जगह"): [ClayCard.pressedCard] वाला साझा दबा रूप -
+     * शेप / गोलाई / भराव वही, पर साझा कार्ड जैसी परछाइयाँ: बाहर की परछाईं, ऊपर-बाएँ की चमक और किनारे की रेखा नहीं,
+     * अंदर की परछाईं हमेशा पूरी; दबाने पर [ClayCard.PRESS_SINK] गुना और गहरी. कार्ड वाला scale नहीं (आकार / लेआउट वही).
+     */
+    val sunk: Boolean = false
 ) : Drawable() {
+    /** साझा कार्ड या साझा दबा रूप: दोनों की परछाइयाँ एक जैसी */
+    private val flat = card || sunk
     enum class Style { RAISED, INSET, ACCENT }
 
     companion object {
@@ -112,7 +120,7 @@ class ClayDrawable(
         anim?.cancel()
         if (reduced() || bounds.isEmpty) { depth = to; invalidateSelf(); return }
         anim = ValueAnimator.ofFloat(depth, to).apply {
-            duration = if (card && to > depth) RELEASE_MS else PRESS_MS; interpolator = DecelerateInterpolator()
+            duration = if (flat && to > depth) RELEASE_MS else PRESS_MS; interpolator = DecelerateInterpolator()
             addUpdateListener { depth = it.animatedValue as Float; invalidateSelf() }
             start()
         }
@@ -166,7 +174,7 @@ class ClayDrawable(
         val raised = style != Style.INSET
         // ---- बाहर की दो परछाइयाँ (उभरा) - दबने पर धीमे-धीमे गायब
         // 23 नवंबर 2026 (मालिक: "दबाने वाला रूप ही मूल रूप"): साझा कार्ड पर बाहर की परछाईं कभी नहीं - दबी हालत में भी नहीं थी
-        val out = if (raised && !card) depth else 0f
+        val out = if (raised && !flat) depth else 0f
         if (soft && out > 0.01f && d > 0.5f) {
             val (off0, bl) = ClayCard.shadow(d)
             val off = off0 * out
@@ -225,7 +233,7 @@ class ClayDrawable(
         }
 
         // ---- ऊपर-बाएँ की चमक (हाइलाइट): उभरा डिब्बा स्क्रीन से ऊपर उठा दिखे
-        if (raised && !card && depth > 0.01f) {   // कार्ड: दबी हालत में यह चमक नहीं थी, इसलिए मूल रूप में भी नहीं
+        if (raised && !flat && depth > 0.01f) {   // कार्ड: दबी हालत में यह चमक नहीं थी, इसलिए मूल रूप में भी नहीं
             val gr = maxOf(shape.width(), shape.height()) * 0.75f
             val hl = NeonTheme.alpha(k.rim, if (style == Style.ACCENT || soft) 0x55 else if (k.light) 0xB0 else 0x30)
             c.save(); c.clipPath(path)
@@ -238,13 +246,13 @@ class ClayDrawable(
 
         // ---- अंदर की परछाईं (धँसा / दबा हुआ) - [ClayTheme.SINK] से गहरी
         // कार्ड: हमेशा पूरी (= पहले वाला दबा रूप, हूबहू वही मान); दबाने पर [ClayCard.PRESS_SINK] गुना और गहरी
-        val inn = if (card) 1f else if (raised) (1f - depth) else 1f
+        val inn = if (flat) 1f else if (raised) (1f - depth) else 1f
         if (inn > 0.01f) {
             val id = maxOf(d, 3f * (bounds.height().coerceAtLeast(1) / 48f).coerceIn(0.6f, 1.6f))
             c.save()
             c.clipPath(path)
             shP.style = Paint.Style.STROKE
-            val sink = ClayTheme.SINK * (if (card) 1f + (ClayCard.PRESS_SINK - 1f) * (1f - depth) else 1f)
+            val sink = ClayTheme.SINK * (if (flat) 1f + (ClayCard.PRESS_SINK - 1f) * (1f - depth) else 1f)
             shP.strokeWidth = id * 1.6f * sink
             shP.maskFilter = blurOf(id * 0.8f * sink)
             val off = id * 0.5f * sink
@@ -256,7 +264,7 @@ class ClayDrawable(
             c.restore()
         }
         // ---- ऊपर का बहुत पतला उजला किनारा (उभार को साफ़ दिखाने के लिए)
-        if (raised && !card && depth > 0.5f) {   // कार्ड पर सख़्त किनारे की रेखा नहीं (मालिक)
+        if (raised && !flat && depth > 0.5f) {   // कार्ड पर सख़्त किनारे की रेखा नहीं (मालिक)
             if (!soft) {   // नरम (साझा कार्ड जैसी) सतह पर भी रेखा नहीं
                 rimP.strokeWidth = maxOf(1.2f, d * 0.16f)
                 // ऊपर-बाएँ उजला किनारा -> नीचे-दाएँ हल्का गहरा किनारा (तिरछा)
@@ -530,4 +538,12 @@ object ClayCard {
 
     /** pure: [d] (px) depth पर परछाईं की (दूरी, धुंधलापन) */
     fun shadow(d: Float): Pair<Float, Float> = (d * OFFSET_K) to (d * BLUR_K)
+
+    /**
+     * 27 नवंबर 2026 (मालिक): पूरे ऐप का एक ही साझा "दबा" (pressed / inset) रूप - पट्टी, चिप, छोटा बटन, सेक्शन डिब्बा, radio पट्टी.
+     * गोलाई / गहराई / भराव हर जगह पहले जैसे ही (इसलिए आकार, padding, लेआउट नहीं बदलते); सिर्फ़ परछाईं साझा दबी.
+     * डार्क / लाइट और हर थीम के रंग [ClayTheme.t] से (shadowDark ऊपर-बाएँ, shadowLight नीचे-दाएँ, गहराई [ClayTheme.SINK]).
+     */
+    fun pressedCard(radiusPx: Float, depthPx: Float, selectable: Boolean = false, fill: (() -> Int)? = null) =
+        ClayDrawable(ClayDrawable.Style.RAISED, radiusPx = radiusPx, depthPx = depthPx, selectable = selectable, fill = fill, sunk = true)
 }
