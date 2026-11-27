@@ -31,9 +31,10 @@ object SpeakingStyle {
 
     /** TTS के लिए वही तरीका, छोटे English निर्देश में (TTS मॉडल English style निर्देश सबसे अच्छे से मानता है) */
     // 20 नवंबर 2026 (मालिक: "आवाज़ अच्छी पर एकदम स्लो"): पहले पूरी रफ़्तार आम बातचीत जैसी, धीमा सिर्फ़ प्यार भरी लाइन पर थोड़ा
+    // 27 नवंबर 2026 (मालिक: खुश हो तो हल्की चहक, उदास हो तो धीमे और सहारे के साथ) - लंबाई सिर्फ़ +4, ताकि 590 में आधार और DkAiStyle.TTS न कटें
     // 26 नवंबर 2026 (मालिक: "फटाफट नहीं, जैसे इंसान आराम से बोलता है; प्यार की बात एकदम धीरे-धीरे"; 20 नवंबर वाला "स्लो" = ऑफ़लाइन आवाज़ का कम ज़ोर था, St3Loud)
-    const val TTS_STYLE = "normal talking pace, never dragging, never fast; slow and gentle on loving lines; never monotone: questions rise at the end, bright when happy, " +
-        "low and soft when sad or worried; tiny pause at commas, longer at full stops, a beat before emotional words; " +
+    const val TTS_STYLE = "normal talking pace, never dragging, never fast; slow and gentle on loving lines; never monotone: questions rise at the end, chirpy when happy, " +
+        "slow, supportive when sad or worried; tiny pause at commas, longer at full stops, a beat before emotional words; " +
         "close, intimate soft voice for loving lines; clear Hindi, English in the same easy accent"
 
     /** Gemini TTS का पूरा style: पुराना (कोमल आवाज़) + यही तरीका, Worker की सीमा में */
