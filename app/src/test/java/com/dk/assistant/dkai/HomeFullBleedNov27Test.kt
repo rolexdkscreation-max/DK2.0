@@ -65,7 +65,8 @@ class HomeFullBleedNov27Test {
                 assertTrue("$tag face bottom", f[3] <= h - bottom + 1f)
                 assertTrue("$tag face sides", f[0] >= -1f && f[2] <= w + 1f)
                 val fy = p.focusOn(2048f, 2048f, focus)[1] / h
-                assertTrue("$tag focus $fy", fy in 0.27f..0.45f)
+                // portrait: 30-40% के पास. landscape (कम ऊँचाई): चेहरा ऊपर की पट्टी के नीचे रखने को थोड़ा नीचे भी (चेहरा पहले)
+                assertTrue("$tag focus $fy", fy in 0.27f..(if (w > h) 0.5f else 0.45f))
                 // टैबलेट पर चेहरा छोटा न दिखे
                 if (tab) assertTrue("$tag face small", (f[3] - f[1]) / h >= 0.24f)
             }

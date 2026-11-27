@@ -127,7 +127,11 @@ object HomeAvatars {
     private fun floats(a: org.json.JSONArray?): List<Float>? {
         if (a == null) return null
         val out = ArrayList<Float>()
-        for (i in 0 until a.length()) { val v = a.optDouble(i, Double.NaN); if (v.isNaN()) return null; out.add(v.toFloat()) }
+        for (i in 0 until a.length()) {
+            val v = a.optDouble(i, Double.NaN)
+            if (v.isNaN()) return null
+            out.add(v.toFloat())
+        }
         return out
     }
 
