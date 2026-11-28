@@ -662,6 +662,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     /** इस जवाब में Gemini TTS की जगह Live की अपनी आवाज़ बज रही है */
     @Volatile internal var splitLive = false
     @Volatile internal var splitRescues = 0
+    /** 28 नवंबर 2026: लगातार कितने जवाब शुरू से Live की आवाज़ ने बचाए ([SplitRescue.GIVE_UP_STREAK]) */
+    @Volatile internal var rescueStreak = 0
     /** Live ने बचा जवाब क्यों लिया (स्क्रीन की "आवाज़:" लाइन में) */
     @Volatile internal var splitLiveWhy = ""
     private val speechHooks = object : com.dk.assistant.voice.engine.SpeechPipeline.Hooks {
@@ -702,6 +704,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
         // v3.7: "बोला तो दिखा, जवाब भी दिखा, पर आवाज़ नहीं" - बँटवारे वाला इंजन (Gemini TTS) चुप रहा. अब: Gemini Live की अपनी आवाज़ पर
         override fun onEngineError(title: String, why: String) {
             val now = System.currentTimeMillis()
+            if (SplitRescue.limitHit(why)) splitGiveUp("$title की लिमिट खत्म")   // 28 नवंबर 2026: दोहराई गलती पर भी (नीचे की 5 मिनट वाली रोक से पहले)
             if (now - engineErrShownAt < 5 * 60_000L && why == engineErrLast) return
             engineErrShownAt = now; engineErrLast = why
             DKState.reply("सर, $title नहीं बोला: ${why.removePrefix("Gemini TTS: ")}। अभी दूसरी आवाज़ से बोल रही हूँ।")
@@ -714,6 +717,16 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             splitOffUntil = splitSilentAt + SilentVoice.OFF_MS
             if (silentResay.isBlank()) silentResay = text.take(300) else if (silentResay.length < 600) silentResay += " " + text.take(300)
         }
+    }
+    /**
+     * 28 नवंबर 2026: बँटवारे वाला इंजन (Gemini TTS) बार-बार देर / लिमिट खत्म = [SilentVoice.OFF_MS] तक Live की अपनी आवाज़.
+     * DK चुप होते ही नया connection (वही रास्ता जो पूरी चुप्पी पर) - हर जवाब पर 0.9-2.5 s का इंतज़ार नहीं.
+     */
+    internal fun splitGiveUp(why: String) {
+        if (!connSplit || splitSilentAt > 0) return
+        val now = System.currentTimeMillis()
+        splitSilentAt = now; splitOffUntil = now + SilentVoice.OFF_MS; rescueStreak = 0
+        log("आवाज़ इंजन छोड़ा: $why - ${SilentVoice.OFF_MS / 60_000} मिनट Gemini Live की अपनी आवाज़ (हर जवाब पर इंतज़ार नहीं)")
     }
     /** v3.7: बँटवारे वाला इंजन चुप रहा (कब) / कब तक उसे छोड़कर Live की अपनी आवाज़ / जो बोला नहीं जा सका */
     @Volatile private var engineErrShownAt = 0L

@@ -3,10 +3,14 @@ package com.dk.assistant
 // GeminiLive का हिस्सा (नवंबर 2026, मालिक): "मैं किसी और से बात करूँ तो DK सुनेगा, लेकिन जवाब नहीं देगा."
 // आवाज़ Gemini तक जाती रहती है (बात का संदर्भ याद रहे) - बस उस बात का जवाब न बजे, न कोई काम हो.
 
-/** बोलना खत्म: आवाज़ किसकी (बॉस / कोई और) - अलग thread पर, mic नहीं रुकता */
-internal fun GeminiLive.whoCheckAsync(pcm: ByteArray, now: Long, seq: Int) {
-    val ms = pcm.size * 1000 / (GeminiLive.IN_RATE * 2)
-    if (ms < SideTalk.MIN_MS) { SideTalk.global.voice(SideTalk.Who.UNKNOWN, now, seq); return }
+/**
+ * बोलना खत्म: आवाज़ किसकी (बॉस / कोई और) - अलग thread पर, mic नहीं रुकता.
+ * [speechMs] = VAD का असली बोलना. 28 नवंबर 2026: पहले बफ़र की लंबाई (preroll + पीछे की 500-800 ms चुप्पी) गिनी जाती थी,
+ * तो 200 ms की खटखट भी "लंबी" लगती, मिलान 0.03 -> "कोई और" -> पिछली असली बात का जवाब नहीं बजता.
+ */
+internal fun GeminiLive.whoCheckAsync(pcm: ByteArray, now: Long, seq: Int, speechMs: Int = turnDet.lastSpeechMs) {
+    val ms = speechMs
+    if (ms < SideTalk.MIN_OTHER_MS) { SideTalk.global.blip(seq); return }   // खटखट/छोटी आवाज़ = पिछला फ़ैसला वापस
     val max = GeminiLive.IN_RATE * 2 * 3
     val clip = if (pcm.size > max) pcm.copyOfRange(pcm.size - max, pcm.size) else pcm
     val th = com.dk.assistant.voice.VoiceGuardian.threshold(svc)   // 16 नवंबर 2026: वॉइस गार्डियन की सीमा (पुराना CAM++ हटा)
