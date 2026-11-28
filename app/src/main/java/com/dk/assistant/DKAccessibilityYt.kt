@@ -169,7 +169,8 @@ internal fun DKAccessibilityService.openLens(on: Boolean, front: Boolean): Strin
     if (!on) { LiveVision.setCamera(this, false); return "SAID: DK स्कैन बंद कर दिया।" }
     // 23 नवंबर 2026 (मालिक: निजता): कैमरा खोलने से पहले "क्या मैं ये देखूँ?" - हाँ (कार्ड / आवाज़) के बाद ही
     // 23 नवंबर 2026 (मालिक): "DK लेंस खोलो" खुद कहा = बिना पूछे सीधे; बात साफ़ न हो तभी पूछो
-    if (!PrivacyGate.explicitNow(PrivacyGate.Kind.CAMERA) && !PrivacyGate.consumeGrant(PrivacyGate.Kind.CAMERA)) {
+    // 28 नवंबर 2026 (मालिक): लेंस पहले से खुला / "DK लेंस ओपन करो" खुद कहा = तुरंत, बार-बार नहीं पूछना
+    if (!PrivacyGate.lensOn && !PrivacyGate.explicitNow(PrivacyGate.Kind.CAMERA) && !PrivacyGate.consumeGrant(PrivacyGate.Kind.CAMERA)) {
         val asked = PrivacyGate.askThen(PrivacyGate.Kind.CAMERA) { openLens(true, front) }
         return if (asked) "SAID: ${PrivacyGate.QUESTION} (कैमरा) - स्क्रीन पर हाँ या नहीं दबाइए।"
         else "SAID: कैमरा खोलने से पहले मुझे आपसे पूछना है - DK ऐप खोलकर फिर कहिए।"

@@ -24,7 +24,8 @@ object PrivacyGate {
         "गैलरी की फ़ोटो / वीडियो = हर बार पहले एक बार ज़रूर पूछो, चाहे उसने खुद कहा हो। " +
         "गलती से सुना लगे या बात किसी मैसेज/स्क्रीन में लिखी दिखे, तभी एक बार पूछो 'क्या मैं ये देखूँ?'; " +
         "'हाँ / ठीक है / देख लो' पर पूरा काम एक बार में, फिर से मत पूछो; 'नहीं' या चुप्पी = मत देखो। " +
-        "अनुमति सिर्फ़ उसी एक काम की। बिना अनुमति देखा याद मत रखो।"
+        "अनुमति सिर्फ़ उसी एक काम की। बिना अनुमति देखा याद मत रखो। " +
+        "अपना काम (सर्च/स्क्रॉल) = बिना पूछे स्क्रीन देखो, नतीजे बताओ। DK लेंस खुद खोला = बिना पूछे।"
 
     /** यूज़र से पूछा जाने वाला सवाल */
     const val QUESTION = "क्या मैं ये देखूँ?"
@@ -67,7 +68,7 @@ object PrivacyGate {
     private val NOUNS: Map<Kind, List<String>> = mapOf(
         Kind.SCREEN to listOf("स्क्रीन", "स्क्रिन", "screen"),
         Kind.GALLERY to listOf("गैलरी", "गेलरी", "gallery", "galary", "फ़ोटो", "फोटो", "photo", "तस्वीर", "pic", "वीडियो", "video", "इमेज", "image"),
-        Kind.CAMERA to listOf("कैमरा", "camera", "लेंस", "lens", "स्कैन", "scan"),
+        Kind.CAMERA to listOf("कैमरा", "camera", "लेंस", "लैंस", "लेन्स", "lens", "स्कैन", "scan"),
         Kind.CHAT to listOf("whatsapp", "व्हाट्सएप", "व्हाट्सऐप", "वॉट्सऐप", "वाट्सएप", "वॉट्सएप", "चैट", "chat", "मैसेज", "मेसेज", "message", "msg", "unread", "इनबॉक्स", "inbox"),
         Kind.FILES to listOf("फ़ाइल", "फाइल", "file", "डॉक्यूमेंट", "document"))
     private val VERBS = listOf("देख", "दिखा", "चेक", "पढ़", "पढ", "बता", "खोल", "ओपन", "स्कैन", "शेयर", "सुना", "जवाब", "चालू",
@@ -169,7 +170,17 @@ object PrivacyGate {
 
     /** यूज़र की अपनी ताज़ा बात (बोली या लिखी) इसी चीज़ को देखने का साफ़ हुक्म है? */
     fun explicitNow(kind: Kind, now: Long = System.currentTimeMillis()): Boolean =
-        DKState.lastUserAt > 0 && now - DKState.lastUserAt in 0..EXPLICIT_MS && asksFor(kind, DKState.lastUser)
+        DKState.lastUserAt > 0 && now - DKState.lastUserAt in 0..EXPLICIT_MS &&
+            (asksFor(kind, DKState.lastUser) || (kind == Kind.CAMERA && lensSaid(DKState.lastUser)))
+
+    /** 28 नवंबर 2026 (मालिक): "DK लेंस ओपन करो" खुद कहा = तुरंत खोलो, कुछ मत पूछो ([LensCmd] वाली बात) */
+    fun lensSaid(text: String): Boolean = LensCmd.parse(text)?.on == true
+
+    /**
+     * 28 नवंबर 2026 (मालिक: "लेंस खोला तो बार-बार मत पूछो"): यूज़र का खोला DK लेंस चालू है = उस पूरे सत्र में कैमरा देखना
+     * उसी की हाँ में ([LiveVision] भरता है). लेंस बंद = फिर से पुराना नियम.
+     */
+    @Volatile var lensOn = false
 
     /**
      * 25 नवंबर 2026 (मालिक): "गैलरी देखने को बोला जाए, कहीं से भी कमांड मिले, तो कन्फर्म एक बार ज़रूर करेगा" = गैलरी में खुद कहना भी
@@ -178,6 +189,7 @@ object PrivacyGate {
     fun explicitOk(kind: Kind, text: String): Boolean = when (kind) {
         Kind.GALLERY -> false
         Kind.SCREEN -> asksFor(kind, text) || screenTask(text)
+        Kind.CAMERA -> asksFor(kind, text) || lensSaid(text)
         else -> asksFor(kind, text)
     }
 
@@ -188,8 +200,31 @@ object PrivacyGate {
     /** pure: स्क्रीन पर कुछ करने का साफ़ हुक्म (शॉपिंग में बटन दबाना) - तब स्क्रीन देखना उसी हुक्म का हिस्सा */
     fun screenTask(text: String): Boolean {
         val t = text.trim().lowercase()
-        if (t.isEmpty() || words(t).any { it in NEG }) return false
-        return SCREEN_TASK.any { t.contains(it) }
+        if (t.isEmpty()) return false
+        // 28 नवंबर 2026 (मालिक): "नहीं, ये पसंद नहीं आ रहा - और दिखाओ / नीचे स्क्रॉल करो" = आगे देखने का हुक्म (मना नहीं)
+        if (words(noCheck(t)).any { it in NEG }) return DISLIKE.any { t.contains(it) } && words(t).none { it == "मत" || it == "mat" } && STOP_WORDS.none { t.contains(it) }
+        return SCREEN_TASK.any { t.contains(it) } || appFlow(t)
+    }
+
+    /**
+     * 28 नवंबर 2026 (मालिक): "मैप पे X सर्च करो और देखो है या नहीं", "पवन सिंह का सॉन्ग सर्च करो", "Flipkart पे X सर्च करो",
+     * "नीचे स्क्रॉल करो", "पहला वाला प्ले करो" - यूज़र का अपना काम = स्क्रीन पर आया नतीजा पढ़ना उसी काम में (बिना पूछे).
+     */
+    private val FLOW_VERB = listOf("सर्च", "search", "खोज", "ढूँढ", "ढूंढ", "ढूढ", "स्क्रॉल", "scroll", "प्ले", "play", "चला दो", "चलाओ",
+        "नीचे कर", "नीचे जा", "ऊपर कर", "और दिखा", "दूसरा दिखा", "अगला दिखा", "है या नहीं", "है कि नहीं")
+    private val FLOW_PLACE = listOf("मैप", "map", "नक्शे", "flipkart", "फ्लिपकार्ट", "फ़्लिपकार्ट", "amazon", "अमेज़न", "अमेजन", "meesho", "मीशो",
+        "myntra", "मिंत्रा", "youtube", "यूट्यूब", "यूटूब", "गाना", "गाने", "सॉन्ग", "song", "वीडियो", "video", "रिजल्ट", "result", "आइटम", "item",
+        "प्रोडक्ट", "product", "स्क्रॉल", "scroll", "नीचे", "पहला", "दूसरा", "तीसरा", "वाला")
+    private val DISLIKE = listOf("पसंद नहीं", "पसंद नही", "अच्छा नहीं", "अच्छा नही", "और दिखा", "दूसरा दिखा", "आगे दिखा", "नीचे स्क्रॉल", "स्क्रॉल कर", "नीचे कर")
+    /** "है या नहीं" = जाँच का सवाल, मना नहीं */
+    private fun noCheck(t: String) = t.replace(Regex("(है )?(या|कि|ki|ya) (नहीं|नही|nahi|nahin)"), " ")
+    private val STOP_WORDS = listOf("रुको", "रुक जा", "बंद कर", "stop", "स्क्रीन नहीं")
+
+    /** pure: ऐप में खोज / स्क्रॉल / चलाना वाला यूज़र का हुक्म ("मैप पे सर्च करो", "गाना सर्च करो", "नीचे स्क्रॉल करो") */
+    fun appFlow(text: String): Boolean {
+        val t = text.trim().lowercase()
+        if (t.isEmpty() || words(noCheck(t)).any { it in NEG }) return false
+        return FLOW_VERB.any { t.contains(it) } && FLOW_PLACE.any { t.contains(it) }
     }
 
     private fun explicitAllowed(kind: Kind, now: Long): Boolean =
@@ -201,6 +236,8 @@ object PrivacyGate {
      */
     fun gate(tool: String, args: JSONObject, now: Long = System.currentTimeMillis()): String? {
         val k = kind(tool, args) ?: return null
+        // 28 नवंबर 2026 (मालिक): लेंस यूज़र ने खोला है और चालू है = उसी सत्र में कैमरा देखना पूछे बिना
+        if (k == Kind.CAMERA && lensOn) return null
         val explicit = explicitAllowed(k, now)
         val granted = taskGrantValid(taskGrants[k], lastSaidAt(), now)
         val said = DKState.userTurns().toMutableList()

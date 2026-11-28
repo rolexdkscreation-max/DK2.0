@@ -27,7 +27,9 @@ internal suspend fun GeminiLive.phoneTask(req: String): String {
     LensCmd.parse(req)?.let { c ->
         log("DK स्कैन: phone_task से कैमरा (${LensCmd.facing(c)}, on=${c.on})")
         // 23 नवंबर 2026 (मालिक: निजता): कैमरा चालू = पहले "क्या मैं ये देखूँ?" ([PrivacyGate])
-        PrivacyGate.gate("camera", JSONObject().put("on", c.on))?.let { ask -> PrivacyGate.onTap = { _, _, yes -> pushNote(privacyTapNote("camera", yes)) }; return ask }
+        // 28 नवंबर 2026 (मालिक: "DK लेंस ओपन करो बोलूँ तो तुरंत खोले, बार-बार मत पूछे"): लेंस खोलने की बात खुद यही हुक्म है
+        if (!PrivacyGate.lensSaid(req) && !PrivacyGate.lensSaid(DKState.lastUser.trimEnd('…')))
+            PrivacyGate.gate("camera", JSONObject().put("on", c.on))?.let { ask -> PrivacyGate.onTap = { _, _, yes -> pushNote(privacyTapNote("camera", yes)) }; return ask }
         return LiveVision.setCamera(svc, c.on, LensCmd.facing(c))
     }
     val items = TaskQueue.split(req)
@@ -257,7 +259,7 @@ internal suspend fun GeminiLive.phoneTaskOne(req: String, queued: Boolean = fals
         log("phone_task = अभी-अभी किया काम, दोबारा नहीं: $req")
         val r = same
         if (r != null && r != LiveFast.Memo.NOT_SAME) {
-            if (LiveFast.ok(q!!.action.optString("type"), r) || LocalRouter.final(r)) return LiveFast.quickResult(q, r, already = true)
+            if (LiveFast.ok(q!!.action.optString("type"), r) || LocalRouter.final(r)) return withSeen(q, r, LiveFast.quickResult(q, r, already = true))
             // तुरंत वाला नहीं चला (ऐप नहीं मिला / वीडियो सीधे नहीं चला) -> AgentRunner संभाले
         } else if (r == null) return "STARTED just now and still opening. Tell the user in 2-5 words."
     } else if (q != null && fastMemo.begin(q, System.currentTimeMillis())) {
@@ -266,7 +268,7 @@ internal suspend fun GeminiLive.phoneTaskOne(req: String, queued: Boolean = fals
         fastMemo.finish(q, r)
         log("phone_task सीधे (बिना AI): ${q.action} = ${r.take(60)}")
         // v3.33: ऐप है ही नहीं / कॉन्टैक्ट नहीं / user से पूछना है = AI से कुछ नहीं सुधरेगा -> सीधे सच
-        if (LiveFast.ok(q.action.optString("type"), r) || LocalRouter.final(r)) return LiveFast.quickResult(q, r, already = false)
+        if (LiveFast.ok(q.action.optString("type"), r) || LocalRouter.final(r)) return withSeen(q, r, LiveFast.quickResult(q, r, already = false))
     }
     DKState.set(Mode.WORKING)
     // v3.33: आधा काम फ़ोन पर ("Flipkart खोलो, X सर्च करो") + बाकी ("पहला प्रोडक्ट कार्ट में डालो") AgentRunner को

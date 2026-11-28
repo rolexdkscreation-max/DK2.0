@@ -48,6 +48,15 @@ object WaCall {
         return Cmd(name, video)
     }
 
+    /**
+     * 28 नवंबर 2026 (मालिक: "कॉल करो = पहले नॉर्मल कॉल, जब तक WhatsApp / दूसरा ऐप न बोलूँ"): बात में WhatsApp का नाम है?
+     * pure - JVM test.
+     */
+    fun saidWa(raw: String): Boolean = WA.containsMatchIn(" " + raw.lowercase().replace(Regex("[.,!?।]"), " ") + " ")
+
+    /** pure: AI ने WhatsApp कॉल चुनी, पर यूज़र ने WhatsApp कहा ही नहीं (और वीडियो नहीं) = आम फ़ोन कॉल */
+    fun plainCallInstead(userWords: String, video: Boolean): Boolean = !video && userWords.isNotBlank() && !saidWa(userWords)
+
     fun toJson(c: Cmd) = JSONObject().put("type", "wa_call").put("name", c.name).put("video", c.video)
     fun fromJson(o: JSONObject) = Cmd(o.optString("name").trim(), o.optBoolean("video", false))
 

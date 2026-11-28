@@ -32,7 +32,10 @@ object LiveVision {
     private val listeners = CopyOnWriteArraySet<() -> Unit>()
     fun listen(l: () -> Unit) { listeners.add(l) }
     fun unlisten(l: () -> Unit) { listeners.remove(l) }
-    private fun changed() { main.post { listeners.forEach { try { it() } catch (e: Exception) { Quiet.note(e) } } } }
+    private fun changed() {
+        // 28 नवंबर 2026 (मालिक): लेंस खुला रहने तक कैमरा देखना बिना दोबारा पूछे ([PrivacyGate.lensOn])
+        PrivacyGate.lensOn = cameraOn || cameraWanted
+        main.post { listeners.forEach { try { it() } catch (e: Exception) { Quiet.note(e) } } } }
 
     private fun live(): GeminiLive? = DKAccessibilityService.instance?.gemLive
     private fun liveReady() = DKState.live && live()?.canTalk() == true
