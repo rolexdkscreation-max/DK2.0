@@ -11,6 +11,7 @@ import {
 import { onImage, onImageStatus } from "./image.js";
 import { onLiveToken } from "./live.js";
 import { onVoiceGrant } from "./voice.js";
+import { autoOk, bench as oneaiBench, isFree, listModels, oneaiKeys, rankTable } from "./oneai.js";
 import { PROVIDERS as SEARCH_PROVIDERS, read, search } from "./search.js";
 import { readAudio, transcribe } from "./stt.js";
 import { CODES, HttpError, errorResponse, istDay, json, readJson, safeEqual } from "./util.js";
@@ -67,7 +68,7 @@ function isUniqueError(e) {
   return /unique|constraint/i.test(String(e?.message ?? ""));
 }
 
-async function onChat(req, env, ctx, ident, opts) {
+async function onChat(req, env, ctx, ident, opts, via = null) {
   const body = await readJson(req);
   const { system, messages } = cleanMessages(body.messages, body.system);
   const task = typeof body.task === "string" ? body.task : "chat";
@@ -95,10 +96,12 @@ async function onChat(req, env, ctx, ident, opts) {
     }
   }
 
-  const lane = pickLane({ task, messages, chain: body.chain, dk: body.dk });
+  // /oneai/chat: One AI पहले (DK LLM नहीं), ऐप का चुना :free मॉडल (मना वाले / पैसे वाले नहीं)
+  const lane = via === "oneai" ? "big" : pickLane({ task, messages, chain: body.chain, dk: body.dk });
+  const model = via === "oneai" && typeof body.model === "string" ? body.model : undefined;
   let open;
   try {
-    open = await openChain(env, { system, messages, chain: body.chain, lane }, opts);
+    open = await openChain(env, { system, messages, chain: via === "oneai" ? undefined : body.chain, lane, task, first: via ?? undefined, model }, opts);
   } catch (e) {
     // सब फेल: रफ़्तार/आराम का हिसाब फिर भी D1 में (ऐप को सिर्फ़ साफ़ हिंदी संदेश)
     for (const m of e?.marks ?? []) later(ctx, () => saveMark(env, m, now));
@@ -124,6 +127,28 @@ async function onChat(req, env, ctx, ident, opts) {
     headers["x-dk-chat-left"] = String(left.chat_left);
   }
   return streamResponse(open, headers, (r) => after(r?.text), extra);
+}
+
+/** /oneai/models: असली सूची (10 मिनट याद) + हर मॉडल का "मुफ़्त" (ID के अंत में :free) + काम के हिसाब से क्रम */
+async function onOneaiModels(env, ident, opts) {
+  const now = opts.now?.() ?? Date.now();
+  const lv = ident.owner ? { level: "owner" } : await levelFor(new Db(env.DB), ident, now);
+  if (!oneaiKeys(env).length) return json({ ok: true, level: lv.level, configured: false, models: [], rank: {} });
+  const list = (await listModels(env, now)) ?? [];
+  const ids = new Set(list);
+  const rank = await rankTable(env, now);
+  return json({
+    ok: true,
+    level: lv.level,
+    configured: true,
+    models: list.map((id) => ({ id, free: isFree(id), auto: autoOk(id, ids) })),
+    rank: Object.fromEntries(Object.entries(rank).map(([t, rows]) => [t, rows.filter((r) => autoOk(r.model, list.length ? ids : null)).map((r) => ({ model: r.model, ttft_ms: r.ttft_ms == null ? null : Math.round(r.ttft_ms), ok: r.ok_count ?? 0, fail: r.fail_count ?? 0 }))])),
+  });
+}
+
+/** One AI के मॉडल परखो (cron रोज़ + मालिक माँगे तब). हर अनुरोध आज की गिनती (100) में */
+async function runBench(env, ctx, now) {
+  return oneaiBench(env, now, { onUse: () => later(ctx, () => countUse(env, "oneai", 40, 8, now)) });
 }
 
 /** एक कोशिश का नतीजा (याद में पहले ही) D1 में */
@@ -244,6 +269,13 @@ export async function handle(req, env, ctx, opts = {}) {
   const ident = await authenticate(req, env, opts.auth);
 
   if (path === "/ai/chat" && M === "POST") return onChat(req, env, ctx, ident, opts);
+  // 28 नवंबर 2026 (मालिक): One AI - वही लॉगिन + लाइसेंस जाँच (onChat), कुंजी सिर्फ़ Worker secret में
+  if (path === "/oneai/chat" && M === "POST") return onChat(req, env, ctx, ident, opts, "oneai");
+  if (path === "/oneai/models" && M === "GET") return onOneaiModels(env, ident, opts);
+  if (path === "/oneai/bench" && M === "POST") {
+    if (!ident.owner) throw new HttpError(403, CODES.FORBIDDEN, "यह सिर्फ़ मालिक के लिए है");
+    return json(await runBench(env, ctx, opts.now?.() ?? Date.now()));
+  }
   if (path === "/stt" && M === "POST") return onStt(req, env, ctx, ident, opts);
   if (path === "/live/token" && M === "POST") {
     // 22 नवंबर 2026: {next: true} = मियाद से पहले अगला टिकट (बिना कटे बदलना) - खाली / गलत body = पहले जैसा
@@ -333,6 +365,9 @@ export default {
     }
   },
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(cleanup(env, event?.scheduledTime ?? Date.now()));
+    const now = event?.scheduledTime ?? Date.now();
+    ctx.waitUntil(cleanup(env, now));
+    // रोज़ One AI के मॉडल परखो (00:30 UTC - मुफ़्त सीमा 00:00 UTC पर नई)
+    if (oneaiKeys(env).length) ctx.waitUntil(runBench(env, ctx, now).catch(() => null));
   },
 };

@@ -209,6 +209,11 @@ object SelectedModel {
             if (!p.isGemini && base.isBlank()) return null
             return Resolved(p, key, ch.model, base, ch)
         }
+        // 28 नवंबर 2026: चिप में One AI का मॉडल (AI दिमाग का "सिर्फ़ One AI मॉडल" बटन)
+        if (ch.provider == com.dk.assistant.OneAi.ID) {
+            val k = com.dk.assistant.OneAi.keys(c, com.dk.assistant.ApiScopes.CHAT).firstOrNull() ?: return null
+            return Resolved(com.dk.assistant.OneAi.provider, k, ch.model, com.dk.assistant.OneAi.BASE, ch)
+        }
         val st = strong(c)?.takeIf { it.provider.id == ch.provider } ?: return null
         return Resolved(st.provider, st.key, ch.model, st.base, ch)
     }

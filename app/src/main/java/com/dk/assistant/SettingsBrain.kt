@@ -78,6 +78,7 @@ internal fun SettingsActivity.secBrainMenu() {
         }
         if (!one) {
             hint(box, "अभी बंद है — हर हिस्सा नीचे अपनी अलग key से चल रहा है। चालू करें तो सारे काम ऊपर की एक key से होंगे (अलग keys मिटेंगी नहीं, बंद करते ही फिर चलेंगी)।")
+            oneAiAllCard(box)   // 28 नवंबर 2026: One AI कार्ड दोनों तरीकों में
             return@card
         }
         val ed = field(box, "Gemini API Key (सारे काम इसी से)", Prefs.oneKey(this), "AIza… यहाँ पेस्ट करें", secret = true) { k ->
@@ -119,6 +120,7 @@ internal fun SettingsActivity.secBrainMenu() {
         geminiPaidSwitch(box)
         hint(box, "अभी: " + (if (Prefs.oneKey(this).isNotBlank()) "✓ सारे काम (बात, चैट, खोज, फ़ोन, कोडिंग, स्टोरी, DK कंप्यूटर, वेबसाइट) इसी एक key से" else "✗ key नहीं डाली") +
             " • सुनना भी Gemini से (Groq की ज़रूरत नहीं)। एक free key की limit सब कामों में बँटती है — limit जल्दी खत्म हो तो बटन बंद करके अलग-अलग keys डालें।")
+        oneAiAllCard(box)   // 28 नवंबर 2026 (मालिक): Gemini कार्ड के नीचे वैसा ही One AI कार्ड
     }
     toolAgentCard()   // 15 नवंबर 2026 (हिस्सा 1): दोनों तरीकों (एक key / अलग keys) में दिखे
     masterAgentCard()   // 24 नवंबर 2026: DK मास्टर एजेंट
@@ -136,6 +138,7 @@ internal fun SettingsActivity.secBrainMenu() {
 /** DK लाइव: सिर्फ़ Google Gemini (Live + बोलना + सुनना) और सुनने के लिए चाहें तो Groq */
 internal fun SettingsActivity.secBrainLive() {
     brainPinCard(listOf(BrainPin.LIVE))
+    oneAiScopeCard(ApiScopes.LIVE)   // 28 नवंबर 2026: सिर्फ़ सोच / टेक्स्ट वाला हिस्सा (आवाज़ = Gemini Live, वैसा ही)
     card("DK लाइव — Google Gemini", "Gemini Live बातचीत, Gemini नेचुरल आवाज़ और सुनना — सिर्फ़ इसी key से") { box ->
         val ed = field(box, "Gemini API Key (DK लाइव की अपनी)", Prefs.scopeKeyRaw(this, ApiScopes.LIVE, "gemini"), "AIza… यहाँ पेस्ट करें", secret = true)
         keyFields[ApiScopes.pref(ApiScopes.LIVE, "key", "gemini")] = ed
@@ -292,6 +295,7 @@ internal fun SettingsActivity.secBrainScope(scope: String) {
         box.addView(rg); scopeRadios[scope] = rg
         hint(box, "जो कंपनी चुनेंगे, सिर्फ़ वही कॉल होगी। उसके किसी मॉडल की limit खत्म हो तो उसी key के दूसरे फ्री मॉडल पर अपने-आप।")
     }
+    oneAiScopeCard(scope)   // 28 नवंबर 2026
     Providers.all.forEach { p -> providerCard(p, scope) }
 }
 
@@ -315,6 +319,7 @@ internal fun SettingsActivity.secBrain() {
         swWeb = switch(box, "ज़रूरी सवालों का जवाब इंटरनेट (Google Search) से पता करके दो — Gemini key से", Prefs.webAnswers(this))
         hint(box, "नीचे जिस कंपनी को इस्तेमाल करना है उसकी API key डालें — key डालते ही मॉडल अपने-आप आ जाएँगे।")
     }
+    oneAiScopeCard(ApiScopes.CHAT)   // 28 नवंबर 2026
 
     Providers.all.forEach { p -> providerCard(p) }
 
@@ -660,5 +665,37 @@ internal fun SettingsActivity.masterAgentCard() {
         fun show() { st.text = com.dk.assistant.agent.master.ActionLog.text(this, 15).ifBlank { UiLang.s("अभी कोई काम लॉग नहीं हुआ") } }
         row(box, button("आख़िरी काम का लॉग") { show() }, button("लॉग मिटाओ") { com.dk.assistant.agent.master.ActionLog.clear(this); show() })
         box.addView(st)
+    }
+}
+
+// ------------------------------------------------------------ 28 नवंबर 2026 (मालिक): One AI (oneaiapikey.com)
+private const val ONEAI_TIP = "oneaiapikey.com पर मुफ़्त खाता बनाकर key (sk-…) लें। :free वाले मॉडल रोज़ 100 अनुरोध तक मुफ़्त (पूरे खाते की सीमा, 05:30 बजे नई)।"
+
+private suspend fun SettingsActivity.checkOneAi(k: String): String =
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { OneAi.check(this@checkOneAi, k) }
+
+/** "एक key से सब" में Gemini के नीचे: One AI key (सेव + टेस्ट) और AI दिमाग का "सिर्फ़ One AI मॉडल" बटन (शुरू में बंद) */
+internal fun SettingsActivity.oneAiAllCard(box: LinearLayout) {
+    keyFields[OneAi.ALL_KEY] = field(box, "One AI API Key (सारे कामों का बैकअप)", Prefs.raw(this, OneAi.ALL_KEY), "sk-… यहाँ पेस्ट करें",
+        secret = true, keyUrl = OneAi.SIGNUP, tip = ONEAI_TIP) { k -> checkOneAi(k) }
+    switch(box, "मॉडल-सूची में सिर्फ़ One AI के मॉडल दिखाओ", OneAi.onlyOn(this)).setOnCheckedChangeListener { _, on ->
+        save(false)
+        Prefs.edit(this) { putBoolean(OneAi.ONLY_PREF, on) }
+        if (on) lifecycleScope.launch { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { OneAi.refresh(this@oneAiAllCard) } }
+        toast(if (on) "✓ चैट की मॉडल-सूची में अब सिर्फ़ One AI के मॉडल" else "✓ मॉडल-सूची पहले जैसी")
+    }
+    hint(box, "Gemini (और बाकी डली keys) न चलें तो चुपचाप One AI के मुफ़्त मॉडल, फिर DK सर्वर — आपको कोई गलती नहीं दिखती। " +
+        "बटन चालू करें तो चैट के मॉडल बटन में सिर्फ़ One AI के मॉडल आएँगे (जिनके साथ \"मुफ़्त\" लिखा है वही मुफ़्त), ताकि आप उन्हें परख सकें।")
+}
+
+/** DK लाइव (सोच / टेक्स्ट), DK चैट, कोडिंग एजेंट, DK कंप्यूटर - हर एक की अपनी One AI key */
+internal fun SettingsActivity.oneAiScopeCard(scope: String) {
+    val what = if (scope == ApiScopes.LIVE) "DK लाइव (सोच / टेक्स्ट)" else ApiScopes.title(scope)
+    card("One AI — $what", "इस हिस्से की keys न चलें तो चुपचाप One AI के मुफ़्त मॉडल, फिर DK सर्वर") { box ->
+        val pref = ApiScopes.pref(scope, "key", OneAi.ID)
+        keyFields[pref] = field(box, "One AI API Key ($what की अपनी)", Prefs.raw(this, pref), "sk-… (ज़रूरी नहीं — खाली = ऑल-राउंडर वाली)",
+            secret = true, keyUrl = OneAi.SIGNUP, tip = ONEAI_TIP) { k -> checkOneAi(k) }
+        hint(box, if (scope == ApiScopes.LIVE) "सिर्फ़ लिखकर सोचने / जवाब वाले हिस्से के लिए। आवाज़ वाली बातचीत (Gemini Live) पहले जैसी Gemini से ही।"
+            else "क्रम: इस हिस्से की अपनी key → बाकी डली keys → One AI → DK सर्वर। यहाँ खाली हो तो किसी और हिस्से की या ऑल-राउंडर वाली One AI key।")
     }
 }

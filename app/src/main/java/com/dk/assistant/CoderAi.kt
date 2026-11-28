@@ -224,6 +224,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             val send = if (CoderContext.total(msgs) > room) CoderContext.compact(msgs, room) else msgs
             // 17 नवंबर 2026 ([AiRouter]): सारी keys के बाद DK का सर्वर (premium लाइसेंस / मालिक) - key नहीं भेजी जाती
             if (provider.id == AiRouter.PROVIDER_ID) return AiRouter.coderChat(model, system, send)
+            if (provider.id == OneAi.ID) return AiRouter.oneAiChat(AiRouter.Task.CODER, model, system, send)   // 28 नवंबर 2026
             try {
                 return if (provider.isGemini) gemini(system, send, parts, only) else openAi(system, send, maxTok, parts)
             } catch (e: AiException) {
@@ -442,7 +443,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
 
         /** 17 नवंबर 2026 ([AiRouter]): सारी keys (अपनी + ऑलराउंड + बाकी हिस्से) के बाद आख़िर में DK का सर्वर */
         internal fun withServer(chain: CoderAi?, sink: (String, String) -> Unit, task: String): CoderAi? {
-            if (!AiRouter.backendReady() || chain?.pinned == true) return chain
+            if (!(AiRouter.backendReady() || AiRouter.oneAiReady()) || chain?.pinned == true) return chain
             val server = CoderAi(AiRouter.provider, "", task, "", note = "", sink = sink)
             if (chain == null) return server.also { it.waitOnLimit = false }
             return CoderAi(chain.provider, chain.keyForChain(), chain.model, chain.baseForChain(), chain.fallbackList() + server, sink = sink)
@@ -517,7 +518,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             if (ApiScopes.oneKeySkip(Prefs.oneKeyOn(c), r.provider.id) && Providers.byId(r.provider.id) != null) return rest
             val tell: (String, String) -> Unit = { p, f ->
                 sink(p, f)
-                if (p.contains(r.model, ignoreCase = true)) com.dk.assistant.dkai.SelectedModel.failedWhy(c, r.model, p.substringAfter(": ", p), null)
+                if (r.provider.id != OneAi.ID && p.contains(r.model, ignoreCase = true)) com.dk.assistant.dkai.SelectedModel.failedWhy(c, r.model, p.substringAfter(": ", p), null)
             }
             val fb = rest?.let { listOf(it.aloneSame()) + it.fallbackList() }.orEmpty()
             return CoderAi(r.provider, r.key, r.model, r.base, fb, note = ", चिप में चुना", sink = tell).chipOnly()

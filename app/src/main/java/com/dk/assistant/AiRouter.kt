@@ -38,7 +38,7 @@ object AiRouter {
      * अपनी keys से नहीं हुआ (गलती [e], या key ही नहीं = null) - अब backend आज़माएँ?
      * रुकावट (cancel) / backend की अपनी गलती / race हारना = नहीं.
      */
-    fun fallback(e: Throwable?): Boolean = backendReady() && serverAiOk() && when (e) {
+    fun fallback(e: Throwable?): Boolean = (backendReady() && serverAiOk() || oneAiReady()) && when (e) {
         is kotlinx.coroutines.CancellationException, is LoserException, is BackendException -> false
         else -> true
     }
@@ -81,8 +81,32 @@ object AiRouter {
         return client(c, task).complete(system, hist, last, null).ifBlank { throw AiException(0, "khali jawab") }
     }
 
-    /** backend वाला AI ([AiClient]) - task के हिसाब से स्तर backend जाँचता है */
-    fun client(c: Context, task: String): AiClient = BackendAiClient(c.applicationContext, task)
+    /** 28 नवंबर 2026: चिप में चुना One AI मॉडल (कोडिंग / कंप्यूटर) - फ़ेल = चुपचाप ऐप की बाकी One AI, फिर DK सर्वर */
+    fun oneAiChat(task: String, model: String, system: String, msgs: List<Pair<String, String>>): String {
+        val c = app ?: throw AiException(-1, "NO_KEY")
+        return try { OneAi.coderChat(c, task, model, system, msgs) } catch (e: Exception) {
+            if (!OneAi.next(e) || !(backendReady() && serverAiOk())) throw e
+            val idx = msgs.indexOfLast { it.first == "user" }
+            val hist = msgs.filterIndexed { i, _ -> i != idx }.map { (r, t) -> Turn(if (r == "user") "user" else "model", t) }
+            BackendAiClient(c.applicationContext, task).complete(system, hist, msgs.getOrNull(idx)?.second.orEmpty(), null)
+        }
+    }
+
+    /**
+     * backend वाला AI ([AiClient]) - task के हिसाब से स्तर backend जाँचता है.
+     * 28 नवंबर 2026 (मालिक): ऐप में One AI key डली = पहले वह ([OneAi]), फिर चुपचाप DK सर्वर (जिसकी अपनी श्रृंखला में भी One AI)
+     */
+    fun client(c: Context, task: String): AiClient {
+        val server = BackendAiClient(c.applicationContext, task)
+        val one = OneAi.client(c, task) ?: return server
+        return OneAiThenServer(one) { server.takeIf { backendReady() && serverAiOk() } }
+    }
+
+    /** 28 नवंबर 2026: ऐप में कोई One AI key डली है? (test में Context नहीं = नहीं) */
+    fun oneAiReady(): Boolean = oneAiOverride ?: app?.let { OneAi.hasKey(it) } ?: false
+
+    /** test बदल सके */
+    @Volatile var oneAiOverride: Boolean? = null
 
     // ---- आवाज़ (मुफ़्त वालों का 10 मिनट): /stt का टिकट अगली चैट के साथ (वही आवाज़ दोबारा नहीं गिनी जाती)
     @Volatile private var ticket: String? = null

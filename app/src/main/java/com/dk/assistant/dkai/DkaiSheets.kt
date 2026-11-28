@@ -26,7 +26,8 @@ object DkaiSheets {
         body.addView(rows, LinearLayout.LayoutParams(-1, -2))
         fun fill() {
             rows.removeAllViews()
-            val groups = DkaiModelList.groups(c)
+            // 28 नवंबर 2026 (मालिक): AI दिमाग का "सिर्फ़ One AI मॉडल" बटन चालू = सूची में सिर्फ़ One AI के मॉडल (अलग "मुफ़्त" बैज)
+            val groups = if (com.dk.assistant.OneAi.onlyOn(c)) listOfNotNull(com.dk.assistant.OneAi.group(c)) else DkaiModelList.groups(c)
             val cur = SelectedModel.get(c)
             // Auto = कुछ न चुनना = पहले जैसी routing (काम के हिसाब से मॉडल). 25 नवंबर 2026: दिखने में "DKAI Ultra" + DK लोगो ([DkaiUltra]) - काम वही
             rows.addView(DkaiUi.row(c, DkaiIcon.Kind.AGENT, DkaiUltra.NAME, DkaiUltra.ROW_SUB, cur == null, DkaiTheme.CYAN, logoRes = R.drawable.ic_dk) {
@@ -51,6 +52,7 @@ object DkaiSheets {
         // नया मॉडल अपने-आप: पीछे से हर कंपनी की लाइव सूची (24 घंटे की cache, [DkaiModelList.refreshCatalog]); बदली तो सूची फिर से
         s.activity.lifecycleScope.launch {
             if (DkaiModelList.refreshCatalog(c) && rows.isAttachedToWindow) fill()
+            if (com.dk.assistant.OneAi.onlyOn(c) && kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.dk.assistant.OneAi.refresh(c) } && rows.isAttachedToWindow) fill()
         }
         body.addView(DkaiUi.button(c, "और AI / key (सेटिंग्स → AI दिमाग)…", DkaiTheme.FIELD, DkaiTheme.SUB) {
             DkaiUi.close(s.root, layer); c.startActivity(Intent(c, SettingsActivity::class.java).putExtra("section", "brain"))

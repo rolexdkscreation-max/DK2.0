@@ -90,3 +90,18 @@ CREATE TABLE IF NOT EXISTS provider_daily (
   neurons REAL NOT NULL DEFAULT 0,
   PRIMARY KEY (day, provider)
 );
+
+-- 28 नवंबर 2026 (मालिक): One AI के मॉडलों की हर काम (chat, coding, deep_research, phone) की प्राथमिकता.
+-- pos छोटा = पहले. ttft_ms = पहला शब्द आने का औसत. fail_streak = लगातार चूक (3+ = सबसे नीचे). रोज़ cron + /oneai/bench से बदलती है.
+CREATE TABLE IF NOT EXISTS oneai_rank (
+  task TEXT NOT NULL,
+  model TEXT NOT NULL,
+  pos INTEGER NOT NULL DEFAULT 0,
+  ttft_ms REAL,
+  ok_count INTEGER NOT NULL DEFAULT 0,
+  fail_count INTEGER NOT NULL DEFAULT 0,
+  fail_streak INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  updated_at INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (task, model)
+);

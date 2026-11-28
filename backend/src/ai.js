@@ -2,8 +2,9 @@
 // अगली पर तब जाते हैं: सीमा (429), 5xx/कोई भी गलती, खाली जवाब, या 4 सेकंड में पहला शब्द नहीं.
 
 import {
-  CHARS_PER_TOKEN, CHAT_CHAIN, DK_HEAVY_WORDS, DK_LLM, DK_LLM_MAX_CHARS, DK_LLM_MAX_CONTEXT, DK_LLM_PERSONA, DK_LLM_TASKS, MODEL_TIMEOUT_MS,
+  CHARS_PER_TOKEN, CHAT_CHAIN, DK_HEAVY_WORDS, DK_LLM, DK_LLM_MAX_CHARS, DK_LLM_MAX_CONTEXT, DK_LLM_PERSONA, DK_LLM_TASKS, MODEL_TIMEOUT_MS, ONEAI,
 } from "./config.js";
+import { oneaiKeys, oneaiRequest, oneaiTask, rankedModels } from "./oneai.js";
 import { load, note, orderPlan } from "./speed.js";
 import { CODES, HttpError } from "./util.js";
 
@@ -97,6 +98,7 @@ export function dkSystem(system, now = Date.now()) {
 
 /** यह कंपनी चल सकती है? Cloudflare = `AI` binding, बाकी = Worker secret में key */
 export function available(env, c) {
+  if (c.kind === "oneai") return oneaiKeys(env).length > 0;
   return c.kind === "workers" ? !!env?.AI : !!env?.[c.secret];
 }
 
@@ -161,6 +163,11 @@ async function workersRequest(c, env, sys, msgs) {
 function sendTo(c, env, sys, msgs, signal) {
   const m = fitContext(sys, msgs, c.maxContextTokens);
   if (c.kind === "workers") return workersRequest(c, env, sys, m);
+  if (c.kind === "oneai") {
+    // डीप रिसर्च: खोज Tavily/Exa से (ऐप/सर्वर), मॉडल सिर्फ़ उन्हीं नतीजों से लिखे
+    const system = c.task === "deep_research" ? [sys, ONEAI.researchRule].filter(Boolean).join("\n\n") : sys;
+    return oneaiRequest(env, { model: c.model, system, messages: m, signal });
+  }
   const req = c.kind === "gemini" ? geminiRequest : openaiRequest;
   return req(c, env[c.secret], sys, m, signal);
 }
@@ -210,7 +217,7 @@ function withTimeout(p, ms, onTimeout) {
  * @returns {{provider, model, tried, first, rest: AsyncIterator<string>, abort}}
  * tried = [{provider, model, ok, error}]
  */
-export async function openChain(env, { system, messages, chain, lane }, opts = {}) {
+export async function openChain(env, { system, messages, chain, lane, task = "chat", first, model }, opts = {}) {
   const timeout = opts.timeoutMs ?? MODEL_TIMEOUT_MS;
   const now0 = opts.now?.() ?? Date.now();
   const base = planChain(env, chain, lane);
@@ -219,7 +226,15 @@ export async function openChain(env, { system, messages, chain, lane }, opts = {
   await load(env, now0);
   const dkFirst = base[0]?.id === DK_LLM.id ? [base[0]] : [];
   const { list: rest0, explored } = orderPlan(base.slice(dkFirst.length), env, now0, { fixed: Array.isArray(chain) && chain.length > 0 });
-  const plan = [...dkFirst, ...rest0];
+  let plan = [...dkFirst, ...rest0];
+  // One AI: काम के हिसाब से सबसे ऊपर वाला मॉडल (D1 रैंकिंग). कोई चलने लायक नहीं = यह कड़ी छोड़ो
+  if (plan.some((c) => c.kind === "oneai")) {
+    const ranked = await rankedModels(env, task, now0);
+    const pick = model && ranked.includes(model) ? model : ranked[0];
+    plan = plan.flatMap((c) => (c.kind !== "oneai" ? [c] : pick ? [{ ...c, model: pick, task: oneaiTask(task) }] : []));
+  }
+  // /oneai/chat: One AI पहले, बाकी पीछे (चुपचाप)
+  if (first) plan = [...plan.filter((c) => c.id === first), ...plan.filter((c) => c.id !== first)];
   const tried = [];
   const marks = [];
   const mark = (m) => {
@@ -229,10 +244,13 @@ export async function openChain(env, { system, messages, chain, lane }, opts = {
   for (const c of plan) {
     const ac = new AbortController();
     const started = Date.now();
+    // कड़ी की अपनी सीमा (One AI: 4 सेकंड में पहला शब्द) - सबकी साझा सीमा से ज़्यादा कभी नहीं
+    const limit = Math.min(timeout, c.firstTokenMs ?? timeout);
     try {
-      const r = await withTimeout(sendTo(c, env, system, messages, ac.signal), timeout, () => ac.abort());
+      const r = await withTimeout(sendTo(c, env, system, messages, ac.signal), limit, () => ac.abort());
       if (!r.ok) {
-        const why = r.status === 429 ? "limit" : `http ${r.status}`;
+        // कतार भरी (One AI) = आराम नहीं, बस अगली कड़ी
+        const why = r.status === 429 ? "limit" : r.statusText === "oneai busy" ? "busy" : `http ${r.status}`;
         let detail = "";
         try {
           detail = r.status === 429 ? (await r.text()).slice(0, 400) : "";
@@ -245,7 +263,7 @@ export async function openChain(env, { system, messages, chain, lane }, opts = {
         continue;
       }
       const it = deltas(c.kind, r.body)[Symbol.asyncIterator]();
-      const left = Math.max(1, timeout - (Date.now() - started));
+      const left = Math.max(1, limit - (Date.now() - started));
       const first = await withTimeout(it.next(), left, () => ac.abort());
       if (first.done || !first.value) {
         tried.push({ provider: c.id, model: c.model, ok: false, error: "empty" });
