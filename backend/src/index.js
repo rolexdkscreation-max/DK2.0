@@ -2,6 +2,7 @@
 
 import { available, cleanMessages, collect, dkReady, openChain, pickLane, planChain, streamResponse } from "./ai.js";
 import { authenticate } from "./auth.js";
+import { openChatFallback } from "./chatfallback.js";
 import { CHAT_CHAIN, DK_LLM, KEEP_DAYS, SEARCH_CHAIN } from "./config.js";
 import { countUse, health as speedHealth, persist, settings as speedSettings, stat as speedState, utcDay } from "./speed.js";
 import { Db } from "./db.js";
@@ -99,11 +100,16 @@ async function onChat(req, env, ctx, ident, opts, via = null) {
   // /oneai/chat: One AI पहले (DK LLM नहीं), ऐप का चुना :free मॉडल (मना वाले / पैसे वाले नहीं)
   // 28 नवंबर 2026 (मालिक): चिप में चुना "DK AI ..." मॉडल = body.first (कड़ी की id) सबसे पहले, न चले = चुपचाप बाकी कड़ी
   const pickId = via ?? (typeof body.first === "string" && CHAT_CHAIN.some((c) => c.id === body.first) ? body.first : undefined);
-  const lane = pickId ? "big" : pickLane({ task, messages, chain: body.chain, dk: body.dk });
+  // 28 नवंबर 2026 (मालिक): ऐप की चैट स्क्रीन (chat_chain = true) = सिर्फ़ DK चैट वाली fallback कड़ी (chatfallback.js).
+  // आवाज़ / Live / One AI / चिप का चुना मॉडल / ऐप का अपना क्रम / दूसरे काम (कोडिंग, खोज, डीप रिसर्च) = पुरानी कड़ी जैसी की तैसी
+  const chatOnly = body.chat_chain === true && task === "chat" && !voice && !via && !pickId && !(Array.isArray(body.chain) && body.chain.length);
+  const lane = chatOnly ? "chat" : pickId ? "big" : pickLane({ task, messages, chain: body.chain, dk: body.dk });
   const model = pickId === "oneai" && typeof body.model === "string" ? body.model : undefined;
   let open;
   try {
-    open = await openChain(env, { system, messages, chain: via === "oneai" ? undefined : body.chain, lane, task, first: pickId, model }, opts);
+    open = chatOnly
+      ? await openChatFallback(env, { system, messages }, { now: opts.now, stepTimeoutMs: opts.chatStepTimeoutMs, log: opts.chatLog })
+      : await openChain(env, { system, messages, chain: via === "oneai" ? undefined : body.chain, lane, task, first: pickId, model }, opts);
   } catch (e) {
     // सब फेल: रफ़्तार/आराम का हिसाब फिर भी D1 में (ऐप को सिर्फ़ साफ़ हिंदी संदेश)
     for (const m of e?.marks ?? []) later(ctx, () => saveMark(env, m, now));
@@ -295,7 +301,8 @@ export async function handle(req, env, ctx, opts = {}) {
   if (path === "/health" && M === "GET") return onHealth(req, env, opts);
   if (path === "/webhook/build" && M === "POST") return onWebhook(req, env, opts);
 
-  const ident = await authenticate(req, env, opts.auth);
+  // DK चैट: लॉगिन जाँच का नतीजा कुछ मिनट याद (auth.js). बाकी रास्ते हर बार पूरी जाँच, पहले जैसे
+  const ident = await authenticate(req, env, path === "/ai/chat" && M === "POST" ? { ...opts.auth, cache: true } : opts.auth);
 
   if (path === "/ai/chat" && M === "POST") return onChat(req, env, ctx, ident, opts);
   // 28 नवंबर 2026 (मालिक): One AI - वही लॉगिन + लाइसेंस जाँच (onChat), कुंजी सिर्फ़ Worker secret में

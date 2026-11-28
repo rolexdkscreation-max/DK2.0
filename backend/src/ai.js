@@ -124,7 +124,7 @@ export function fitContext(system, msgs, maxTokens) {
   return out;
 }
 
-function geminiRequest(c, key, sys, msgs, signal) {
+export function geminiRequest(c, key, sys, msgs, signal) {
   const body = {
     contents: msgs.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
   };
@@ -137,7 +137,7 @@ function geminiRequest(c, key, sys, msgs, signal) {
   });
 }
 
-function openaiRequest(c, key, sys, msgs, signal) {
+export function openaiRequest(c, key, sys, msgs, signal) {
   const messages = sys ? [{ role: "system", content: sys }, ...msgs] : msgs;
   return fetch(c.base + "/chat/completions", {
     method: "POST",
@@ -148,7 +148,7 @@ function openaiRequest(c, key, sys, msgs, signal) {
 }
 
 /** Cloudflare Workers AI (key नहीं, `AI` binding) - stream को Response जैसा, ताकि बाकी कड़ी जैसा ही चले */
-async function workersRequest(c, env, sys, msgs) {
+export async function workersRequest(c, env, sys, msgs) {
   // DK LLM = DK का स्वभाव + आज की तारीख (+ LoRA); बाकी Cloudflare मॉडल = ऐप का system जैसा
   const dk = c.id === DK_LLM.id;
   const system = dk ? dkSystem(sys) : sys;
@@ -173,7 +173,7 @@ function sendTo(c, env, sys, msgs, signal) {
 }
 
 /** गलती का छोटा नाम: timeout / limit (429, Workers AI 4006) / network */
-function failWhy(e) {
+export function failWhy(e) {
   const m = String(e?.message ?? "");
   if (m === "timeout") return "timeout";
   if (/4006|neuron|429|quota|rate limit/i.test(m)) return "limit";
@@ -199,7 +199,7 @@ export async function* deltas(kind, body) {
   }
 }
 
-function withTimeout(p, ms, onTimeout) {
+export function withTimeout(p, ms, onTimeout) {
   let t;
   return Promise.race([
     p,

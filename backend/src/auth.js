@@ -105,11 +105,41 @@ export function identity(claims, env) {
   return { uid: claims.sub, provider, email: owner ? email : "", owner };
 }
 
-/** Authorization: Bearer <Firebase ID token> */
+/**
+ * 28 नवंबर 2026 (मालिक): DK चैट में लॉगिन की जाँच का नतीजा कुछ मिनट याद (हर संदेश पर दस्तख़त दोबारा नहीं).
+ * चाबी = token का sha256 (token खुद याद में नहीं), token की मियाद (exp) के बाद कभी नहीं, सूची सीमित.
+ */
+export const LOGIN_CACHE_MS = 5 * 60_000;
+const LOGIN_CACHE_MAX = 500;
+let loginCache = new Map();
+
+export function resetLoginCache() {
+  loginCache = new Map();
+}
+
+async function tokenKey(token, projectId) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(projectId + "|" + token));
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function cachedClaims(token, projectId, opts) {
+  const now = opts.now ?? Date.now();
+  const key = await tokenKey(token, projectId);
+  const hit = loginCache.get(key);
+  if (hit && hit.until > now && hit.claims.exp > Math.floor(now / 1000)) return hit.claims;
+  if (hit) loginCache.delete(key);
+  const claims = await verifyIdToken(token, projectId, opts);
+  if (loginCache.size >= LOGIN_CACHE_MAX) loginCache.delete(loginCache.keys().next().value);
+  loginCache.set(key, { claims, until: Math.min(now + LOGIN_CACHE_MS, claims.exp * 1000) });
+  return claims;
+}
+
+/** Authorization: Bearer <Firebase ID token>. opts.cache = जाँच का नतीजा कुछ मिनट याद (सिर्फ़ /ai/chat) */
 export async function authenticate(req, env, opts = {}) {
   const h = req.headers.get("authorization") || "";
   const m = /^Bearer\s+(.+)$/i.exec(h);
   if (!m) throw new HttpError(401, CODES.AUTH_REQUIRED, "लॉगिन ज़रूरी");
-  const claims = await verifyIdToken(m[1].trim(), env.FIREBASE_PROJECT_ID, opts);
+  const token = m[1].trim();
+  const claims = opts.cache && env.FIREBASE_PROJECT_ID ? await cachedClaims(token, env.FIREBASE_PROJECT_ID, opts) : await verifyIdToken(token, env.FIREBASE_PROJECT_ID, opts);
   return identity(claims, env);
 }

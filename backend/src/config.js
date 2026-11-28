@@ -141,6 +141,38 @@ export const CHAT_CHAIN = (() => {
 export const PAID_PROVIDERS = ["deepseek", "openai", "anthropic"];
 
 /**
+ * 28 नवंबर 2026 (मालिक): सिर्फ़ DK चैट के जवाब (ऐप की चैट स्क्रीन, body.chat_chain = true) की अपनी कड़ी.
+ * आवाज़ / DK Live / कोडिंग / DK Computer / खोज / डीप रिसर्च / STT पर इसका कोई असर नहीं - वे ऊपर वाली CHAT_CHAIN पर ही.
+ * Cerebras और Mistral इसमें नहीं. हर चरण एक अलग मॉडल; ID आधिकारिक docs से जाँचे (28 नवंबर 2026):
+ *  - Groq production: llama-3.1-8b-instant, openai/gpt-oss-20b, llama-3.3-70b-versatile (console.groq.com/docs/models)
+ *  - Gemini: gemini-3.5-flash-lite = सबसे नया stable Flash-Lite (ai.google.dev/gemini-api/docs/models)
+ *  - Workers AI: @cf/meta/llama-3.2-3b-instruct (हल्का Llama, developers.cloudflare.com/workers-ai/models)
+ *  - OpenRouter: google/gemma-4-31b-it:free (openrouter.ai/api/v1/models की :free सूची)
+ * Groq की सीमा हर मॉडल की अलग (पूरे खाते पर) - इसलिए हर चरण का आराम (cooldown) अलग: 429 एक मॉडल पर = सिर्फ़ वही 60 s बाहर.
+ */
+export const CHAT_FALLBACK = {
+  /** हर चरण को पहला शब्द भेजने का समय - देर = बिना रुके अगला चरण */
+  stepTimeoutMs: 4_000,
+  /** 429 (सीमा) / 5xx पर उस चरण का आराम */
+  cooldownMs: 60_000,
+  /** पुरानी चैट के सिर्फ़ इतने आख़िरी संदेश (पूरा history नहीं) */
+  historyMessages: 8,
+  /** इतनी देर के अंदर सफल हुआ चरण ही "हाल में सबसे तेज़" गिना जाए */
+  recentMs: 10 * 60_000,
+  /** रफ़्तार का औसत (EWMA): नया = पुराना x (1 - alpha) + ताज़ा x alpha */
+  alpha: 0.3,
+  failMessage: "अभी जवाब नहीं आ पाया, थोड़ी देर बाद कोशिश करें।",
+  steps: [
+    { id: "groq-llama-8b", provider: "groq", kind: "openai", secret: "GROQ_API_KEY", base: "https://api.groq.com/openai/v1", model: "llama-3.1-8b-instant", maxContextTokens: 5_000 },
+    { id: "groq-gpt-oss-20b", provider: "groq", kind: "openai", secret: "GROQ_API_KEY", base: "https://api.groq.com/openai/v1", model: "openai/gpt-oss-20b", extra: { reasoning_effort: "low" }, maxContextTokens: 6_000 },
+    { id: "groq-llama-70b", provider: "groq", kind: "openai", secret: "GROQ_API_KEY", base: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile", maxContextTokens: 6_000 },
+    { id: "gemini-flash-lite", provider: "gemini", kind: "gemini", secret: "GEMINI_API_KEY", model: "gemini-3.5-flash-lite" },
+    { id: "cloudflare-llama", provider: "cloudflare", kind: "workers", model: "@cf/meta/llama-3.2-3b-instruct", maxTokens: 1024, maxContextTokens: 60_000 },
+    { id: "openrouter-free", provider: "openrouter", kind: "openai", secret: "OPENROUTER_API_KEY", base: "https://openrouter.ai/api/v1", model: "google/gemma-4-31b-it:free" },
+  ],
+};
+
+/**
  * "सबसे तेज़ पहले" (मालिक, 21 नवंबर 2026). order: "fast" (डिफ़ॉल्ट) या "fixed" (ऊपर वाला क्रम). Worker var AI_ORDER से भी.
  * हर कंपनी की औसत रफ़्तार = पहला शब्द आने का समय, EWMA: नया = पुराना x 0.7 + ताज़ा x 0.3 (D1 provider_stats में).
  * explore = इतनी रिक्वेस्ट किसी दूसरी (धीमी) कंपनी से, ताकि उसकी रफ़्तार भी नपती रहे.
