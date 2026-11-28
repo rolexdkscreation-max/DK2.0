@@ -27,7 +27,9 @@ internal fun GeminiLive.histUsage(raw: Long): Long {
     if (histMethod == HistoryOnDemand.Method.A_COMPRESSION && histTrigger > 0 &&
         HistoryOnDemand.ineffective(recent, histTrigger)) {
         histMethod = HistoryOnDemand.Method.B_ROTATE
-        log("इतिहास: तरीका A की छँटाई असर नहीं कर रही (लगातार ${HistoryOnDemand.OVER_TURNS} बार ${histTrigger + 2_500} token से ऊपर) - अब तरीका B")
+        log("इतिहास: तरीका A की छँटाई असर नहीं कर रही (" + (if (HistoryOnDemand.stuckOver(recent, histTrigger))
+            "लगातार ${HistoryOnDemand.SMALL_OVER_TURNS} बार सीमा $histTrigger token से ऊपर" else
+            "लगातार ${HistoryOnDemand.OVER_TURNS} बार ${histTrigger + 2_500} token से ऊपर") + ") - अब तरीका B")
     }
     val label = histMethod.label
     if (label != histMethodLogged || before != histMethod) {
@@ -38,7 +40,8 @@ internal fun GeminiLive.histUsage(raw: Long): Long {
             else -> "मॉडल ने छोटी सीमा मान ली (${histTrigger} token पर छँटाई) - बात बिना रुके, सत्र नहीं बदलता"
         })
     }
-    log("इस turn पर context $t token (स्थिर ~$histFixed${if (histFixedReal) " असली" else " अंदाज़ा"}, सीमा ${if (compressLimits) histTrigger else 0}) [तरीका ${if (histMethod == HistoryOnDemand.Method.A_COMPRESSION) "A" else "B"}]$note")
+    log("इस turn पर context $t token (स्थिर ~$histFixed${if (histFixedReal) " असली" else " अंदाज़ा"}, सीमा ${if (compressLimits) histTrigger else 0}) [तरीका ${if (histMethod == HistoryOnDemand.Method.A_COMPRESSION) "A" else "B"}]$note" +
+        if (compressLimits && histMethod == HistoryOnDemand.Method.A_COMPRESSION) HistoryOnDemand.overNote(t, histTrigger) else "")
     if (!freshRotateDue && HistoryOnDemand.rotateDue(histMethod, t, turnsSinceFresh, histFixed)) {
         freshRotateDue = true
         log("इतिहास: तरीका B - context $t token / $turnsSinceFresh बारियाँ: अगले शांत पल में सत्र चुपचाप नया")

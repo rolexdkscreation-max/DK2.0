@@ -89,7 +89,21 @@ object HistoryOnDemand {
 
     /** तरीका A चल रहा पर हर turn का context [OVER_TURNS] बार लगातार trigger + 2.5k से ऊपर = छँटाई असर नहीं कर रही */
     fun ineffective(recent: List<Long>, trigger: Long): Boolean =
-        recent.size >= OVER_TURNS && recent.takeLast(OVER_TURNS).all { it > trigger + 2_500L }
+        recent.size >= OVER_TURNS && recent.takeLast(OVER_TURNS).all { it > trigger + 2_500L } ||
+            stuckOver(recent, trigger)
+
+    /**
+     * 28 नवंबर 2026 (मालिक का लॉग: context 19,214 > सीमा 18,417): server सीमा पार होने पर अगली बारी से पहले छाँटता है, इसलिए
+     * एक बार थोड़ा ऊपर जाना ठीक है. पर [SMALL_OVER_TURNS] बार लगातार सीमा से ऊपर (थोड़ा ही सही) = छँटाई हो ही नहीं रही -
+     * पहले यह तभी पकड़ा जाता था जब 2.5k से ज़्यादा ऊपर हो, यानी थोड़ा-ऊपर context हमेशा वहीं अटका रह सकता था. pure
+     */
+    const val SMALL_OVER_TURNS = 3
+    fun stuckOver(recent: List<Long>, trigger: Long): Boolean =
+        trigger > 0 && recent.size >= SMALL_OVER_TURNS && recent.takeLast(SMALL_OVER_TURNS).all { it > trigger }
+
+    /** लॉग के लिए: सीमा से कितना ऊपर (ऊपर नहीं / सीमा नहीं = ""). pure */
+    fun overNote(t: Long, trigger: Long): String =
+        if (trigger <= 0 || t <= trigger) "" else " - सीमा से ${t - trigger} token ऊपर (server अगली बारी से पहले छाँटेगा)"
 
     /** tool वाले turn की जोड़ी गिनती → एक बार सोचने का context (rounds = इस turn में आए toolCall) */
     fun perGeneration(raw: Long, rounds: Int): Long = if (rounds <= 0 || raw <= 0) raw else raw / (rounds + 1)
