@@ -48,7 +48,7 @@ class ScreenLookFlowNov28Test {
         assertTrue(src("GeminiLiveQueue.kt").contains("PrivacyGate.lensSaid(req)"))
         assertTrue(src("DKAccessibilityYt.kt").contains("!PrivacyGate.lensOn && !PrivacyGate.explicitNow(PrivacyGate.Kind.CAMERA)"))
         assertTrue(src("LiveVision.kt").contains("PrivacyGate.lensOn = cameraOn || cameraWanted"))
-        assertTrue(PrivacyGate.RULE.contains("DK लेंस यूज़र ने खुद खोला"))
+        assertTrue(PrivacyGate.RULE.contains("DK लेंस खुद खोला"))
     }
 
     @Test fun search_readsResults_andAsksNext() {
