@@ -444,6 +444,9 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var rescueAt = 0L
     /** 28 नवंबर 2026: अटके सत्र के बाद आपकी आवाज़ नए connection पर कब दोबारा भेजी */
     @Volatile internal var replaySentAt = 0L
+    /** 28 नवंबर 2026: दोहराव रुका - turn खत्म होते ही इस बात का नया जवाब माँगना है */
+    @Volatile internal var freshAsk = ""
+    @Volatile internal var freshAt = 0L
     @Volatile internal var resentN = 0
     /** v3.9.1: bola par Gemini ne suna hi nahi -> caption ka text seedha bhejo */
     // v3.41: suna par jawab shuru nahi = 4.5s ki jagah 3.5s me bachao (atka sawaal jaldi dobara)

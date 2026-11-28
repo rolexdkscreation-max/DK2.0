@@ -229,6 +229,11 @@ internal fun GeminiLive.handleServer(msg: String, setup: CompletableDeferred<Uni
         val wasDropping = dropOld
         val wasMuted = leakMute
         dropOld = false
+        if (wasDropping && freshAsk.isNotBlank()) {
+            val u = freshAsk
+            freshAsk = ""
+            askFresh(u)
+        }
         if (actHold) endActHold()
         // v4.1: रुका हुआ बचा हिस्सा (अधूरी लिखी call भी हो तो अभी चलेगी)
         leakFilter.finish().takeIf { it.isNotEmpty() }?.let { r -> (tagFilter?.push(r) ?: r).takeIf { it.isNotEmpty() }?.let { c -> synchronized(turnLock) { replyText.append(c) } } }

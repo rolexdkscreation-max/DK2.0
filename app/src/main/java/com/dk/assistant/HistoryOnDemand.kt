@@ -165,6 +165,22 @@ object HistoryOnDemand {
         "the phone understands them - or pass from_date/to_date. Empty/only time words query = the most recent earlier turns. " +
         "It also searches EVERY fact the user asked DK to remember - call it for a personal detail (number, date, place, name) not in the list you have."
 
+    /**
+     * 28 नवंबर 2026 (मालिक का लॉग): "क्या कर रहे हो" पर Live ने हर बार search_history बुलाया और पुरानी बातें पढ़कर
+     * "मैं अभी पुरानी बातें चेक कर रही..." कहा. आपसे अभी की हालचाल वाली बात (पुरानी बातचीत का कोई इशारा नहीं) = खोज नहीं.
+     */
+    fun smallTalk(q: String): Boolean {
+        val t = q.trim().lowercase()
+        return t.isNotEmpty() && SMALL.containsMatchIn(t) && !PAST.containsMatchIn(t)
+    }
+
+    const val SMALL_TALK_REPLY = "NOT SEARCHED: this is not about an old conversation - he is talking to you right now. " +
+        "Do not search. Answer his newest words directly in 1-2 short natural lines (what you are doing / how you are, in your own words)."
+
+    private val SMALL = Regex("क्या\\s*कर\\s*र(?:हे|ही|हा)|कैसे\\s*हो|कैसी\\s*हो|क्या\\s*हाल|कहाँ\\s*हो|सुन\\s*र(?:हे|ही)|" +
+        "what\\s*are\\s*you\\s*doing|how\\s*are\\s*you|kya\\s*kar\\s*rah|kaise\\s*ho")
+    private val PAST = Regex("कल|परसों|पहले|याद|पिछल|था|थी|थे|बताया|yesterday|remember|ago|last\\s*time|\\d{4}-\\d{2}")
+
     fun toolDeclaration(): JSONObject = JSONObject().put("name", "search_history")
         .put("description", TOOL_DESC)
         .put("parameters", JSONObject().put("type", "OBJECT")
