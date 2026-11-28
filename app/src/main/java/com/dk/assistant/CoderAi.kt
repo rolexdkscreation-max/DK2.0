@@ -125,7 +125,12 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
     private fun chatChain(system: String, msgs: List<Pair<String, String>>, media: List<CoderMedia>): String {
         val chain = listOf(this) + fallbacks
         // नवंबर 2026: जो मॉडल हाल में "मौजूद नहीं" (404) मिला, वह आख़िर में (हर बार उसी पर समय न जाए)
-        val ordered = orderChain(chain.map { it.selfLabel }, sticky()).map { l -> chain.first { it.selfLabel == l } }
+        // 28 नवंबर 2026 (मालिक: "जो मॉडल फास्ट चल रहा उसी से काम"): हाल में fail हुई API ([CoderHealth]) पीछे, चलती API में तेज़ पहले.
+        // कोई API हटती नहीं - सब fail हों तो पीछे वाली भी आज़माई जाती हैं. sticky भी तभी आगे जब वह खुद आराम पर न हो
+        val now0 = System.currentTimeMillis()
+        val healthy = CoderHealth.order(chain.map { it.selfLabel }, now0)
+        val live = sticky()?.takeIf { !CoderHealth.cooling(it, now0) }
+        val ordered = orderChain(healthy, live).map { l -> chain.first { it.selfLabel == l } }
             .partition { !Cooldown.blocked(goneKey(it)) }.let { (ok, gone) -> ok + gone }
         // नवंबर 2026 (मालिक): कई Gemini keys (वही मॉडल-क्रम) = मॉडल-पहले: 3.8 Flash सारी keys पर, फिर अगला मॉडल सारी keys पर
         // ([GeminiModels.modelFirst]). अकेली key / दूसरी कंपनी = पहले जैसा (m = null: उसी key पर पूरा क्रम).
@@ -135,7 +140,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         for (ai in ordered) {
             val g = groups.firstOrNull { ai in it }
             if (g == null) steps.add(ai to null)
-            else if (steps.none { it.first in g }) steps.addAll(GeminiModels.modelFirst(g, { it.geminiOrder() }) { k, m -> k.coolUntil(m) > now })
+            else if (steps.none { it.first in g }) steps.addAll(GeminiModels.modelFirst(g, { it.geminiOrder() }) { k, m -> k.coolUntil(m) > now || busyUntil(m) > now })
         }
         val dead = mutableSetOf<CoderAi>()
         val errs = mutableListOf<Pair<CoderAi, java.io.IOException>>()
@@ -143,10 +148,18 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         for ((i, step) in steps.withIndex()) {
             val (ai, only) = step
             if (ai in dead) continue
+            // 28 नवंबर 2026: इसी राउंड में इस Gemini मॉडल पर Google की भीड़ (500/503) मिली = दूसरी keys पर वही मॉडल नहीं, अगला मॉडल
+            if (only != null && errs.isNotEmpty() && busyUntil(only) > System.currentTimeMillis()) continue
             // 429 के बाद: थोड़ा रुककर (2s, 4s, 8s) अगला मॉडल/API - एक साथ सब पर धावा नहीं (Gemini keys के बीच 1.5s, जैसे एक key के मॉडलों में)
-            if (n429 > 0 && (errs.lastOrNull()?.second as? AiException)?.code == 429) Thread.sleep(if (only != null) 1500L else CoderContext.backoffMs(n429))
+            // 28 नवंबर 2026: अगली API दूसरी कंपनी की = उसकी limit अलग, रुकना बेकार ([CoderHealth.waitBeforeNext])
+            if (n429 > 0 && (errs.lastOrNull()?.second as? AiException)?.code == 429 &&
+                CoderHealth.waitBeforeNext(errs.lastOrNull()?.let { it.first.provider.id }, ai.provider.id)) Thread.sleep(if (only != null) 1500L else CoderContext.backoffMs(n429))
+            // इसके बाद कोई और API बची है? नहीं = छोटी request-सीमा वाली API पर भी (कटी) request ही सही
+            val lastResort = steps.drop(i + 1).none { it.first !in dead && it.first !== ai }
+            val t0 = System.currentTimeMillis()
             try {
-                val r = ai.chatOne(system, msgs, media, only)
+                val r = if (lastResort) ai.chatOne(system, msgs, media, only) else ai.chatOne(system, msgs, media, only, lastResort = false)
+                CoderHealth.ok(ai.selfLabel, System.currentTimeMillis() - t0)
                 val prev = sticky() ?: selfLabel
                 if (only != null && only != ai.model && errs.isNotEmpty()) {
                     DKLog.d("Coder: सारी Gemini keys पर ऊपर वाले मॉडल की limit खत्म -> $only (${ai.selfLabel})")
@@ -162,6 +175,8 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
                 // AiException (429/413/5xx/401...) ya network timeout - agla API
                 errs.add(ai to e)
                 if ((e as? AiException)?.code == 429) n429++
+                // यह API कुछ देर पीछे (अगले कदमों पर पहले चलती API) - Gemini मॉडल की अपनी limit-याद [cool] अलग से
+                if (only == null) CoderHealth.fail(ai.selfLabel, (e as? AiException)?.code ?: -1, (e as? AiException)?.retryAfter ?: 0)
                 // key गलत / इजाज़त नहीं / नेटवर्क = इस key के बाकी मॉडल भी बेकार, इस बार छोड़ो
                 if (only != null && (e as? AiException)?.code !in listOf(404, 429, 500, 503)) dead.add(ai)
                 if ((e as? AiException)?.code == 404 && !ai.provider.isGemini) Cooldown.block(goneKey(ai), GONE_MS)
@@ -194,7 +209,8 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
      * एक API पर request. 413 / "बहुत बड़ी" मिले तो वही request दोबारा नहीं - इतिहास छोटा करके (ज़्यादा से ज़्यादा 2 बार)
      * और इस मॉडल की सीमा याद रखो ताकि अगले कदम पहले से छोटे जाएँ.
      */
-    private fun chatOne(system: String, msgs: List<Pair<String, String>>, media: List<CoderMedia> = emptyList(), only: String? = null): String {
+    private fun chatOne(system: String, msgs: List<Pair<String, String>>, media: List<CoderMedia> = emptyList(), only: String? = null,
+                        lastResort: Boolean = true): String {
         val k = capKey()
         var (budget, maxTok) = sizeCap[k] ?: (CoderContext.budgetFor(provider.isGemini, model) to 16000)
         var shrinks = 0
@@ -202,6 +218,9 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         var parts = CoderMedia.allParts(media, provider.isGemini)
         while (true) {
             val room = (budget - system.length).coerceAtLeast(CoderContext.MIN_BUDGET)
+            // 28 नवंबर 2026: सीमा कोडिंग के लिए बहुत छोटी (Groq free 8K TPM) और दूसरी API बची है = फ़ाइलें काटकर अंधा जवाब नहीं, अगली API
+            if (CoderHealth.tooSmall(room, CoderContext.total(msgs), lastResort))
+                throw AiException(413, "$selfLabel: request-सीमा (${room / 1000}k अक्षर) कोडिंग के लिए बहुत छोटी — फ़ाइलें काटने की जगह अगली API")
             val send = if (CoderContext.total(msgs) > room) CoderContext.compact(msgs, room) else msgs
             // 17 नवंबर 2026 ([AiRouter]): सारी keys के बाद DK का सर्वर (premium लाइसेंस / मालिक) - key नहीं भेजी जाती
             if (provider.id == AiRouter.PROVIDER_ID) return AiRouter.coderChat(model, system, send)
@@ -271,6 +290,8 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
                         continue
                     }
                     errs.add(m to e)
+                    // 28 नवंबर 2026: रुककर दोबारा भी 500/503 = Google पर इस मॉडल में भीड़ (key से नहीं) - बाकी keys पर भी यही मॉडल 30s छोड़ो
+                    if (e.code == 500 || e.code == 503) busy[m] = System.currentTimeMillis() + 30_000L
                     if (GeminiModels.isGone(e.code, e.message.orEmpty())) {
                         Cooldown.block(GeminiModels.goneKey(m, kt), GeminiModels.GONE_MS)
                         DKLog.d("Coder: $m बंद है (${e.code}) - 7 दिन तक नहीं आज़माएँगे")
@@ -350,7 +371,9 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
         val s = r.body?.string() ?: ""
         if (!r.isSuccessful) {
             val m = try { JSONObject(s).optJSONObject("error")?.optString("message") ?: s.take(200) } catch (_: Exception) { s.take(200) }
-            throw AiException(r.code, m, GeminiModels.retryDelaySec(s))
+            // 28 नवंबर 2026: Groq/OpenRouter "retry-after" header में बताते हैं कब खुलेगी (Gemini body में)
+            val ra = GeminiModels.retryDelaySec(s).takeIf { it > 0 } ?: r.header("retry-after")?.trim()?.toDoubleOrNull()?.toInt() ?: 0
+            throw AiException(r.code, m, ra)
         }
         s
     }
@@ -576,6 +599,9 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
 
         /** Gemini model ki limit kab tak (key ke aakhri 6 akshar|model -> time) */
         private val cool = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        /** 28 नवंबर 2026: Gemini मॉडल -> कब तक भीड़ (500/503) पर - सारी keys के लिए एक (भीड़ Google की, key की नहीं) */
+        private val busy = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        private fun busyUntil(m: String): Long = busy[m] ?: 0L
         @Volatile private var stickyLabel: String? = null
         @Volatile private var stickyUntil = 0L
         /** Switch ke baad 10 minute usi API par (har kadam par pehle wala 429 na de); phir pehle wale ko dobara mauka */

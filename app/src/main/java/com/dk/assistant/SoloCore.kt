@@ -70,7 +70,7 @@ object Solo {
             if (f == null) { pairs.clear(); full = null; pendingFind = null; return }
             when {
                 pendingFind != null -> out.add(Act.Bad("$f: FIND के बाद REPLACE नहीं आया (दोनों ज़रूरी हैं)"))
-                full != null -> out.add(Act.Write(f, full!!))
+                full != null -> out.add(Act.Write(f, unfenceFile(f, full!!)))
                 pairs.isNotEmpty() -> out.add(Act.Edit(f, pairs.toList()))
                 else -> out.add(Act.Bad("$f: FILE के बाद कोई <<<FIND/<<<REPLACE या <<<FILE नहीं मिला"))
             }
@@ -82,7 +82,9 @@ object Solo {
         }
 
         for (raw in text.replace("\r\n", "\n").split("\n")) {
-            val t = raw.trim()
+            // 28 नवंबर 2026: कमज़ोर/बैकअप मॉडल "**READ:** x", "- GREP: y", "`<<<FIND`" लिखते हैं - पहले ये कमांड छूट जाती थीं
+            // ("AI ने कोई कमांड नहीं भेजी" पर काम रुकता). घेरे के अंदर (कोड) और DONE के सारांश में कुछ नहीं बदलता
+            val t = if (mode.isEmpty() && done == null) cmdLine(raw) else raw.trim()
             if (mode.isNotEmpty()) {
                 val end = when (mode) { "FIND" -> "FIND>>>"; "REPLACE" -> "REPLACE>>>"; else -> "FILE>>>" }
                 if (t == end) {
@@ -140,6 +142,23 @@ object Solo {
         return out
     }
 
+    /** कमांड वाली लाइन से markdown की सजावट हटाओ ("**READ:** a" -> "READ: a"). कमांड न हो तो लाइन वैसी ही (trim) */
+    internal fun cmdLine(raw: String): String {
+        val t = raw.trim()
+        val bare = t.replace("**", "").replace("__", "").trim().trim('`').trim()
+        val noBullet = bare.replace(Regex("""^(?:[-*+>]|\d{1,2}[.)])\s+"""), "").trim().trim('`').trim()
+        if (noBullet.startsWith("<<<FIND") || noBullet.startsWith("<<<REPLACE") || noBullet.startsWith("<<<FILE")) return noBullet.trimEnd(':').trim()
+        return if (CMD_START.containsMatchIn(noBullet)) noBullet else t
+    }
+    private val CMD_START = Regex("""^(READ|GREP|LIST|FILE|DELETE|DONE|ASK)\s*:|^CHECK\s*$""")
+
+    /** पूरी फ़ाइल (<<<FILE) ``` में लिपटी आई = घेरा हटाओ (वरना ``` फ़ाइल में जाकर compile गलती). .md फ़ाइलें वैसी ही */
+    internal fun unfenceFile(path: String, content: String): String {
+        if (path.endsWith(".md", ignoreCase = true)) return content
+        val l = content.split("\n")
+        return if (l.size >= 2 && FENCE.matches(l.first()) && FENCE.matches(l.last())) l.subList(1, l.size - 1).joinToString("\n") else content
+    }
+
     /** बदलाव लागू करने का नतीजा: content = नई फ़ाइल (null = कुछ लागू नहीं), errors = क्यों नहीं */
     data class Applied(val content: String?, val errors: List<String>)
 
@@ -158,7 +177,10 @@ object Solo {
                 n == 1 -> now = now.replaceFirst(find, rep)
                 n > 1 -> errs.add("बदलाव ${i + 1}: FIND फ़ाइल में $n जगह मिला — ऊपर-नीचे की 2-3 लाइनें और जोड़कर उसे एक जगह का बनाएँ")
                 else -> {
-                    val loose = looseReplace(now, find, rep)
+                    val loose = looseReplace(now, find, rep) ?: cleanFind(find, rep)?.let { (f2, r2) ->
+                        // 28 नवंबर 2026: AI ने READ वाले पंक्ति-नंबर ("12| ") या ``` भी FIND में कॉपी कर दिए - उन्हें हटाकर ठीक एक जगह मिले तो वही
+                        if (count(now, f2) == 1) now.replaceFirst(f2, r2) else looseReplace(now, f2, r2)
+                    }
                     if (loose != null) now = loose
                     else errs.add("बदलाव ${i + 1}: FIND फ़ाइल में नहीं मिला (फ़ाइल दोबारा READ करके हूबहू कॉपी करें). FIND की पहली लाइन: " +
                         find.lines().firstOrNull { it.isNotBlank() }.orEmpty().trim().take(120))
@@ -166,6 +188,28 @@ object Solo {
             }
         }
         return if (errs.isEmpty()) Applied(now, emptyList()) else Applied(null, errs)
+    }
+
+    private val NUM = Regex("""^\s*\d{1,6}\| ?""")
+    private val FENCE = Regex("""^\s*```[\w.+-]*\s*$""")
+
+    /**
+     * FIND/REPLACE से READ के पंक्ति-नंबर ("12| ") और ``` घेरे हटाओ. REPLACE से नंबर तभी हटें जब उसकी हर भरी लाइन पर हों.
+     * null = हटाने लायक कुछ नहीं था.
+     */
+    internal fun cleanFind(find: String, rep: String): Pair<String, String>? {
+        fun unfence(x: String): String {
+            val l = x.split("\n")
+            return if (l.size >= 2 && FENCE.matches(l.first()) && FENCE.matches(l.last())) l.subList(1, l.size - 1).joinToString("\n") else x
+        }
+        fun unnum(x: String): String {
+            val l = x.split("\n")
+            val filled = l.filter { it.isNotBlank() }
+            return if (filled.isNotEmpty() && filled.all { NUM.containsMatchIn(it) }) l.joinToString("\n") { it.replaceFirst(NUM, "") } else x
+        }
+        val f = unnum(unfence(find))
+        val r = unnum(unfence(rep))
+        return if (f == find || f.isBlank()) null else f to r
     }
 
     private fun count(hay: String, needle: String): Int {
@@ -217,6 +261,11 @@ object Solo {
     fun grep(ws: Map<String, String>, pattern: String, under: String = "", max: Int = GREP_MAX): List<String> {
         if (pattern.isBlank()) return emptyList()
         val rx = try { Regex(pattern) } catch (_: Exception) { Regex(Regex.escape(pattern)) }
+        // 28 नवंबर 2026: हूबहू कुछ नहीं मिला = छोटे/बड़े अक्षर छोड़कर एक बार और (AI अक्सर "settings" खोजता है, कोड में "Settings")
+        return grepWith(ws, rx, under, max).ifEmpty { grepWith(ws, Regex(rx.pattern, RegexOption.IGNORE_CASE), under, max) }
+    }
+
+    private fun grepWith(ws: Map<String, String>, rx: Regex, under: String, max: Int): List<String> {
         val out = mutableListOf<String>()
         for (p in ws.keys.sorted()) {
             if (under.isNotEmpty() && !p.startsWith(under)) continue
