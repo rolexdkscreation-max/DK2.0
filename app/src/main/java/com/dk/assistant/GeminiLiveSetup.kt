@@ -329,6 +329,24 @@ internal fun GeminiLive.setupJson(m: String, txt: Boolean = connText, resume: Bo
                     .put("rounds", JSONObject().put("type", "INTEGER").put("description", "How many messages DK sends (only if the user said a number; default about 6, max 20)"))
                     .put("question", JSONObject().put("type", "STRING").put("description", "For action=ask: exactly the user's question to type in that app"))
                     .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("start").put("ask").put("read").put("stop").put("status"))))))
+        // 28 नवंबर 2026 (मालिक): DK स्टूडियो - Gemini ऐप / कोई भी वीडियो वेबसाइट पर भाग-भाग में लंबा वीडियो (किरदार वही)
+        .put(JSONObject().put("name", "video_task")
+            .put("description", "Make a long 1-3 min video (2D/3D/emotional) part by part in Gemini or any video website. " +
+                "Use for 'Gemini पर 1 मिनट का 2D वीडियो बनाओ', 'मेरी कहानी का वीडियो बनाओ', 'इस कहानी पर इमोशनल वीडियो बनाओ', 'Google Flow पर वीडियो बनाओ', " +
+                "'जो लिंक दिया है वो खोलो, वहाँ यह वीडियो बनाओ', 'Chrome में जो वेबसाइट खुली है उस पर वीडियो बनाओ'. " +
+                "DK writes the story and FIXED characters itself, makes 8-second parts in the SAME chat / site, downloads each and joins them into one video in the gallery. " +
+                "It runs in the background for many minutes: say the returned line and keep talking normally; a SYSTEM NOTE brings the real result. " +
+                "site=web when the user speaks of a website / link / Chrome / Flow (url = the link if he said one; empty = the site already open in the browser). " +
+                "action=show plays the finished video, action=resume continues after the user logged in or the limit came back, action=stop stops, action=status = progress.")
+            .put("parameters", JSONObject().put("type", "OBJECT")
+                .put("properties", JSONObject()
+                    .put("action", JSONObject().put("type", "STRING").put("enum", JSONArray().put("start").put("show").put("resume").put("stop").put("status")))
+                    .put("story", JSONObject().put("type", "STRING").put("description", "The user's own words: the story / idea of the video (any language)"))
+                    .put("seconds", JSONObject().put("type", "INTEGER").put("description", "Total length in seconds only if the user said it (1 मिनट = 60). Default 60, max 180"))
+                    .put("style", JSONObject().put("type", "STRING").put("description", "2D, 3D, anime, realistic, emotional, funny - as the user said"))
+                    .put("characters", JSONObject().put("type", "INTEGER").put("description", "How many main characters (1-3) only if the user said"))
+                    .put("site", JSONObject().put("type", "STRING").put("enum", JSONArray().put("gemini").put("web")))
+                    .put("url", JSONObject().put("type", "STRING").put("description", "The website link / name the user gave (for site=web)")))))
         // v3.156: "मुझे शर्ट देखनी है" - shopping ऐप (पूछकर) में वही चीज़
         .put(JSONObject().put("name", "shop_search")
             .put("description", "Show a product the user wants to see or buy (shirt, jeans, lower/track pants, shoes, watch, kurta, saree, bag...) in a shopping app on the phone. " +

@@ -58,6 +58,8 @@ interface ImageGenHost {
     fun canLook(): Boolean = false
     /** नवंबर 2026: फ़ोन में इस नाम का कोई भी ऐप (launcher का नाम) -> (नाम, package); न मिले = null */
     fun findApp(name: String): Pair<String, String>? = null
+    /** 28 नवंबर 2026 (DK स्टूडियो): start के बाद फ़ोन में आया सबसे नया वीडियो (गैलरी / Download) - नहीं = null */
+    suspend fun newestVideoSince(startMs: Long): String? = null
 }
 
 data class ImageGenResult(
@@ -303,6 +305,13 @@ class ImageGenFlow(
             if (!host.canLook()) " (DK स्क्रीन देखकर भी दबा सकता है - इसके लिए \"स्क्रीन देखना चालू करो\" बोलिए)" else " (स्क्रीन देखकर भी नहीं मिला)", d.capture()))
         return Sent(app, o0, null)
     }
+
+    /**
+     * 28 नवंबर 2026 (DK स्टूडियो): किसी भी chat ऐप में बस लिखो + भेजो (जवाब का इंतज़ार नहीं - वीडियो [VideoGenFlow] खुद देखता है).
+     * null = भेज दिया; नहीं तो गड़बड़ी (लॉग-इन / खाना नहीं मिला...). [fresh] = false = वही chat (किरदार उसी बातचीत में याद)
+     */
+    suspend fun typeAndSend(app: ChatTarget, text: String, fresh: Boolean): ImageGenResult? =
+        if (text.isBlank()) ImageGenResult(false, app.known, error = "क्या लिखना है, यह खाली है") else typeSend(app, text, image = false, fresh = fresh).fail
 
     /**
      * v3.156 (मालिक): ChatGPT / Gemini से कुछ भी पूछो (इमेज नहीं) - लिखो, भेजो, जवाब पूरा होने तक रुको, जवाब पढ़कर लौटाओ.

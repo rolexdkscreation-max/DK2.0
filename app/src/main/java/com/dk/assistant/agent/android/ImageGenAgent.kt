@@ -74,6 +74,10 @@ object ImageGenAgent {
     internal fun textAsk(svc: DKAccessibilityService, ask: String): String? =
         gemini(svc, ask, null, json = true, maxTokens = 1500, models = (listOf(GeminiModels.CODER) + GeminiModels.LIGHT_CHAIN).distinct())
 
+    /** 28 नवंबर 2026 (DK स्टूडियो): वेबसाइट वाले एजेंट का एक कदम - सवाल + (हो तो) स्क्रीन की तस्वीर, JSON जवाब */
+    internal fun stepAsk(svc: DKAccessibilityService, ask: String, jpegB64: String?): String? =
+        gemini(svc, ask, jpegB64, json = true, maxTokens = 400, models = (listOf(GeminiModels.CODER) + GeminiModels.LIGHT_CHAIN).distinct())
+
     /**
      * स्क्रीन देखना: मालिक ने खुद चालू किया हो (ScreenGuard) + Android 11+ + key हो.
      * v3.156: या "आपके कहे काम में बटन देखकर दबाए" (Prefs.taskLook) - यह सिर्फ़ इसी image/ask काम के बीच, आपके कहने पर.

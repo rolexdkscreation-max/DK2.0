@@ -111,6 +111,7 @@ object LivePromise {
             "ai_app_prompt" -> "ऐप में लिखकर भेज रहा है…"
             "form_fill" -> "फ़ॉर्म पढ़ / भर रहा है…"
             "ai_talk" -> "AI ऐप से बात कर रहा है" + (if (a.isNotEmpty()) ": $a" else "") + "…"
+            "video_task" -> "वीडियो बना रहा है…"
             "shop_search" -> "दिखा रहा है" + (if (a.isNotEmpty()) ": $a" else "") + "…"
             "social_insights" -> "ऐप खोलकर आपके सामने रिव्यू कर रहा है…"
             "image_task" -> "इमेज बना रहा है" + (if (a.isNotEmpty()) ": $a" else "") + "…"
