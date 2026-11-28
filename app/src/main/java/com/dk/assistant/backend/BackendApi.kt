@@ -95,6 +95,9 @@ object BackendApi {
     fun image(c: Context, prompt: String): JSONObject = JSONObject(postJson(c, "/image", JSONObject().put("prompt", prompt)))
     fun imageStatus(c: Context): JSONObject = JSONObject(getJson(c, "/image/status"))
 
+    /** 28 नवंबर 2026: सर्वर पर चलने लायक चैट मॉडल (कड़ी की id + मॉडल) - चिप की "DK AI ..." सूची */
+    fun serverModels(c: Context): List<Pair<String, String>> = BackendWire.serverModels(getJson(c, "/ai/models"))
+
     /** [deep] = डीप रिसर्च: सर्वर Google वाली खोज नहीं करता (सिर्फ़ Tavily/Exa/Linkup/Firecrawl). [only] = सिर्फ़ यह एक कंपनी */
     fun search(c: Context, q: String, deep: Boolean, only: String = ""): String =
         postJson(c, "/search", JSONObject().put("query", q).put("n", if (deep) 8 else 5)

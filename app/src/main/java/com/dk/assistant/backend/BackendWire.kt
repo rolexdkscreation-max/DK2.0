@@ -81,6 +81,20 @@ object BackendWire {
         }
     }
 
+    /** GET /ai/models -> (कड़ी की id, मॉडल). server_ai false / गड़बड़ = खाली */
+    fun serverModels(body: String): List<Pair<String, String>> = try {
+        val o = JSONObject(body)
+        if (!o.optBoolean("server_ai", true)) emptyList()
+        else {
+            val a = o.optJSONArray("models") ?: JSONArray()
+            (0 until a.length()).mapNotNull { i ->
+                val m = a.optJSONObject(i) ?: return@mapNotNull null
+                val p = m.optString("provider").trim(); val id = m.optString("model").trim()
+                if (p.isBlank() || id.isBlank()) null else p to id
+            }.distinct()
+        }
+    } catch (_: Exception) { emptyList() }
+
     data class Stt(val text: String, val seconds: Int, val ticket: String?, val quota: Quota?)
 
     fun stt(body: String): Stt {

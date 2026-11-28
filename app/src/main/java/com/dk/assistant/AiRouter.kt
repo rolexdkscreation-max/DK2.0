@@ -185,13 +185,18 @@ object AiRouter {
 }
 
 /** backend से AI ([AiRouter.client]) - पुराने [AiClient] जैसा, ताकि [BrainManager] / [CoderAi] बिना बदलाव इस्तेमाल करें */
-class BackendAiClient(private val c: Context, private val task: String) : AiClient {
+class BackendAiClient(private val c: Context, private val task: String,
+                      private val first: String? = null, private val model: String? = null) : AiClient {
     override val label: String = AiRouter.LABEL
 
     private fun body(system: String, history: List<Turn>, prompt: String): org.json.JSONObject {
         val ticket = if (task == AiRouter.Task.CHAT || task == AiRouter.Task.VOICE || task == AiRouter.Task.LIVE) AiRouter.takeTicket() else null
         val mode = if (ticket != null) "voice" else "chat"
-        return BackendWire.chatBody(system, history.map { it.role to it.text }, prompt, task, mode, ticket)
+        // 28 नवंबर 2026: चिप में चुना "DK AI ..." = सर्वर पर वही कड़ी पहले (न चले = सर्वर चुपचाप बाकी कड़ी)
+        return BackendWire.chatBody(system, history.map { it.role to it.text }, prompt, task, mode, ticket).apply {
+            if (!first.isNullOrBlank()) put("first", first)
+            if (!first.isNullOrBlank() && !model.isNullOrBlank()) put("model", model)
+        }
     }
 
     /** 22 नवंबर 2026: बातचीत वाले काम = [AnswerGuard] (loop / AI कंपनी वाली पहचान नहीं). कोडिंग / कंप्यूटर = बिना छेड़े */
