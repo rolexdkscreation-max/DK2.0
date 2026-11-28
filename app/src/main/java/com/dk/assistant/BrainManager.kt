@@ -72,7 +72,8 @@ class BrainManager(private val ctx: Context) {
         val r = SelectedModel.resolve(ctx) ?: return null
         if (ApiScopes.oneKeySkip(Prefs.oneKeyOn(ctx), r.provider.id) && Providers.byId(r.provider.id) != null) return null
         val think = ThinkLevel.get(ctx, ApiScopes.CHAT)
-        val cl: AiClient = if (r.provider.isGemini) GeminiClient(r.key, r.model).apply { only = true; backups = emptyList(); this.think = think }
+        val cl: AiClient = if (r.provider.id == OneAi.ID) OneAiClient(ctx, AiRouter.Task.CHAT, OneAi.keys(ctx, ApiScopes.CHAT), r.model)
+            else if (r.provider.isGemini) GeminiClient(r.key, r.model).apply { only = true; backups = emptyList(); this.think = think }
             else OpenAiCompatClient(r.provider.name, r.base, r.key, r.model).apply { backups = emptyList(); this.think = think; tokenField = r.provider.tokenField }
         return Chip(r.provider, cl, r.model)
     }
@@ -80,6 +81,7 @@ class BrainManager(private val ctx: Context) {
     /** चुना मॉडल फेल: health में दर्ज + यूज़र को छोटा संदेश (नियम: चुपचाप दूसरा मॉडल नहीं) */
     private fun chipFailed(ch: Chip, e: Exception, next: String?) {
         if (Providers.byId(ch.p.id) != null) ProviderHealth.fail(ch.p.id, e)
+        if (ch.p.id == OneAi.ID) return   // 28 नवंबर 2026: One AI = चुपचाप अगली कड़ी (कोई संदेश नहीं)
         SelectedModel.failed(ctx, ch.model, e, next)
     }
 

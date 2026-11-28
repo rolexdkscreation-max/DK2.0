@@ -276,6 +276,24 @@ export class Db {
     );
   }
 
+  // ---------- One AI की रैंकिंग ----------
+  oneaiRank() {
+    return run(async () => (await this.d1.prepare("SELECT * FROM oneai_rank ORDER BY task, pos").all()).results ?? []);
+  }
+
+  /** एक काम की पूरी सूची एक साथ (पुरानी rows हटकर नई) */
+  saveOneaiRank(task, rows, now) {
+    return run(async () => {
+      await this.d1.prepare("DELETE FROM oneai_rank WHERE task = ?").bind(task).run();
+      for (const [i, r] of rows.entries()) {
+        await this.d1
+          .prepare("INSERT INTO oneai_rank (task, model, pos, ttft_ms, ok_count, fail_count, fail_streak, last_error, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .bind(task, r.model, i, r.ttft_ms ?? null, r.ok_count ?? 0, r.fail_count ?? 0, r.fail_streak ?? 0, r.last_error ?? null, now)
+          .run();
+      }
+    });
+  }
+
   // ---------- सफ़ाई (रोज़ cron): 7 दिन से पुराना हिसाब ----------
   /** istCut / utcCut = "YYYY-MM-DD" (उससे पहले के दिन मिटें), msCut = उससे पुराने समय वाले */
   cleanup(istCut, utcCut, msCut) {

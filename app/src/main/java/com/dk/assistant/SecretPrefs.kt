@@ -37,6 +37,8 @@ object SecretNames {
         "watchman_log_v1",
         // 17 नवंबर 2026: DK बैकएंड की Firebase पहचान (login token) - ताले में
         "be_id_token", "be_refresh_token",
+        // 28 नवंबर 2026: One AI (oneaiapikey.com) - "एक key से सब" वाले कार्ड की key (बाकी हिस्सों की key_oneai / live_key_oneai … पहले से ताले में)
+        "one_key_oneai",
     )
     private val SCOPE_KEY = Regex("^(live|coder|pc)_key_.+")
 

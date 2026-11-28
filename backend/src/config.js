@@ -88,6 +88,9 @@ export const AI_CHAIN = [
   { id: "openrouter", kind: "openai", secret: "OPENROUTER_API_KEY", base: "https://openrouter.ai/api/v1", model: "openrouter/free" },
   { id: "zai", kind: "openai", secret: "ZAI_API_KEY", base: "https://api.z.ai/api/paas/v4", model: "glm-4.7-flash" },
   { id: "nvidia", kind: "openai", secret: "NVIDIA_API_KEY", base: "https://integrate.api.nvidia.com/v1", model: "meta/llama-3.3-70b-instruct" },
+  // 28 नवंबर 2026 (मालिक): One AI API Key (oneaiapikey.com, OpenAI जैसी gateway) - मुफ़्त वालों के बाद, paid से पहले नई कड़ी.
+  // model "auto" = काम के हिसाब से D1 की रैंकिंग (oneai.js). पहला शब्द 4 सेकंड में नहीं = अगली कड़ी.
+  { id: "oneai", kind: "oneai", secret: "ONEAI_API_KEY", base: "https://api.oneaiapikey.com/v1", model: "auto", firstTokenMs: 4_000, maxContextTokens: 120_000 },
   // ऐप के "मज़बूत मॉडल" वाली कंपनियाँ (paid key) - मालिक secret डाले तभी, सबसे आख़िर में (मुफ़्त वाले पहले)
   { id: "deepseek", kind: "openai", secret: "DEEPSEEK_API_KEY", base: "https://api.deepseek.com", model: "deepseek-v4-pro" },
   { id: "openai", kind: "openai", secret: "OPENAI_API_KEY", base: "https://api.openai.com/v1", model: "gpt-6-astra" },
@@ -156,6 +159,8 @@ export const PROVIDER_LIMITS = {
   groq: { requests: 1_000, tokens: 200_000 },
   cohere: { requests: 33 },
   cloudflare: { neurons: DAILY_NEURONS },
+  // One AI: मुफ़्त सीमा पूरे खाते की - रोज़ 100 अनुरोध (00:00 UTC पर नई)
+  oneai: { requests: 100 },
 };
 /** token का अंदाज़ा: इतने अक्षर = 1 token (हिंदी में token ज़्यादा बनते हैं, इसलिए 3) */
 export const CHARS_PER_TOKEN = 3;
@@ -183,5 +188,37 @@ export const SECRET_NAMES = [
   "ALLOWED_EMAILS", "WEBHOOK_SECRET",
   "GEMINI_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY", "COHERE_API_KEY", "OPENROUTER_API_KEY", "ZAI_API_KEY", "NVIDIA_API_KEY",
   "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+  "ONEAI_API_KEY", "ONEAI_API_KEY_2",
   "TAVILY_API_KEY", "EXA_API_KEY", "LINKUP_API_KEY", "FIRECRAWL_API_KEY",
 ];
+
+/**
+ * 28 नवंबर 2026 (मालिक): One AI API Key. कुंजी सिर्फ़ Worker secret ONEAI_API_KEY (और ONEAI_API_KEY_2) में.
+ * मुफ़्त: पूरे खाते पर रोज़ 100 अनुरोध, एक कुंजी पर एक समय में एक अनुरोध (इसलिए कतार).
+ * सावधान (docs): जिस :free id का पैसे वाला जोड़ीदार है (जैसे gpt-6-luna:free) उस पर क्रेडिट कटता है, और :free मॉडल
+ * 3 बार फेल हो तो सेवा पैसे वाले मॉडल से जवाब देती है (header X-Fallback-From) - ऐसा जवाब तुरंत छोड़कर अगली कड़ी.
+ */
+export const ONEAI = {
+  base: "https://api.oneaiapikey.com/v1",
+  secrets: ["ONEAI_API_KEY", "ONEAI_API_KEY_2"],
+  modelsCacheMs: 10 * 60_000,
+  rankCacheMs: 60_000,
+  /** कतार: इतनी देर तक खाली कुंजी का इंतज़ार (कड़ी में), /oneai/chat में ज़्यादा */
+  queueWaitMs: 3_000,
+  benchTimeoutMs: 15_000,
+  benchPrompt: "Reply with just one word: hello",
+  /** लगातार इतनी बार चूका = सबसे नीचे */
+  failDown: 3,
+  /** ये शब्द वाले मॉडल कभी नहीं */
+  banned: ["uncensored", "roleplay", "stepaudio"],
+  /** शुरुआती क्रम (असली सूची में हों और :free हों तभी) */
+  defaults: {
+    chat: ["deepseek-deepseek-v4.1-flash:free", "z-ai-glm-5.3-flash:free", "minimaxai-minimax-m3-1-flash:free", "grok-4.7-fast:free"],
+    phone: ["deepseek-deepseek-v4.1-flash:free", "z-ai-glm-5.3-flash:free", "minimaxai-minimax-m3-1-flash:free", "grok-4.7-fast:free"],
+    coding: ["moonshotai-kimi-k3.1-pro:free", "z-ai-glm-5.3:free", "nvidia-nemotron-3-ultra-550b-a55b:free"],
+    deep_research: ["moonshotai-kimi-k3.1-pro:free", "z-ai-glm-5.3:free", "nvidia-nemotron-3-ultra-550b-a55b:free"],
+  },
+  /** ऐप का task → One AI की सूची */
+  taskMap: { chat: "chat", voice: "chat", live: "chat", search: "chat", phone: "phone", coder: "coding", computer: "coding", heavy: "coding", research: "deep_research" },
+  researchRule: "Answer only from the search results given in the conversation. If they do not contain the answer, say so. Do not use outside knowledge.",
+};
