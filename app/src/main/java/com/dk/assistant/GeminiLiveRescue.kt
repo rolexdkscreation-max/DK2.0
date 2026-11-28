@@ -56,6 +56,8 @@ internal fun GeminiLive.rescueWithLive(at: Int, why: String): Boolean {
     }
     splitRescues++
     splitLiveWhy = why
+    rescueStreak = SplitRescue.nextStreak(rescueStreak, from == 0)
+    if (SplitRescue.giveUp(rescueStreak)) splitGiveUp("लगातार $rescueStreak जवाब Gemini TTS समय पर नहीं बोला")
     if (pipelineLazy.isInitialized()) pipeline.handOff()
     LatencyBoard.count("Gemini TTS देर/चुप: Live की अपनी आवाज़ ने बोला")
     log("आवाज़: $why - बचा जवाब Live की अपनी आवाज़ में (टुकड़ा $from से, ${n} टुकड़े, ${(total - played) * 1000 / (OUT_RATE * 2)} ms) • #$splitRescues")
@@ -70,6 +72,7 @@ internal fun GeminiLive.splitRaceCheck(now: Long) {
     if (liveRaceFrom == 0L) liveRaceFrom = now
     val since = maxOf(liveKeepFirstAt, liveRaceFrom)
     val started = pipelineLazy.isInitialized() && pipeline.audioStarted
+    if (started) rescueStreak = 0                            // इस बार TTS ने खुद बोला - लगातार वाली गिनती खत्म
     val local = splitEngine?.id == com.dk.assistant.voice.engine.St3VoiceEngine.ID
     if (SplitRescue.firstTooSlow(now, since, started, open, local)) rescueWithLive(0, "Gemini TTS की पहली आवाज़ ${now - since} ms में नहीं आई")
 }

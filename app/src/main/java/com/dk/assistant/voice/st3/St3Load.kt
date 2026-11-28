@@ -134,6 +134,13 @@ object St3Load {
         return s
     }
 
+    /**
+     * 28 नवंबर 2026 (मालिक का लॉग: "थ्रेड घटाए (2)" के बाद भी हर टुकड़ा 4 थ्रेड): नया जवाब तब भी गिनो जब ऑफ़लाइन आवाज़
+     * चुनी नहीं पर पीछे से ([fallbacks]) बोल सकती है - जैसे Gemini TTS की limit खत्म. pure
+     */
+    fun newAnswerFor(engine: String, fallbacks: List<String>): Boolean =
+        engine == com.dk.assistant.voice.engine.VoiceEngines.ST3_OFFLINE || com.dk.assistant.voice.engine.VoiceEngines.ST3_OFFLINE in fallbacks
+
     /** एक जवाब का सार. pure */
     fun summary(rows: List<St3Stats.Row>, firstMs: Long, m: Mode, heat: Int): String? {
         if (rows.isEmpty()) return null

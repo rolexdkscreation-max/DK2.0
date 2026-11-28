@@ -33,6 +33,12 @@ object SideTalk {
     /** score सीमा से इतना नीचे = पक्का कोई और (बीच वाला = पता नहीं) */
     const val OTHER_MARGIN = 0.10f
     const val MIN_MS = 300
+    /**
+     * 28 नवंबर 2026 (मालिक का log): असली बात के ठीक बाद 200-280 ms की खटखट/शोर का मिलान 0.03-0.16 आया -> "कोई और" ->
+     * आपके असली सवाल का पूरा जवाब (510-549 टुकड़े) नहीं बजा. इतनी छोटी आवाज़ से "कोई और" तय नहीं होता.
+     * इससे कम *बोलना* (VAD का, बफ़र की लंबाई नहीं) = "कोई और" कभी नहीं.
+     */
+    const val MIN_OTHER_MS = 800
     /** DK के बोलने के इतनी देर में आई बात = DK से बातचीत (बगल की नहीं) */
     const val DK_TURN_MS = 12_000L
 
@@ -63,9 +69,14 @@ object SideTalk {
         }
 
         @Volatile var seq = 0; private set
+        /** begin से पहले वाला फ़ैसला - छोटी खटखट ([blip]) पर वापस */
+        private var keptWho = Who.UNKNOWN
+        private var keptWhoAt = 0L
+        private var keptPrev = Who.UNKNOWN
 
         /** नई बात शुरू (आवाज़ की पहचान बाद में आएगी). @return इस बात का नंबर */
         fun begin(now: Long): Int {
+            keptWho = who; keptWhoAt = whoAt; keptPrev = prevWho
             prevWho = if (whoAt > 0 && now - whoAt < OTHER_RECENT_MS) who else Who.UNKNOWN
             who = Who.UNKNOWN; whoAt = 0L
             touch(now)
@@ -78,6 +89,17 @@ object SideTalk {
             who = w; whoAt = now
             if (w == Who.OTHER) lastOtherAt = now
             if (w == Who.BOSS) lastBossAt = now
+        }
+
+        /**
+         * 28 नवंबर 2026: यह "बात" असल में छोटी खटखट/शोर थी ([MIN_OTHER_MS] से कम बोलना) - इसने पिछली असली बात का
+         * फ़ैसला (जैसे बॉस) मिटाया था, वह वापस. वरना पिछली बात का आने वाला जवाब बिना पहचान के / गलत पहचान से रुकता.
+         */
+        fun blip(s: Int = seq) {
+            if (s != seq) return
+            prevWho = keptPrev
+            // खटखट से कभी "कोई और" नहीं बनता: पहले बॉस था = बॉस वापस; कोई और / पता नहीं = पता नहीं (पहले जैसा, रोक नहीं)
+            if (keptWho == Who.BOSS) { who = keptWho; whoAt = keptWhoAt } else { who = Who.UNKNOWN; whoAt = 0L }
         }
 
         /** इस बात की (ताज़ा) आवाज़ */
@@ -101,6 +123,8 @@ object SideTalk {
                 return "सुनने वाला मोड - DK का नाम नहीं"
             }
             if (addr) return null
+            // 28 नवंबर 2026 (मालिक का log: "<noise>" / "Şimdi" पर जवाब रुका): शब्द ही नहीं = आपस की बातचीत तय नहीं - रोको मत
+            if (!hasWords(heard)) return null
             if (direct(heard)) return null                 // 22 नवंबर 2026: "हैलो / सुन पा रहे हो" = DK से बात, आवाज़ का मिलान कुछ भी हो
             // 28 नवंबर 2026 (मालिक का लॉग): DK अभी-अभी बोली और आपने उसी पर सवाल किया ("क्या पसंद होगा, क्या करती हो") - Bluetooth
             // पर आपकी आवाज़ का मिलान 0.30-0.60 घूमता है, तो आप ही "कोई और" मान लिए गए और जवाब रुका. बातचीत चल रही = DK से बात.
@@ -153,11 +177,16 @@ object SideTalk {
         return null
     }
 
-    /** आवाज़ के मिलान (score) से कौन. बहुत छोटी आवाज़ / मिलान नहीं = पता नहीं (रोकना नहीं) */
+    private val TAG = Regex("<[^>]*>")
+    /** लिखावट में असली शब्द (कम से कम 2 अक्षर/मात्रा वाला एक शब्द); "<noise>" जैसे टैग नहीं गिने जाते */
+    fun hasWords(text: String): Boolean =
+        TAG.replace(text, " ").split(Regex("[^\\p{L}\\p{M}]+")).any { w -> w.count { it.isLetter() } >= 2 }
+
+    /** आवाज़ के मिलान (score) से कौन. बहुत छोटी आवाज़ / मिलान नहीं = पता नहीं (रोकना नहीं). [ms] = असली बोलना (VAD) */
     fun classify(score: Float?, threshold: Float, ms: Int): Who = when {
         score == null || !score.isFinite() || ms < MIN_MS -> Who.UNKNOWN
         score >= threshold -> Who.BOSS
-        score < threshold - OTHER_MARGIN -> Who.OTHER
+        score < threshold - OTHER_MARGIN && ms >= MIN_OTHER_MS -> Who.OTHER
         else -> Who.UNKNOWN
     }
 

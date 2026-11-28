@@ -33,6 +33,24 @@ object SplitRescue {
      */
     const val LOCAL_STUCK_MS = 10_000L
 
+    /**
+     * 28 नवंबर 2026 (मालिक का log: "#28, #29, #30 - Gemini TTS की पहली आवाज़ 900 ms में नहीं आई" हर जवाब पर, बीच में
+     * "लिमिट खत्म"): Live की आवाज़ ने बचा लिया तो [SilentVoice.OFF_MS] वाली छुट्टी कभी नहीं लगती थी (वह सिर्फ़ पूरी चुप्पी पर) -
+     * हर जवाब 0.9-2.5 s देर से. इतने जवाब *लगातार* शुरू से Live ने बोले = Gemini TTS कुछ देर के लिए छोड़ो.
+     */
+    const val GIVE_UP_STREAK = 3
+
+    /** इस बार Live ने शुरू से बचाया ([fromStart]) - लगातार गिनती आगे; बीच से बचाया = TTS ने कुछ बोला था, गिनती शून्य */
+    fun nextStreak(streak: Int, fromStart: Boolean): Int = if (fromStart) streak + 1 else 0
+
+    fun giveUp(streak: Int): Boolean = streak >= GIVE_UP_STREAK
+
+    /** यह गलती = थोड़ी देर कोई फ़ायदा नहीं (लिमिट / quota) - तुरंत छोड़ो */
+    fun limitHit(why: String): Boolean {
+        val w = why.lowercase()
+        return w.contains("लिमिट") || w.contains("429") || w.contains("quota") || w.contains("exhausted") || w.contains("rate limit")
+    }
+
     /** पहली आवाज़ की दौड़: Live तैयार ([liveSince] से), TTS अब तक चुप, रास्ता खुला (कोई रोक नहीं) */
     fun firstTooSlow(now: Long, liveSince: Long, ttsStarted: Boolean, open: Boolean, local: Boolean = false): Boolean =
         !local && open && !ttsStarted && liveSince > 0 && now - liveSince >= FIRST_BUDGET_MS

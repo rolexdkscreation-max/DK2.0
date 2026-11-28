@@ -135,7 +135,10 @@ class SpeechPipeline(private val ctx: Context, private val hooks: Hooks) {
     fun begin(e: VoiceEngine) {
         engine = e
         // 20 नवंबर 2026: पिछले जवाब का सार (बनी/आवाज़ अनुपात, पहली आवाज़, तरीका, फ़ोन की गर्मी) - पहले/बाद मिलाने को
-        if (e.id == St3VoiceEngine.ID) com.dk.assistant.voice.st3.St3Load.newAnswer(com.dk.assistant.voice.st3.St3Stats.lastFirstMs)?.let { hooks.log(it) }
+        // 28 नवंबर 2026 (मालिक का लॉग: "थ्रेड घटाए (2), अगले जवाब से" के बाद भी 4 थ्रेड): Gemini TTS चुना हो और limit पर
+        // ऑफ़लाइन आवाज़ पीछे से बोले, तब भी नया जवाब गिनो - वरना पुराने टुकड़े जमा रहते, [com.dk.assistant.voice.st3.St3Load.freshAnswer] कभी true नहीं
+        // होता और मॉडल कम थ्रेड से दोबारा नहीं खुलता. ऑफ़लाइन आवाज़ हर इंजन के पीछे है ([VoiceEngines.fallbacks])
+        if (com.dk.assistant.voice.st3.St3Load.newAnswerFor(e.id, VoiceEngines.fallbacks(e.id).map { it.id })) com.dk.assistant.voice.st3.St3Load.newAnswer(com.dk.assistant.voice.st3.St3Stats.lastFirstMs)?.let { hooks.log(it) }
         geminiNoted = false
         if (e.id == St3VoiceEngine.ID) St3VoiceEngine.newAnswer()     // 19 नवंबर 2026: पहला टुकड़ा जल्दी
         if (e.id == St3VoiceEngine.ID) St3VoiceEngine.lead = { leadMs() }   // बाकी टुकड़ों के कदम: आगे कितनी आवाज़ तैयार

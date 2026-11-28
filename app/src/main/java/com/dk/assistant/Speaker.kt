@@ -212,6 +212,8 @@ class Speaker(context: Context) {
         try {
             aborted = false; paused = false
             synchronized(spoken) { spoken.clear() }
+            // 28 नवंबर 2026: यहाँ भी ऑफ़लाइन आवाज़ ([sayOffline]) बोल सकती है = नया जवाब, ताकि घटे थ्रेड अगले जवाब से सच में लगें
+            try { com.dk.assistant.voice.st3.St3Load.newAnswer(com.dk.assistant.voice.st3.St3Stats.lastFirstMs)?.let { DKLog.d(it) } } catch (e: Exception) { Quiet.note(e) }
             busy = true
             if (prev != Mode.THINKING && prev != Mode.WORKING) DKState.set(Mode.THINKING)
             ensureAudible()
