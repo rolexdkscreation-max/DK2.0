@@ -158,7 +158,7 @@ class CoderAi(val provider: Provider, private val key: String, val model: String
             val lastResort = steps.drop(i + 1).none { it.first !in dead && it.first !== ai }
             val t0 = System.currentTimeMillis()
             try {
-                val r = ai.chatOne(system, msgs, media, only, lastResort)
+                val r = if (lastResort) ai.chatOne(system, msgs, media, only) else ai.chatOne(system, msgs, media, only, lastResort = false)
                 CoderHealth.ok(ai.selfLabel, System.currentTimeMillis() - t0)
                 val prev = sticky() ?: selfLabel
                 if (only != null && only != ai.model && errs.isNotEmpty()) {
