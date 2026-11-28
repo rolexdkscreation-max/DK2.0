@@ -3,7 +3,7 @@
 import { available, cleanMessages, collect, dkReady, openChain, pickLane, planChain, streamResponse } from "./ai.js";
 import { authenticate } from "./auth.js";
 import { CHAT_CHAIN, DK_LLM, KEEP_DAYS, SEARCH_CHAIN } from "./config.js";
-import { countUse, health as speedHealth, persist, stat as speedState, utcDay } from "./speed.js";
+import { countUse, health as speedHealth, persist, settings as speedSettings, stat as speedState, utcDay } from "./speed.js";
 import { Db } from "./db.js";
 import {
   activate, createLicense, levelFor, quota, requireChatLeft, requireLevel, requireServerAi, requireVoiceLeft, serverAiOn, taskLevel, today, useVoiceTicket, voiceTicket,
@@ -11,7 +11,7 @@ import {
 import { onImage, onImageStatus } from "./image.js";
 import { onLiveToken } from "./live.js";
 import { onVoiceGrant } from "./voice.js";
-import { autoOk, bench as oneaiBench, isFree, listModels, oneaiKeys, rankTable } from "./oneai.js";
+import { autoOk, bench as oneaiBench, isFree, listModels, oneaiKeys, rankTable, rankedModels } from "./oneai.js";
 import { PROVIDERS as SEARCH_PROVIDERS, read, search } from "./search.js";
 import { readAudio, transcribe } from "./stt.js";
 import { CODES, HttpError, errorResponse, istDay, json, readJson, safeEqual } from "./util.js";
@@ -97,11 +97,13 @@ async function onChat(req, env, ctx, ident, opts, via = null) {
   }
 
   // /oneai/chat: One AI पहले (DK LLM नहीं), ऐप का चुना :free मॉडल (मना वाले / पैसे वाले नहीं)
-  const lane = via === "oneai" ? "big" : pickLane({ task, messages, chain: body.chain, dk: body.dk });
-  const model = via === "oneai" && typeof body.model === "string" ? body.model : undefined;
+  // 28 नवंबर 2026 (मालिक): चिप में चुना "DK AI ..." मॉडल = body.first (कड़ी की id) सबसे पहले, न चले = चुपचाप बाकी कड़ी
+  const pickId = via ?? (typeof body.first === "string" && CHAT_CHAIN.some((c) => c.id === body.first) ? body.first : undefined);
+  const lane = pickId ? "big" : pickLane({ task, messages, chain: body.chain, dk: body.dk });
+  const model = pickId === "oneai" && typeof body.model === "string" ? body.model : undefined;
   let open;
   try {
-    open = await openChain(env, { system, messages, chain: via === "oneai" ? undefined : body.chain, lane, task, first: via ?? undefined, model }, opts);
+    open = await openChain(env, { system, messages, chain: via === "oneai" ? undefined : body.chain, lane, task, first: pickId, model }, opts);
   } catch (e) {
     // सब फेल: रफ़्तार/आराम का हिसाब फिर भी D1 में (ऐप को सिर्फ़ साफ़ हिंदी संदेश)
     for (const m of e?.marks ?? []) later(ctx, () => saveMark(env, m, now));
@@ -144,6 +146,33 @@ async function onOneaiModels(env, ident, opts) {
     models: list.map((id) => ({ id, free: isFree(id), auto: autoOk(id, ids) })),
     rank: Object.fromEntries(Object.entries(rank).map(([t, rows]) => [t, rows.filter((r) => autoOk(r.model, list.length ? ids : null)).map((r) => ({ model: r.model, ttft_ms: r.ttft_ms == null ? null : Math.round(r.ttft_ms), ok: r.ok_count ?? 0, fail: r.fail_count ?? 0 }))])),
   });
+}
+
+/**
+ * 28 नवंबर 2026 (मालिक): ऐप के मॉडल-चिप के लिए सर्वर पर चलने लायक सारे मॉडल (keys नहीं, सिर्फ़ कड़ी की id + मॉडल).
+ * One AI = उसके सारे चलने लायक मुफ़्त मॉडल (D1 क्रम). बंद कंपनियाँ (AI_OFF) नहीं. इस user को सर्वर की AI नहीं = खाली सूची.
+ */
+async function onServerModels(env, ident, opts) {
+  const now = opts.now?.() ?? Date.now();
+  const lv = ident.owner ? { level: "owner" } : await levelFor(new Db(env.DB), ident, now);
+  if (!serverAiOn(env, lv.level)) return json({ ok: true, level: lv.level, server_ai: false, models: [] });
+  const off = speedSettings(env).off;
+  const models = [];
+  for (const c of planChain(env, undefined, "big")) {
+    if (off.has(c.id)) continue;
+    if (c.kind !== "oneai") {
+      models.push({ provider: c.id, model: c.model });
+      continue;
+    }
+    let ranked = [];
+    try {
+      ranked = await rankedModels(env, "chat", now);
+    } catch {
+      ranked = [];
+    }
+    for (const m of [...new Set(ranked)]) models.push({ provider: c.id, model: m });
+  }
+  return json({ ok: true, level: lv.level, server_ai: true, models });
 }
 
 /** One AI के मॉडल परखो (cron रोज़ + मालिक माँगे तब). हर अनुरोध आज की गिनती (100) में */
@@ -272,6 +301,7 @@ export async function handle(req, env, ctx, opts = {}) {
   // 28 नवंबर 2026 (मालिक): One AI - वही लॉगिन + लाइसेंस जाँच (onChat), कुंजी सिर्फ़ Worker secret में
   if (path === "/oneai/chat" && M === "POST") return onChat(req, env, ctx, ident, opts, "oneai");
   if (path === "/oneai/models" && M === "GET") return onOneaiModels(env, ident, opts);
+  if (path === "/ai/models" && M === "GET") return onServerModels(env, ident, opts);
   if (path === "/oneai/bench" && M === "POST") {
     if (!ident.owner) throw new HttpError(403, CODES.FORBIDDEN, "यह सिर्फ़ मालिक के लिए है");
     return json(await runBench(env, ctx, opts.now?.() ?? Date.now()));

@@ -69,6 +69,11 @@ class BrainManager(private val ctx: Context) {
      */
     private fun chipPick(): Chip? {
         if (override != null) return null
+        // 28 नवंबर 2026 (मालिक): चिप में "DK AI ..." (DK सर्वर का मॉडल) = सर्वर पर वही पहले; सर्वर इस user के लिए नहीं = Auto जैसा
+        com.dk.assistant.dkai.DkAiModels.picked(ctx)?.let { (first, model) ->
+            if (!(AiRouter.backendReady() && AiRouter.serverAiOk())) return null
+            return Chip(AiRouter.provider, BackendAiClient(ctx, if (fromLive) AiRouter.Task.LIVE else AiRouter.Task.CHAT, first, model), model)
+        }
         val r = SelectedModel.resolve(ctx) ?: return null
         if (ApiScopes.oneKeySkip(Prefs.oneKeyOn(ctx), r.provider.id) && Providers.byId(r.provider.id) != null) return null
         val think = ThinkLevel.get(ctx, ApiScopes.CHAT)
@@ -81,7 +86,7 @@ class BrainManager(private val ctx: Context) {
     /** चुना मॉडल फेल: health में दर्ज + यूज़र को छोटा संदेश (नियम: चुपचाप दूसरा मॉडल नहीं) */
     private fun chipFailed(ch: Chip, e: Exception, next: String?) {
         if (Providers.byId(ch.p.id) != null) ProviderHealth.fail(ch.p.id, e)
-        if (ch.p.id == OneAi.ID) return   // 28 नवंबर 2026: One AI = चुपचाप अगली कड़ी (कोई संदेश नहीं)
+        if (ch.p.id == OneAi.ID || ch.p.id == AiRouter.PROVIDER_ID) return   // 28 नवंबर 2026: One AI / DK सर्वर = चुपचाप अगली कड़ी (कोई संदेश नहीं)
         SelectedModel.failed(ctx, ch.model, e, next)
     }
 
