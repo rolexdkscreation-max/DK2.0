@@ -197,6 +197,9 @@ class BrainManager(private val ctx: Context) {
      * = DK का सर्वर. आधा जवाब आ चुका हो तो वहीं (दोबारा शुरू नहीं).
      */
     suspend fun streamChat(prompt: String, note: String, onDelta: (String) -> Unit): String = withContext(Dispatchers.IO) {
+        // 28 नवंबर 2026 (मालिक): "All with one key (all-rounder)" चालू = DK चैट सिर्फ़ DK सर्वर से (ऐप की Gemini key से नहीं).
+        // DK Live से आई बात = पहले जैसी. बंद = नीचे वाला पुराना रास्ता जैसा का तैसा
+        if (!fromLive && AiRouter.chatServerOnly(ctx)) return@withContext serverOnlyChat(prompt, note, onDelta)
         var said = false
         try {
             streamChatOwn(prompt, note) { d -> said = true; onDelta(d) }
@@ -213,6 +216,22 @@ class BrainManager(private val ctx: Context) {
             } catch (b: kotlinx.coroutines.CancellationException) { throw b
             } catch (b: Exception) { DKLog.d("DK सर्वर: ${b.message?.take(80)}"); throw AiRouter.pick(e, b) }
         }
+    }
+
+    /**
+     * ऑल-राउंडर चालू वाली चैट: सीधे DK सर्वर की चैट वाली कड़ी (chat_chain). कोई अपनी key / चिप / One AI ऐप key नहीं.
+     * सब चरण विफल = सर्वर का संदेश ("अभी जवाब नहीं आ पाया, थोड़ी देर बाद कोशिश करें।") [AiRouter.say] से दिखे.
+     */
+    private suspend fun serverOnlyChat(prompt: String, note: String, onDelta: (String) -> Unit): String = withContext(Dispatchers.IO) {
+        syncEpoch()
+        lastGround = null
+        DKLog.d("चैट: ऑल-राउंडर चालू - सिर्फ़ DK सर्वर")
+        val text = BackendAiClient(ctx, AiRouter.Task.CHAT, chatChain = true)
+            .stream(buildChatStreamPrompt(), chatHist(), prompt, onDelta)
+        if (text.isBlank()) throw AiException(0, "khali jawab")
+        lastUsed = AiRouter.LABEL
+        remember(if (note.isNotBlank()) note else "USER SAYS: $prompt", text)
+        text
     }
 
     /** पुराने JSON जवाब को सादा text बनाकर (AI सादा text ही लिखे) */

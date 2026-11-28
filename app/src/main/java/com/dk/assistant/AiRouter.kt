@@ -35,6 +35,16 @@ object AiRouter {
     fun backendFirst(task: String): Boolean = false
 
     /**
+     * 28 नवंबर 2026 (मालिक): "All with one key (all-rounder)" चालू = DK चैट की हर बातचीत सिर्फ़ DK सर्वर से
+     * (सर्वर की चैट वाली fallback कड़ी, body.chat_chain). ऐप में डाली Gemini key से चैट बिल्कुल नहीं.
+     * बंद = पहले जैसा (अपनी keys पहले). सर्वर वाला build ही न हो = पहले जैसा. DK Live / आवाज़ / कोडिंग पर असर नहीं.
+     */
+    fun chatServerOnly(c: Context): Boolean = chatServerOverride ?: (Prefs.oneKeyOn(c) && backendReady())
+
+    /** test बदल सके */
+    @Volatile var chatServerOverride: Boolean? = null
+
+    /**
      * अपनी keys से नहीं हुआ (गलती [e], या key ही नहीं = null) - अब backend आज़माएँ?
      * रुकावट (cancel) / backend की अपनी गलती / race हारना = नहीं.
      */
@@ -186,7 +196,8 @@ object AiRouter {
 
 /** backend से AI ([AiRouter.client]) - पुराने [AiClient] जैसा, ताकि [BrainManager] / [CoderAi] बिना बदलाव इस्तेमाल करें */
 class BackendAiClient(private val c: Context, private val task: String,
-                      private val first: String? = null, private val model: String? = null) : AiClient {
+                      private val first: String? = null, private val model: String? = null,
+                      private val chatChain: Boolean = false) : AiClient {
     override val label: String = AiRouter.LABEL
 
     private fun body(system: String, history: List<Turn>, prompt: String): org.json.JSONObject {
@@ -196,6 +207,8 @@ class BackendAiClient(private val c: Context, private val task: String,
         return BackendWire.chatBody(system, history.map { it.role to it.text }, prompt, task, mode, ticket).apply {
             if (!first.isNullOrBlank()) put("first", first)
             if (!first.isNullOrBlank() && !model.isNullOrBlank()) put("model", model)
+            // 28 नवंबर 2026: ऑल-राउंडर चालू वाली DK चैट = सर्वर की सिर्फ़-चैट fallback कड़ी (Groq → Gemini Flash-Lite → ...)
+            if (chatChain && task == AiRouter.Task.CHAT && ticket == null) put("chat_chain", true)
         }
     }
 
