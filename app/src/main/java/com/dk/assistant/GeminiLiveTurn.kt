@@ -217,3 +217,18 @@ internal fun GeminiLive.checkHonest(reply: String) {
     log("सच-जाँच: DK ने बिना किसी काम के \"हो गया\" बोला - सुधार भेजा: ${reply.take(60)}")
     visionNote(HonestGuard.correctionNote(reply), evidence = false)
 }
+
+/**
+ * 28 नवंबर 2026 (मालिक: "आवाज़ से बात करते-करते key की limit खत्म हो तो बात रुकनी नहीं चाहिए, तुरंत बैकएंड से"):
+ * अपनी key बीच में खत्म - जिस बात का जवाब बाकी था वह DK सर्वर वाले नए connection पर सबसे पहले जाती है ([sendFirstText]),
+ * ताकि आपको दोबारा बोलना न पड़े. पिछली बातें नए सत्र में याद-सार से आती हैं (handle दूसरी key पर नहीं चलता).
+ */
+internal fun GeminiLive.carryToServer() {
+    val now = System.currentTimeMillis()
+    if (!replyWatch.unanswered(now)) { log("limit खत्म - DK सर्वर से तुरंत जोड़ रहा हूँ (बात रुकेगी नहीं)"); return }
+    val t = caption?.text().orEmpty().trim()
+        .ifBlank { if (!userDone) turnUser.trim() else "" }
+        .ifBlank { synchronized(turnLock) { userText.toString().trim() } }
+    if (BargeGate.realWords(t)) firstText = t
+    log("limit खत्म - DK सर्वर से तुरंत जोड़ रहा हूँ" + if (firstText != null) ", आपकी आख़िरी बात वहीं से जवाब पाएगी" else "")
+}

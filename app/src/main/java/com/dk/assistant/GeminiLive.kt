@@ -1120,6 +1120,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
             .ifEmpty { if (LiveDkServer.on()) listOf(LiveDkServer.KEY) else throw Fatal("Gemini की key नहीं है", kind = LiveFailWhy.Kind.NO_KEY) }
         val dkServer = keys.size == 1 && LiveDkServer.isServer(keys[0])
         LiveDkServer.lastRunServer = dkServer
+        // 28 नवंबर 2026 (मालिक): अपनी key की limit बीच में खत्म = रुक-रुककर इंतज़ार नहीं, तुरंत DK सर्वर ([LiveDkServer.canSpare])
+        val spareOk = { livePin == null && !dkServer && LiveDkServer.canSpare() }
         askKey = dkServer && mine.isEmpty()      // बिना key = शुरुआत में एक बार "पहले API key डाल लीजिए…"
         if (dkServer) log(if (spare) "Live: अपनी key अभी नहीं चली - ${AiRouter.LABEL} के टिकट से (${LiveDkServer.SPARE_MS / 60_000} मिनट, फिर अपनी key)"
             else "Live: अपनी Gemini key नहीं - ${AiRouter.LABEL} के टिकट से (असली key फ़ोन पर नहीं)")
@@ -1335,7 +1337,8 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                             r.contains("api key") || r.contains("api_key") || code == 401 || code == 403 ->
                                 if (run { LiveBadKeys.mark(svc, key); switchKey("key गलत/बंद (code=$code)") }) continue else throw Fatal("Gemini key गलत है या Live की इजाज़त नहीं (${LiveFailWhy.detail(code, reason)})", kind = LiveFailWhy.Kind.KEY)
                             LiveRace.shouldBlockModel(code, r, tried = rc.lastFailCombo != null) -> {
-                                if (LiveOneKey.soft(keys.size, r, softQuota)) { softWait("setup"); continue }
+                                if (LiveDkServer.waitOnOwnKey(LiveOneKey.soft(keys.size, r, softQuota), spareOk())) { softWait("setup"); continue }
+                                if (LiveOneKey.daily(r)) LiveDkServer.dailyHit = true
                                 blockModel(model, "setup", r)
                                 // v4.7 (मालिक: "limit खत्म = तुरंत दूसरी key"): पहले उसी key के बाकी मॉडल एक-एक कर (हर एक पर
                                 // नया connection = सेकंडों की देर), फिर दूसरी key. अब सीधे दूसरी key; वह न हो तो बाकी मॉडल
@@ -1683,8 +1686,10 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                         if (switchKey("key बंद हो गई")) continue else throw Fatal("Gemini key बंद हो गई")
                     }
                     if (isQuota(code, reason.lowercase())) {
-                        if (turnActive && LiveOneKey.soft(keys.size, reason, softQuota)) finishTurn()
-                        if (LiveOneKey.soft(keys.size, reason, softQuota)) { softWait("बातचीत के बीच"); continue }
+                        val softHere = LiveDkServer.waitOnOwnKey(LiveOneKey.soft(keys.size, reason, softQuota), spareOk())
+                        if (turnActive && softHere) finishTurn()
+                        if (softHere) { softWait("बातचीत के बीच"); continue }
+                        if (LiveOneKey.daily(reason)) LiveDkServer.dailyHit = true
                         blockModel(model, "बातचीत के बीच", reason)
                         if (turnActive) finishTurn()
                         // नवंबर 2026 (मालिक): limit खत्म = पहले इसी key का अगला Live मॉडल (दौड़ का क्रम [LiveRace.stickyOrder]),
@@ -1694,7 +1699,11 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                         }
                         if (switchKey("बातचीत के बीच इस key की limit खत्म")) continue     // v4.7: सीधे दूसरी key
                         else if (mi + 1 < models.size) { mi++; handle = null; continue }
-                        else throw Fatal("Gemini Live की फ्री लिमिट खत्म")
+                        else {
+                            // 28 नवंबर 2026 (मालिक): बातचीत रुके नहीं - बिना जवाब वाली बात DK सर्वर वाले connection पर पहले ([firstText])
+                            if (spareOk()) carryToServer()
+                            throw Fatal("Gemini Live की फ्री लिमिट खत्म", kind = LiveFailWhy.Kind.QUOTA)
+                        }
                     }
                     if (turnActive) finishTurn()
                     // 20 sec se pehle toota = network/server dikkat -> har baar zyada ruko (battery bachao)

@@ -46,9 +46,32 @@ object LiveDkServer {
     /** अपनी key से Live रुका: सर्वर से फिर जोड़ें? true = हाँ (तुरंत फिर कोशिश) */
     fun noteFail(kind: LiveFailWhy.Kind?, serverAi: Boolean = AiRouter.serverAiOk(), now: Long = System.currentTimeMillis()): Boolean {
         if (lastRunServer || !spareKind(kind) || !serverAi || !on(now)) return false
-        spareUntil = now + SPARE_MS
+        val daily = dailyHit && kind == LiveFailWhy.Kind.QUOTA
+        dailyHit = false
+        spareUntil = now + spareMs(daily, now)
         return true
     }
+
+    // ---- 28 नवंबर 2026 (मालिक: "ऑल-राउंडर key की limit बातचीत के बीच खत्म = बात रुके नहीं, तुरंत बैकएंड से, limit लौटने तक")
+    /** अपनी key की limit आज की (रोज़ वाली) थी - [noteFail] तब Google की limit लौटने (Pacific आधी रात) तक सर्वर से */
+    @Volatile var dailyHit = false
+
+    /** अभी अपनी key से चल रही बातचीत को सर्वर पर ले जा सकते हैं? (तब एक key पर रुक-रुककर इंतज़ार नहीं) */
+    fun canSpare(serverAi: Boolean = AiRouter.serverAiOk(), now: Long = System.currentTimeMillis()): Boolean = !lastRunServer && serverAi && on(now)
+
+    /** pure: सर्वर पर कितनी देर. रोज़ की limit = Google की अगली रीसेट (Pacific आधी रात) तक, वरना [SPARE_MS] */
+    fun spareMs(daily: Boolean, now: Long): Long {
+        if (!daily) return SPARE_MS
+        val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("America/Los_Angeles"))
+        cal.timeInMillis = now
+        cal.add(java.util.Calendar.DAY_OF_MONTH, 1)
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0); cal.set(java.util.Calendar.MINUTE, 0)
+        cal.set(java.util.Calendar.SECOND, 0); cal.set(java.util.Calendar.MILLISECOND, 0)
+        return (cal.timeInMillis - now).coerceAtLeast(SPARE_MS)
+    }
+
+    /** pure: अपनी key पर छोटी रोक (प्रति मिनट) में रुककर उसी key से फिर? सर्वर बचाव हो = नहीं, तुरंत सर्वर (चुप्पी नहीं) */
+    fun waitOnOwnKey(soft: Boolean, spareOk: Boolean): Boolean = soft && !spareOk
 
     fun spare(now: Long = System.currentTimeMillis()): Boolean = now < spareUntil && on(now)
 
