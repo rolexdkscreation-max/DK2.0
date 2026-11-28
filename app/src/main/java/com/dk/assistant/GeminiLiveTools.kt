@@ -493,7 +493,9 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                     LocalRecall.toolReply(a, f)
                 }
                 // 20 नवंबर 2026 ([HistoryOnDemand]): पुरानी बातचीत सिर्फ़ पूछने पर - फ़ोन के SQLite (FTS4) से, offline
-                "search_history" -> {
+                "search_history" -> if (HistoryOnDemand.smallTalk(args.optString("query").ifBlank { DKState.lastUser })) {
+                    HistoryOnDemand.SMALL_TALK_REPLY
+                } else {
                     val r = LocalMemory.searchHistory(svc, args.optString("query"), args.optString("from_date").ifBlank { null },
                         args.optString("to_date").ifBlank { null }, args.optInt("limit", HistoryOnDemand.DEFAULT_LIMIT), current = DKState.lastUser)
                     // 20 नवंबर 2026 (मालिक: "याद रखने को कहा हो तो कभी भी पूछूँ, ढूँढकर बताए"): Live में सिर्फ़ 20 पक्की बातें जाती हैं -

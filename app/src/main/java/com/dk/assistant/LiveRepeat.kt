@@ -64,6 +64,14 @@ class LiveRepeat(private val keepMs: Long = KEEP_MS, private val max: Int = MAX_
         const val RESEND_WINDOW_MS = 45_000L
         const val DUP_WINDOW_MS = 25_000L
         const val ECHO_MS = 6_000L
+        /** दोहराव पर नया जवाब माँगना: इतने में एक ही बार */
+        const val FRESH_GAP_MS = 30_000L
+
+        /** दोहराव रुकने पर Live को: उसकी इसी बात का नया, सीधा, छोटा जवाब (कोई तय जवाब नहीं) */
+        fun freshNote(user: String): String =
+            "[SYSTEM NOTE - do not read this aloud] You started saying your earlier reply again, so it was stopped. " +
+                "His words now: \"${user.take(200)}\". Answer exactly these words, fresh and direct, in 1-2 short natural lines " +
+                "that differ from your earlier reply. No tool, no old topic."
         /** DK की आवाज़ खत्म होने के इतनी देर बाद आपका बोलना शुरू = आप (Bluetooth की देरी समेत) */
         const val ECHO_GRACE_MS = 800L
         private val AGAIN = Regex(
