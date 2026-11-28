@@ -120,7 +120,7 @@ internal fun GeminiLive.onNoReply() {
     timeline.begin(now, now, "caption text (नहीं सुना था)"); waitingLogged = false
     replyWatch.onRescued()               // ek baat ke liye ek hi baar (atka-nudge bhi nahi)
     val ok = try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) == true } catch (_: Exception) { false }
-    if (ok) { rescued++; repeatGuard.onResent(now) }
+    if (ok) { rescued++; repeatGuard.onResent(now); rescueText = t; rescueAt = now }
     log("Gemini ने आवाज़ नहीं सुनी (${LiveStay.NO_REPLY_MS / 1000}s में कुछ नहीं) - caption का text सीधे भेजा: \"${t.take(60)}\"" + if (ok) "" else " (भेज नहीं पाया)")
     if (DKState.mode != Mode.WORKING) setMode(Mode.THINKING)
 }
@@ -149,7 +149,7 @@ internal fun GeminiLive.onStalled() {
     log("अटकी बात की समय-रेखा: ${timeline.summary()}")
     timeline.begin(now, now, "अटका - text में दोबारा"); waitingLogged = false
     val ok = try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) == true } catch (_: Exception) { false }
-    if (ok) { stalledN++; repeatGuard.onResent(now) }
+    if (ok) { stalledN++; repeatGuard.onResent(now); rescueText = t; rescueAt = now }
     log("Gemini ने सुना पर 4.5s में जवाब शुरू नहीं किया - वही बात text में दोबारा भेजी: \"${t.take(60)}\"" + if (ok) "" else " (भेज नहीं पाया)")
     if (DKState.mode != Mode.WORKING) setMode(Mode.THINKING)
 }
@@ -331,7 +331,7 @@ internal fun GeminiLive.lastChance(why: String, sorryOk: Boolean, text: String? 
     val ok = try { ws?.tx(JSONObject().put("realtimeInput", JSONObject().put("text", t)).toString()) == true } catch (_: Exception) { false }
     if (!ok) { log("आख़िरी मौका ($why): text नहीं भेज पाया"); return false }
     lastChanceAt = now
-    repeatGuard.onResent(now)
+    repeatGuard.onResent(now); rescueText = t; rescueAt = now
     eosAt = now; firstAudioAt = 0; trace.reset(); trace.speechEndAt = now; trace.endpointAt = now
     timeline.begin(now, now, "आख़िरी मौका - text"); waitingLogged = false
     replyWatch.onRescued()

@@ -31,6 +31,8 @@ object HistoryOnDemand {
     /** पूँछ इससे पुरानी हो तो नहीं (ऐप कल खुला था = "उसे दोबारा बोलो" का मतलब नहीं) - सूची से खोली चैट पर नहीं लगता */
     const val TAIL_WINDOW_MS = 30 * 60_000L
     const val TAIL_TURN_CHARS = 300
+    /** पूँछ की आख़िरी लाइन आपकी (उसका जवाब नहीं गया - जैसे नेट चला गया) */
+    const val OLD_ASK = "(old, not answered then - ignore it unless he asks again)"
 
     const val FACTS_MAX = 20
     const val FACTS_CHARS = 1_500
@@ -112,10 +114,13 @@ object HistoryOnDemand {
         val last = turns.filter { it.text.isNotBlank() && !it.text.endsWith("…") && (it.role == "u" || it.role == "d") &&
             (reopened || now - it.time in 0..TAIL_WINDOW_MS) }.takeLast(n)
         if (last.isEmpty()) return ""
-        return "\n\nLAST EXCHANGE (only for follow-ups like \"उसे दोबारा बोलो\" - do not continue it on your own):\n" +
-            last.joinToString("\n") { t ->
+        // 28 नवंबर 2026 (मालिक का लॉग): नेट जाने के बाद जुड़ते ही DK ने पूँछ वाला पुराना सवाल ("realme का दाम") खुद खोज डाला,
+        // जबकि आपने कुछ और कहा था. अब साफ़: यह बात खत्म हो चुकी; आख़िरी लाइन आपकी (जवाब नहीं मिला) हो तो वह भी पुरानी.
+        return "\n\nLAST EXCHANGE (already over - only for follow-ups like \"उसे दोबारा बोलो\"; never answer, search or act on it again " +
+            "unless his newest words ask for it):\n" +
+            last.withIndex().joinToString("\n") { (i, t) ->
                 val x = t.text.replace(Regex("\\s+"), " ").trim().let { if (it.length > TAIL_TURN_CHARS) it.take(TAIL_TURN_CHARS) + "…" else it }
-                (if (t.role == "u") "User: " else "DK: ") + x
+                (if (t.role == "u") "User: " else "DK: ") + x + if (t.role == "u" && i == last.lastIndex) " $OLD_ASK" else ""
             }
     }
 

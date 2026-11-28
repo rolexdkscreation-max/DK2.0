@@ -70,7 +70,17 @@ object UiMt {
             var any = false
             for ((lang, jobs) in batch.groupBy { it.lang }) {
                 val got = HashMap<String, String>()
+                webOffline = false
                 try { got.putAll(web(lang, jobs)) } catch (e: Exception) { DKLog.d("UI अनुवाद (web, $lang) नहीं हुआ: ${e.message?.take(100)}") }
+                // 28 नवंबर 2026 (मालिक का लॉग): इंटरनेट ही नहीं = हर 40 लाइनों पर सारे AI (Gemini, Groq, DK सर्वर) 3-3 बार
+                // आज़माए जाते थे - हर ~7s पूरा लॉग गलतियों से भरा, फ़ोन व्यस्त. अब: बाकी सब अनुवाद बाद में ([RETRY_MS]), AI नहीं.
+                if (webOffline) {
+                    val now = System.currentTimeMillis()
+                    val rest = synchronized(pending) { pending.values.toList().also { pending.clear() } }
+                    (jobs + rest).forEach { failed["${it.lang}\u0001${it.key}"] = now }
+                    DKLog.d("UI अनुवाद: इंटरनेट नहीं - ${jobs.size + rest.size} अनुवाद ${RETRY_MS / 60_000} मिनट बाद (AI से नहीं आज़माए)")
+                    break
+                }
                 val left = jobs.filter { got[it.key].isNullOrBlank() }
                 if (left.isNotEmpty()) try { got.putAll(ai(lang, left)) } catch (e: Exception) {
                     DKLog.d("UI अनुवाद (AI, $lang) नहीं हुआ: ${e.message?.take(100)}")
@@ -103,6 +113,7 @@ object UiMt {
                     if (got != null) idx.forEachIndexed { i, j -> out[j.key] = got[i] }
                     else for (j in idx) fetch(from, lang, j.text).takeIf { it.isNotBlank() }?.let { out[j.key] = it }
                 } catch (e: java.io.IOException) {
+                    if (offline(e)) { webOffline = true; return out }
                     DKLog.d("UI अनुवाद (web) अधूरा: ${e.message?.take(80)}")   // बाकी AI से
                 }
             }
@@ -159,6 +170,13 @@ object UiMt {
 
     /** भाषा बदली - पिछली भाषा के बाकी काम छोड़ो */
     fun clearPending() { synchronized(pending) { pending.clear() }; failed.clear() }
+
+    /** इस बार web ने "इंटरनेट नहीं" कहा (पता नहीं मिला / जुड़ा ही नहीं) */
+    @Volatile private var webOffline = false
+
+    /** इंटरनेट ही नहीं (धीमा नहीं) - तब AI भी नहीं चलेगा */
+    internal fun offline(e: Throwable): Boolean =
+        e is java.net.UnknownHostException || e is java.net.ConnectException || e is java.net.NoRouteToHostException
 
     private const val MAX_LEN = 600
     private const val MAX_PENDING = 600
