@@ -100,9 +100,16 @@ object HonestGuard {
     private val NOT_CLAIM = Regex("नहीं|नही|(^|\\s)(ना|मत)(\\s|$)|पाया|पाई|सकता|सकती|करूँ|करूं|दूँ|दूं|क्या|\\?|तुमने|आपने|तूने|उसने|उन्होंने|" +
         "(?i)\\b(not|couldn't|could not|can't|cannot|shall i|should i|you)\\b")
 
+    /**
+     * 28 नवंबर 2026 (मालिक का log): "आपसे बात करके तो और भी अच्छा हो गया" = भावना/हालत, काम का दावा नहीं - पर "हो गया" पर
+     * सच-जाँच ने झूठा सुधार भेजा (बेकार अगला जवाब). ऐसा "<हाल> हो गया" जाँच से पहले हटाओ; बाकी वाक्य वैसे ही जाँचा जाता है.
+     */
+    private val MOOD = Regex("(अच्छा|अच्छी|अच्छे|बढ़िया|बेहतर|शानदार|मस्त|खुश|ख़ुश|मज़ा|मजा|मूड|सुकून|प्यार|ठीक|बुरा|ख़राब|खराब|उदास|परेशान|" +
+        "हल्का|हल्की|फ्रेश|रिलैक्स|बोर|दिन|मन)\\s*(सा\\s*|सी\\s*)?(और\\s*)?(भी\\s*)?हो\\s*(गया|गई|गयी)")
+
     /** DK की बात में "काम हो गया" का दावा है? (हर वाक्य अलग जाँचो) */
     fun claimsDone(reply: String): Boolean =
-        reply.split(Regex("(?<=[।.!?\\n])")).any { s -> CLAIM.containsMatchIn(s) && !NOT_CLAIM.containsMatchIn(s) }
+        reply.split(Regex("(?<=[।.!?\\n])")).any { raw -> val s = MOOD.replace(raw, " "); CLAIM.containsMatchIn(s) && !NOT_CLAIM.containsMatchIn(s) }
 
     /** इतनी देर में कोई असली काम (tool / काम पूरा होने का SYSTEM NOTE) नहीं हुआ और दावा कर दिया = झूठ */
     const val EVIDENCE_MS = 90_000L

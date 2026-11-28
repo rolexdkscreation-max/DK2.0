@@ -81,4 +81,12 @@ class SideTalkBlipNov28Test {
         assertTrue(rescue.contains("SplitRescue.giveUp(rescueStreak)"))
         assertTrue(java.io.File(dir, "GeminiLive.kt").readText().contains("if (SplitRescue.limitHit(why)) splitGiveUp("))
     }
+
+    /** 28 नवंबर 2026: भावना वाला "अच्छा हो गया" काम का दावा नहीं; असली दावा अब भी पकड़ा जाए */
+    @Test fun moodIsNotDoneClaim() {
+        assertFalse(HonestGuard.claimsDone("मेरा दिन तो बहुत अच्छा बीता, boss, आपसे बात करके तो और भी अच्छा हो गया"))
+        assertFalse(HonestGuard.claimsDone("मूड ठीक हो गया बॉस"))
+        assertTrue(HonestGuard.claimsDone("हो गया बॉस"))
+        assertTrue(HonestGuard.claimsDone("मूड अच्छा हो गया, और मैसेज भी भेज दिया।"))
+    }
 }
