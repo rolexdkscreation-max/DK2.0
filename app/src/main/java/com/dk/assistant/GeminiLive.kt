@@ -439,6 +439,11 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
     @Volatile internal var handlerErrors = 0
     /** Connection tootne se pehle ki baat jiska jawab shuru nahi hua tha - judte hi ek baar text me */
     @Volatile internal var resendText: String? = null
+    /** 28 नवंबर 2026 (मालिक का लॉग): बचाव में text में भेजी आपकी आख़िरी बात - सत्र अटक कर टूटे तो नए connection पर यही */
+    @Volatile internal var rescueText = ""
+    @Volatile internal var rescueAt = 0L
+    /** 28 नवंबर 2026: अटके सत्र के बाद आपकी आवाज़ नए connection पर कब दोबारा भेजी */
+    @Volatile internal var replaySentAt = 0L
     @Volatile internal var resentN = 0
     /** v3.9.1: bola par Gemini ne suna hi nahi -> caption ka text seedha bhejo */
     // v3.41: suna par jawab shuru nahi = 4.5s ki jagah 3.5s me bachao (atka sawaal jaldi dobara)
@@ -1549,7 +1554,11 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                         if (zEnd > 0L && zEnd != zombieFor &&
                             LiveRecover.zombie(now, zEnd, timeline.eventAt, lastAnyServerAt, zBusy, utt.speechMs(), BargeGate.realWords(caption?.text().orEmpty()))) {
                             zombieFor = zEnd
-                            if (zombieSwaps.tryTake(now)) {
+                            // 28 नवंबर 2026 (मालिक का लॉग): दोबारा भेजी आवाज़ भी ताज़ा connection पर नहीं सुनी = सत्र नहीं, आवाज़ की दिक्कत
+                            // (छोटी / धीमी बात). पहले फिर connection बदलता, फिर बातचीत ही नई (पिछली बातें गईं). अब: लिखी बात text में.
+                            if (LiveRecover.replayUnheard(replaySentAt, zEnd) && lastChance("दोबारा भेजी आवाज़ भी नहीं सुनी", false)) {
+                                log("Live: दोबारा भेजी आवाज़ भी नहीं सुनी - connection नहीं बदला (बातचीत वहीं), लिखी बात text में")
+                            } else if (zombieSwaps.tryTake(now)) {
                                 zombieN++; unheardSwapAt = 0L
                                 val again = zombieSwaps.recent(now) > 1
                                 replayAudio = utt.snapshot(now); replayAt = now
@@ -1617,6 +1626,7 @@ class GeminiLive(internal val svc: DKAccessibilityService, internal val agent: A
                         val t = caption?.text().orEmpty().trim()
                             .ifBlank { if (!userDone) turnUser.trim() else "" }
                             .ifBlank { synchronized(turnLock) { userText.toString().trim() } }
+                            .ifBlank { LiveRepeat.rescueFor(rescueText, rescueAt, dropAt) }   // 28 नवंबर 2026: बचाव वाला text (ऊपर सब खाली हो चुका)
                         if (BargeGate.realWords(t)) { resendText = t; replyWatch.onResent() }
                         log("connection टूटा जब बात का जवाब बाकी था • ${timeline.summary()}" + if (resendText != null) " - जुड़ते ही दोबारा भेजूँगा" else "")
                     } else if (!textRescue && replayAudio == null && replyWatch.unanswered(dropAt)) {

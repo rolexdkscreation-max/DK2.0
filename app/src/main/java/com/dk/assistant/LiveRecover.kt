@@ -95,6 +95,12 @@ object LiveRecover {
     /** अटका + बदलने की सीमा पूरी + भेजने लायक बात नहीं = फ़ोन की आवाज़ में यही (SYSTEM NOTE नहीं) */
     const val ASK_AGAIN_LINE = "अरे, आपकी बात मुझ तक ठीक से नहीं पहुँची... एक बार फिर से बोलिए ना।"
 
+    /** अटकी बात खुद ही दोबारा भेजी गई आवाज़ थी (उसके बाद आपने कुछ नया नहीं कहा) */
+    fun replayUnheard(replaySentAt: Long, endpointAt: Long): Boolean =
+        replaySentAt > 0L && endpointAt > 0L && endpointAt >= replaySentAt - REPLAY_SAME_MS && endpointAt - replaySentAt <= REPLAY_SAME_MS
+
+    const val REPLAY_SAME_MS = 1_500L
+
     fun dropHandle(again: Boolean, handle: String?, lastStuckHandle: String?): Boolean =
         again && handle != null && handle == lastStuckHandle
 

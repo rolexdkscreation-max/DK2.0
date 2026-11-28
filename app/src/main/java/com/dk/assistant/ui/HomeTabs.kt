@@ -38,6 +38,10 @@ object HomeTabs {
      * 23 नवंबर 2026 (Soft Clay): उभरी गोल पट्टी; चुना टैब accent से भरा; बीच का माइक बड़ा गोल, बाकी से ऊपर उभरा, accent चमक.
      * रंग ([accent] / [bg]) अब चुनी Clay थीम के ही आते हैं - टैब / क्रम / काम वही.
      */
+    /** बीच के माइक cell की ऊँचाई (66dp बटन + 2dp + नाम 18dp) और ऊपर उठान */
+    const val MIC_CELL_DP = 86f
+    const val MIC_LIFT_DP = 22f
+
     fun bar(c: Context, fg: Int, accent: Int, bg: Int, selected: Tab = Tab.HOME, go: (Tab) -> Unit): LinearLayout {
         val dm = c.resources.displayMetrics.density
         fun d(v: Float) = (v * dm + 0.5f).toInt()
@@ -90,10 +94,12 @@ object HomeTabs {
                 text = t.label; textSize = 11f; maxLines = 1; gravity = Gravity.CENTER
             }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = d(2f) })
             // बीच का माइक: बाकी टैब से ऊपर उभरा (पट्टी से बाहर निकलता)
-            if (mid) cell.translationY = -d(18f).toFloat()
-            bar.addView(cell, LinearLayout.LayoutParams(0, if (mid) d(66f) + d(16f) else d(56f), 1f).apply {
+            // 28 नवंबर 2026 (मालिक का screenshot): 66+16dp में बटन + "Mic" नहीं समाते थे - नाम नीचे से कटता. अब बटन ऊपर से,
+            // नाम के लिए पूरी जगह (पट्टी की ऊँचाई वही: ऊँचाई - नीचे का margin = 64dp)
+            if (mid) { cell.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; cell.translationY = -d(MIC_LIFT_DP).toFloat() }
+            bar.addView(cell, LinearLayout.LayoutParams(0, if (mid) d(MIC_CELL_DP) else d(56f), 1f).apply {
                 if (!mid) { marginStart = d(3f); marginEnd = d(3f) }
-                if (mid) bottomMargin = -d(18f)
+                if (mid) bottomMargin = -d(MIC_LIFT_DP)
             })
         }
         paint(bar, selected, fg)

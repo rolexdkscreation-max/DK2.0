@@ -36,6 +36,7 @@ internal fun GeminiLive.sendReplay() {
     beginTimeline(now, now, "अटकी/टूटी बात की आवाज़ दोबारा")
     replyWatch.onResent()
     repeatGuard.onResent(now)
+    replaySentAt = now
     log("Live: आपकी बात की आवाज़ (${n * CHUNK_MS / 100 / 10.0}s) नए connection पर दोबारा भेजी - text नहीं (#$replayedN)")
     if (!isPlaying() && DKState.mode != Mode.WORKING) setMode(Mode.THINKING)
 }

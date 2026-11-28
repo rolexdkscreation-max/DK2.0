@@ -33,6 +33,8 @@ object SideTalk {
     /** score सीमा से इतना नीचे = पक्का कोई और (बीच वाला = पता नहीं) */
     const val OTHER_MARGIN = 0.10f
     const val MIN_MS = 300
+    /** DK के बोलने के इतनी देर में आई बात = DK से बातचीत (बगल की नहीं) */
+    const val DK_TURN_MS = 12_000L
 
     enum class Who { BOSS, OTHER, UNKNOWN }
 
@@ -91,7 +93,7 @@ object SideTalk {
          * जवाब बजे या नहीं. @return null = बजे; वरना कारण (log के लिए).
          * @param heard इस बात का लिखा रूप (caption / Live का)
          */
-        fun muteReason(now: Long, heard: String, wake: List<String> = emptyList()): String? {
+        fun muteReason(now: Long, heard: String, wake: List<String> = emptyList(), dkSpokeAgoMs: Long = -1L): String? {
             val addr = addressed(heard, wake)
             if (listening(now)) {
                 if (parse(heard) == true) return null          // खुद मोड शुरू करने वाली बात (उसमें DK नाम हो तब भी मोड चलता रहे)
@@ -100,6 +102,9 @@ object SideTalk {
             }
             if (addr) return null
             if (direct(heard)) return null                 // 22 नवंबर 2026: "हैलो / सुन पा रहे हो" = DK से बात, आवाज़ का मिलान कुछ भी हो
+            // 28 नवंबर 2026 (मालिक का लॉग): DK अभी-अभी बोली और आपने उसी पर सवाल किया ("क्या पसंद होगा, क्या करती हो") - Bluetooth
+            // पर आपकी आवाज़ का मिलान 0.30-0.60 घूमता है, तो आप ही "कोई और" मान लिए गए और जवाब रुका. बातचीत चल रही = DK से बात.
+            if (dkSpokeAgoMs in 0..DK_TURN_MS) return null
             val cur = current(now)
             // कोई और बोला और अभी-अभी आप बोल रहे थे = आप दोनों की बात
             if (cur == Who.OTHER && lastBossAt > 0 && now - lastBossAt < BOSS_RECENT_MS) return "कोई और आपसे बात कर रहा है"

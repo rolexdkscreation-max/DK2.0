@@ -34,7 +34,8 @@ internal fun GeminiLive.sideTalkCheck(): Boolean {
     if (!SideTalk.on(c) && !SideTalk.global.listening(System.currentTimeMillis())) return false
     val heard = (synchronized(turnLock) { userText.toString() } + " " + turnUser + " " + caption?.text().orEmpty()).trim()
     val now = System.currentTimeMillis()
-    val why = SideTalk.global.muteReason(now, heard, Prefs.wakeWords(c)) ?: return false
+    val dkAgo = if (lastDkLine.isBlank() || playEnd <= 0L) -1L else (now - playEnd).coerceAtLeast(0L)
+    val why = SideTalk.global.muteReason(now, heard, Prefs.wakeWords(c), dkAgo) ?: return false
     muteTurn = true; muteAt = now
     log("बगल की बातचीत ($why) - सुना, जवाब नहीं: \"${heard.take(40)}\"")
     return true

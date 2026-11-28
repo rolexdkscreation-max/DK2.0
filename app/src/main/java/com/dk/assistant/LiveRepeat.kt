@@ -70,6 +70,12 @@ class LiveRepeat(private val keepMs: Long = KEEP_MS, private val max: Int = MAX_
             RegexOption.IGNORE_CASE,
         )
 
+        const val RESCUE_KEEP_MS = 20_000L
+
+        /** बचाव में भेजा text [RESCUE_KEEP_MS] के अंदर का हो तो वही (सत्र टूटा = नए connection पर दोबारा), वरना "" */
+        fun rescueFor(text: String, at: Long, now: Long): String =
+            if (at > 0L && now - at in 0..RESCUE_KEEP_MS) text.trim() else ""
+
         /** Live को भेजा संदेश नई बात है? (text / tool का जवाब / clientContent - आवाज़ के टुकड़े नहीं) */
         fun isInput(m: String): Boolean =
             m.startsWith("{\"realtimeInput\":{\"text\"") || m.startsWith("{\"toolResponse\"") || m.startsWith("{\"clientContent\"")
