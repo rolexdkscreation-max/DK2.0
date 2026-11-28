@@ -11,7 +11,7 @@ internal fun GeminiLive.repeatCheck(): Boolean {
     val now = System.currentTimeMillis()
     val (soFar, heard) = synchronized(turnLock) { replyText.toString().take(REPEAT_PEEK) to userText.toString() }
     val user = heard.trim().ifBlank { caption?.text().orEmpty().trim() }.ifBlank { turnUser }
-    val dup = repeatGuard.dupReply(now, utt.lastRealAt())
+    val dup = repeatGuard.dupReply(now, maxOf(utt.lastRealAt(), speechStartAt))   // 28 नवंबर: फ़ोन VAD ने भी सुना = नई बात
     if (!dup && !repeatGuard.isRepeat(soFar, user, now)) return false
     log(
         if (dup) "दोहराव रोका: दोबारा भेजी बात का जवाब पहले ही दे चुका - दूसरा जवाब नहीं बजाया"
@@ -30,7 +30,8 @@ internal fun GeminiLive.echoHeard(t: String): Boolean {
     val now = System.currentTimeMillis()
     if (generating || isPlaying()) return false        // DK बोल रहा है - वहाँ पुरानी बीच-में-टोकना जाँच ([BargeGate])
     val heard = synchronized(turnLock) { (userText.toString() + t).trim() }
-    if (!LiveRepeat.isEcho(heard, lastDkLine, now - playEnd)) return false
+    val after = if (speechStartAt > 0L) speechStartAt - playEnd else Long.MIN_VALUE
+    if (!LiveRepeat.isEcho(heard, lastDkLine, now - playEnd, after)) return false
     synchronized(turnLock) { userText.clear() }
     muteTurn = true; muteAt = now                       // इस "बात" का जवाब आए तो बजे नहीं (turnComplete पर हटता)
     replyWatch.onServerAnswered()                       // गूँज के लिए "नहीं सुना" बचाव भी नहीं

@@ -64,8 +64,10 @@ class LiveRepeat(private val keepMs: Long = KEEP_MS, private val max: Int = MAX_
         const val RESEND_WINDOW_MS = 45_000L
         const val DUP_WINDOW_MS = 25_000L
         const val ECHO_MS = 6_000L
+        /** DK की आवाज़ खत्म होने के इतनी देर बाद आपका बोलना शुरू = आप (Bluetooth की देरी समेत) */
+        const val ECHO_GRACE_MS = 800L
         private val AGAIN = Regex(
-            "फिर\\s*से|फिरसे|दोबारा|दुबारा|एक\\s*बार\\s*और|क्या\\s*(कहा|बोला|बोले|कहे)|सुनाई\\s*नहीं|समझ\\s*नहीं|" +
+            "फिर\\s*से|फिरसे|दोबारा|दुबारा|एक\\s*बार\\s*और|क्या\\s*(कहा|बोला|बोले|कहे)|सुनाई\\s*नहीं|समझ\\s*नहीं|नहीं\\s*समझ|" +
                 "repeat|again|phir\\s*se|dobara|dubara|kya\\s*(kaha|bola)|samajh\\s*nahi|پھر\\s*سے|دوبارہ",
             RegexOption.IGNORE_CASE,
         )
@@ -110,8 +112,11 @@ class LiveRepeat(private val keepMs: Long = KEEP_MS, private val max: Int = MAX_
          * DK अभी-अभी ([msSinceDk] ms पहले) चुप हुआ और Gemini ने जो "आपकी बात" सुनी वह DK के पिछले जवाब की ही है
          * (कम से कम 4 शब्द - "हाँ / ठीक है" जैसी छोटी असली बात कभी नहीं रोकते) = गूँज
          */
-        fun isEcho(heard: String, lastDk: String, msSinceDk: Long): Boolean {
+        fun isEcho(heard: String, lastDk: String, msSinceDk: Long, spokeAfterDkMs: Long = Long.MIN_VALUE): Boolean {
             if (msSinceDk < 0 || msSinceDk > ECHO_MS || asksAgain(heard)) return false
+            // 28 नवंबर 2026 (मालिक का लॉग): DK चुप होने के ~1.7s बाद फ़ोन ने आपको बोलते सुना ("ईद के बारे में...",
+            // "मेरी बात ही नहीं समझ रही") और वह "गूँज" मानकर चुप - DK के खत्म होने के बाद शुरू हुई बात गूँज नहीं हो सकती
+            if (spokeAfterDkMs > ECHO_GRACE_MS) return false
             if (BargeGate.tokens(heard).size < 4) return false
             return BargeGate.isEcho(heard, lastDk)
         }
