@@ -577,9 +577,17 @@ internal fun GeminiLive.runTools(calls: JSONArray) {
                     in setOf("voice_call", "video_call", "call", "audio_call") -> {
                         val cmd = WaCall.Cmd(args.optString("contact").trim(), act == "video_call")
                         DKState.set(Mode.WORKING)
-                        val r = WaCall.call(svc, cmd.name, cmd.video)
-                        log("WhatsApp ${if (cmd.video) "वीडियो " else ""}कॉल \"${cmd.name}\" -> ${r.substringBefore(':')}")
-                        LiveFast.quickResult(QuickCommands.Quick(WaCall.toJson(cmd), ""), r, already = false)
+                        // 28 नवंबर 2026 (मालिक): WhatsApp बोला ही नहीं = आम फ़ोन कॉल (SIM), WhatsApp नहीं
+                        val heard = (turnUser.trim().ifBlank { lastUserLine.trim() } + " " + DKState.lastUser.trimEnd('…')).trim()
+                        if (WaCall.plainCallInstead(heard, cmd.video)) {
+                            log("कॉल: WhatsApp नहीं बोला -> आम फ़ोन कॉल \"${cmd.name}\"")
+                            val pr = PhoneActions.callContact(svc, cmd.name)
+                            LiveFast.quickResult(QuickCommands.Quick(org.json.JSONObject().put("type", "call_contact").put("name", cmd.name), ""), pr, already = false)
+                        } else {
+                            val r = WaCall.call(svc, cmd.name, cmd.video)
+                            log("WhatsApp ${if (cmd.video) "वीडियो " else ""}कॉल \"${cmd.name}\" -> ${r.substringBefore(':')}")
+                            LiveFast.quickResult(QuickCommands.Quick(WaCall.toJson(cmd), ""), r, already = false)
+                        }
                     }
                     // v3.151: पहले बताया नाम/संदेश बातचीत से भरो - दोबारा न पूछे
                     in setOf("send_message", "send", "message") -> {
